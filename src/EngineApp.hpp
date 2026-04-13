@@ -13,6 +13,9 @@
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
 
+#include <unordered_set>
+#include <string>
+
 class EngineApp {
 public:
     void run();
@@ -146,6 +149,10 @@ private:
     };
     GameObjectId playerObjectId = InvalidGameObjectId;
 
+    std::unordered_set<GameObjectId> activeTriggerOverlaps;
+    std::string debugTriggerMessage;
+    float debugTriggerMessageTimer = 0.0f;
+
 private:
     void initWindow();
     void initVulkan();
@@ -247,4 +254,8 @@ private:
     AABB buildAABB(const GameObject& object, const ColliderComponent& collider) const;
     bool intersects(const AABB& a, const AABB& b) const;
     bool collidesAtPosition(GameObjectId movingObjectId, const glm::vec2& newPosition) const;
+
+    void updateTriggers(float deltaTime);
+    void onTriggerEnter(GameObjectId triggerId);
+    void onTriggerExit(GameObjectId triggerId);
 };

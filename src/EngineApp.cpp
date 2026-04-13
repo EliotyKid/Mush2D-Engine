@@ -12,6 +12,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#include <iostream>
+
 void EngineApp::run() {
     initWindow();
     initVulkan();
@@ -90,6 +92,7 @@ void EngineApp::mainLoop() {
         handleInput(deltaTime);
         updatePlayer(deltaTime);
         updateScene();
+        updateTriggers(deltaTime);
         updateCameraFollow(deltaTime);
         clampCameraToBounds();
         updateUniformBuffer();
@@ -1449,6 +1452,7 @@ void EngineApp::setupInitialScene() {
     scene.sprites.clear();
     scene.players.clear();
     scene.colliders.clear();
+    activeTriggerOverlaps.clear();
 
     GameObject& leftWall = scene.createObject("LeftWall");
     leftWall.transform.position = {-4.5f, 0.0f};
@@ -1479,6 +1483,12 @@ void EngineApp::setupInitialScene() {
     box.transform.scale = {1.0f, 1.0f};
     scene.sprites[box.id] = SpriteComponent{0, 1, 0};
     scene.colliders[box.id] = ColliderComponent{{1.0f, 1.0f}, {0.0f, 0.0f}, false, true};
+
+    GameObject& triggerZone = scene.createObject("CheckpointTrigger");
+    triggerZone.transform.position = {-1.5f, 1.2f};
+    triggerZone.transform.scale = {1.0f, 1.0f};
+    scene.sprites[triggerZone.id] = SpriteComponent{1, 1, 1};
+    scene.colliders[triggerZone.id] = ColliderComponent{{1.2f, 1.2f}, {0.0f, 0.0f}, true, true};
 
     GameObject& playerObject = scene.createObject("Player");
     playerObject.transform.position = {0.0f, 0.0f};
@@ -1557,4 +1567,91 @@ bool EngineApp::collidesAtPosition(GameObjectId movingObjectId, const glm::vec2&
     }
 
     return false;
+}
+
+void EngineApp::updateTriggers(float deltaTime) {
+    if (debugTriggerMessageTimer > 0.0f) {
+        debugTriggerMessageTimer -= deltaTime;
+        if (debugTriggerMessageTimer <= 0.0f) {
+            debugTriggerMessage.clear();
+            debugTriggerMessageTimer = 0.0f;
+        }
+    }
+
+    const GameObject* playerObject = scene.findObject(playerObjectId);
+    if (!playerObject) {
+        return;
+    }
+
+    auto playerColliderIt = scene.colliders.find(playerObjectId);
+    if (playerColliderIt == scene.colliders.end()) {
+        return;
+    }
+
+    const ColliderComponent& playerCollider = playerColliderIt->second;
+    if (!playerCollider.enabled) {
+        return;
+    }
+
+    AABB playerBox = buildAABB(*playerObject, playerCollider);
+
+    std::unordered_set<GameObjectId> currentOverlaps;
+
+    for (const auto& object : scene.objects) {
+        if (!object.active || object.id == playerObjectId) {
+            continue;
+        }
+
+        auto colliderIt = scene.colliders.find(object.id);
+        if (colliderIt == scene.colliders.end()) {
+            continue;
+        }
+
+        const ColliderComponent& collider = colliderIt->second;
+        if (!collider.enabled || !collider.isTrigger) {
+            continue;
+        }
+
+        AABB triggerBox = buildAABB(object, collider);
+
+        if (intersects(playerBox, triggerBox)) {
+            currentOverlaps.insert(object.id);
+
+            if (activeTriggerOverlaps.find(object.id) == activeTriggerOverlaps.end()) {
+                onTriggerEnter(object.id);
+            }
+        }
+    }
+
+    for (GameObjectId previousId : activeTriggerOverlaps) {
+        if (currentOverlaps.find(previousId) == currentOverlaps.end()) {
+            onTriggerExit(previousId);
+        }
+    }
+
+    activeTriggerOverlaps = std::move(currentOverlaps);
+}
+
+void EngineApp::onTriggerEnter(GameObjectId triggerId) {
+    const GameObject* triggerObject = scene.findObject(triggerId);
+    if (!triggerObject) {
+        return;
+    }
+
+    debugTriggerMessage = "Entrou no trigger: " + triggerObject->name;
+    debugTriggerMessageTimer = 2.0f;
+
+    std::cout << debugTriggerMessage << std::endl;
+}
+
+void EngineApp::onTriggerExit(GameObjectId triggerId) {
+    const GameObject* triggerObject = scene.findObject(triggerId);
+    if (!triggerObject) {
+        return;
+    }
+
+    debugTriggerMessage = "Saiu do trigger: " + triggerObject->name;
+    debugTriggerMessageTimer = 2.0f;
+
+    std::cout << debugTriggerMessage << std::endl;
 }
