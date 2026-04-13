@@ -12,6 +12,7 @@ add_executable(Mush2DEngine
     src/main.cpp
     src/EngineApp.cpp
     src/Renderer2D.cpp
+    src/PlayerStateSystem.cpp
 )
 
 target_include_directories(Mush2DEngine PRIVATE

@@ -2,6 +2,7 @@
 
 #include "GameObject.hpp"
 #include "Renderer2D.hpp"
+#include "PlayerStateSystem.hpp"
 
 #include <cstdint>
 #include <glm/ext/vector_float2.hpp>
@@ -156,6 +157,8 @@ private:
     glm::vec2 lastCheckpointPosition{0.0f, 0.0f};
 
     bool respawnPressed = false;
+
+    PlayerStateSystem playerStateSystem;
 
 private:
     void initWindow();

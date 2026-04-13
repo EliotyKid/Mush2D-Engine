@@ -1,7 +1,10 @@
 # ninja log v7
 2	886	1776088252723301554	CMakeFiles/Mush2DEngine.dir/src/main.cpp.o	4d4f79109d9e3e87
-1959	2024	1776088254680334658	Mush2DEngine	41bd7742cfc45617
-2	1959	1776088252724325446	CMakeFiles/Mush2DEngine.dir/src/EngineApp.cpp.o	17a9ab1f93fbbaaa
-2	904	1776088252724449119	CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o	4a5ecacd65103ec0
-1	1954	1776088314036340026	CMakeFiles/Mush2DEngine.dir/src/EngineApp.cpp.o	17a9ab1f93fbbaaa
 1954	2014	1776088315989373149	Mush2DEngine	41bd7742cfc45617
+1	1954	1776088314036340026	CMakeFiles/Mush2DEngine.dir/src/EngineApp.cpp.o	17a9ab1f93fbbaaa
+2	904	1776088252724449119	CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o	4a5ecacd65103ec0
+2	608	1776091723429223551	CMakeFiles/Mush2DEngine.dir/src/PlayerStateSystem.cpp.o	e90aef0e15a7aca2
+1	879	1776091723427714160	CMakeFiles/Mush2DEngine.dir/src/main.cpp.o	4d4f79109d9e3e87
+2	920	1776091723429098445	CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o	4a5ecacd65103ec0
+2	2033	1776091723428714174	CMakeFiles/Mush2DEngine.dir/src/EngineApp.cpp.o	17a9ab1f93fbbaaa
+2033	2096	1776091725459742961	Mush2DEngine	55fad9743908f9e2

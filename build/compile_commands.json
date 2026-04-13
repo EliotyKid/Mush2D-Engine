@@ -16,5 +16,11 @@
   "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/Renderer2D.cpp",
   "file": "/home/elioty/Documents/Work/mush2dengine/src/Renderer2D.cpp",
   "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o"
+},
+{
+  "directory": "/home/elioty/Documents/Work/mush2dengine/build",
+  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/PlayerStateSystem.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/PlayerStateSystem.cpp",
+  "file": "/home/elioty/Documents/Work/mush2dengine/src/PlayerStateSystem.cpp",
+  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/PlayerStateSystem.cpp.o"
 }
 ]

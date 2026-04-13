@@ -5,6 +5,8 @@
 #include <glm/ext/vector_float2.hpp>
 #include <glm/glm.hpp>
 
+#include <vector>
+
 struct SpriteComponent {
     std::uint32_t textureIndex = 0;
     int layer = 0;
@@ -13,10 +15,6 @@ struct SpriteComponent {
     bool visible = true;
 };
 
-struct PlayerComponent {
-    glm::vec2 velocity{0.0f, 0.0f};
-    float moveSpeed = 2.5f;
-};
 
 struct ColliderComponent {
     glm::vec2 size{1.0f, 1.0f};
@@ -32,9 +30,29 @@ enum class TriggerType {
 
 struct TriggerComponent {
     TriggerType type = TriggerType::Checkpoint;
-
+    
     glm::vec2 targetPosition{0.0f, 0.0f};
-
+    
     bool oneShot = false;
     bool consumed = false;
+};
+
+struct PlayerComponent {
+    glm::vec2 velocity{0.0f, 0.0f};
+    float moveSpeed = 2.5f;
+};
+
+enum class PlayerStateId {
+    Idle,
+    Walk
+};
+
+struct PlayerStateMachineComponent {
+    PlayerStateId currentState = PlayerStateId::Idle;
+    PlayerStateId previousState = PlayerStateId::Idle;
+    bool hasPreviousState = false;
+    
+    float stateTime = 0.0f;
+    std::vector<PlayerStateId> history;
+    bool stateChangedThisFrame = false;
 };

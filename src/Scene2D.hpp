@@ -58,6 +58,7 @@ public:
     std::unordered_map<GameObjectId, PlayerComponent> players;
     std::unordered_map<GameObjectId, ColliderComponent> colliders;
     std::unordered_map<GameObjectId, TriggerComponent> triggers;
+    std::unordered_map<GameObjectId, PlayerStateMachineComponent> playerStateMachines;
 
 private:
     GameObjectId nextId = 1;

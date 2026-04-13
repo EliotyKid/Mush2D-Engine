@@ -91,6 +91,7 @@ void EngineApp::mainLoop() {
 
         handleInput(deltaTime);
         updatePlayer(deltaTime);
+        playerStateSystem.update(scene, playerObjectId, deltaTime);
         updateScene();
         updateTriggers(deltaTime);
         updateCameraFollow(deltaTime);
@@ -1538,11 +1539,14 @@ void EngineApp::setupInitialScene() {
     GameObject& playerObject = scene.createObject("Player");
     playerObject.transform.position = {0.0f, 0.0f};
     playerObject.transform.scale = {0.7f, 0.7f};
+
     scene.sprites[playerObject.id] = SpriteComponent{1, 2, 0};
     scene.players[playerObject.id] = PlayerComponent{{0.0f, 0.0f}, 2.5f};
+    scene.playerStateMachines[playerObject.id] = PlayerStateMachineComponent{};
     scene.colliders[playerObject.id] = ColliderComponent{{0.6f, 0.6f}, {0.0f, 0.0f}, false, true};
 
     playerObjectId = playerObject.id;
+    scene.playerStateMachines[playerObject.id].history.push_back(PlayerStateId::Idle);
     camera.targetId = playerObjectId;
     player.position = playerObject.transform.position;
 
