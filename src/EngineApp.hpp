@@ -238,4 +238,13 @@ private:
     void updatePlayer(float deltaTime);
 
     void setupInitialScene();
+
+    struct AABB {
+        glm::vec2 min{0.0f, 0.0f};
+        glm::vec2 max{0.0f, 0.0f};
+    };
+
+    AABB buildAABB(const GameObject& object, const ColliderComponent& collider) const;
+    bool intersects(const AABB& a, const AABB& b) const;
+    bool collidesAtPosition(GameObjectId movingObjectId, const glm::vec2& newPosition) const;
 };

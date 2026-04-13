@@ -1428,7 +1428,19 @@ void EngineApp::updatePlayer(float deltaTime) {
     PlayerComponent& playerComponent = playerIt->second;
     playerComponent.velocity = inputDir * playerComponent.moveSpeed;
 
-    playerObject->transform.position += playerComponent.velocity * deltaTime;
+    glm::vec2 currentPosition = playerObject->transform.position;
+    glm::vec2 desiredPosition = currentPosition + playerComponent.velocity * deltaTime;
+
+    glm::vec2 tryX = {desiredPosition.x, currentPosition.y};
+    if (!collidesAtPosition(playerObjectId, tryX)) {
+        playerObject->transform.position.x = tryX.x;
+    }
+
+    glm::vec2 tryY = {playerObject->transform.position.x, desiredPosition.y};
+    if (!collidesAtPosition(playerObjectId, tryY)) {
+        playerObject->transform.position.y = tryY.y;
+    }
+
     player.position = playerObject->transform.position;
 }
 
@@ -1438,23 +1450,111 @@ void EngineApp::setupInitialScene() {
     scene.players.clear();
     scene.colliders.clear();
 
-    GameObject& left = scene.createObject("LeftObject");
-    left.transform.position = {-4.0f, 0.0f};
-    left.transform.scale = {0.6f, 0.6f};
-    scene.sprites[left.id] = SpriteComponent{0, 0, 0};
+    GameObject& leftWall = scene.createObject("LeftWall");
+    leftWall.transform.position = {-4.5f, 0.0f};
+    leftWall.transform.scale = {0.8f, 4.0f};
+    scene.sprites[leftWall.id] = SpriteComponent{0, 0, 0};
+    scene.colliders[leftWall.id] = ColliderComponent{{0.8f, 4.0f}, {0.0f, 0.0f}, false, true};
+
+    GameObject& rightWall = scene.createObject("RightWall");
+    rightWall.transform.position = {4.5f, 0.0f};
+    rightWall.transform.scale = {0.8f, 4.0f};
+    scene.sprites[rightWall.id] = SpriteComponent{0, 0, 1};
+    scene.colliders[rightWall.id] = ColliderComponent{{0.8f, 4.0f}, {0.0f, 0.0f}, false, true};
+
+    GameObject& topWall = scene.createObject("TopWall");
+    topWall.transform.position = {0.0f, 2.5f};
+    topWall.transform.scale = {8.0f, 0.8f};
+    scene.sprites[topWall.id] = SpriteComponent{0, 0, 2};
+    scene.colliders[topWall.id] = ColliderComponent{{8.0f, 0.8f}, {0.0f, 0.0f}, false, true};
+
+    GameObject& bottomWall = scene.createObject("BottomWall");
+    bottomWall.transform.position = {0.0f, -2.5f};
+    bottomWall.transform.scale = {8.0f, 0.8f};
+    scene.sprites[bottomWall.id] = SpriteComponent{0, 0, 3};
+    scene.colliders[bottomWall.id] = ColliderComponent{{8.0f, 0.8f}, {0.0f, 0.0f}, false, true};
+
+    GameObject& box = scene.createObject("CenterBox");
+    box.transform.position = {1.5f, 0.0f};
+    box.transform.scale = {1.0f, 1.0f};
+    scene.sprites[box.id] = SpriteComponent{0, 1, 0};
+    scene.colliders[box.id] = ColliderComponent{{1.0f, 1.0f}, {0.0f, 0.0f}, false, true};
 
     GameObject& playerObject = scene.createObject("Player");
     playerObject.transform.position = {0.0f, 0.0f};
     playerObject.transform.scale = {0.7f, 0.7f};
-    scene.sprites[playerObject.id] = SpriteComponent{1, 1, 0};
+    scene.sprites[playerObject.id] = SpriteComponent{1, 2, 0};
     scene.players[playerObject.id] = PlayerComponent{{0.0f, 0.0f}, 2.5f};
-
-    GameObject& right = scene.createObject("RightObject");
-    right.transform.position = {4.0f, 0.0f};
-    right.transform.scale = {0.6f, 0.6f};
-    scene.sprites[right.id] = SpriteComponent{0, 2, 0};
+    scene.colliders[playerObject.id] = ColliderComponent{{0.6f, 0.6f}, {0.0f, 0.0f}, false, true};
 
     playerObjectId = playerObject.id;
     camera.targetId = playerObjectId;
     player.position = playerObject.transform.position;
+}
+
+EngineApp::AABB EngineApp::buildAABB(const GameObject& object, const ColliderComponent& collider) const {
+    glm::vec2 center = object.transform.position + collider.offset;
+    glm::vec2 halfSize = collider.size * 0.5f;
+
+    AABB box{};
+    box.min = center - halfSize;
+    box.max = center + halfSize;
+    return box;
+}
+
+bool EngineApp::intersects(const AABB& a, const AABB& b) const {
+    if (a.max.x <= b.min.x || a.min.x >= b.max.x) {
+        return false;
+    }
+
+    if (a.max.y <= b.min.y || a.min.y >= b.max.y) {
+        return false;
+    }
+
+    return true;
+}
+
+bool EngineApp::collidesAtPosition(GameObjectId movingObjectId, const glm::vec2& newPosition) const {
+    const GameObject* movingObject = scene.findObject(movingObjectId);
+    if (!movingObject) {
+        return false;
+    }
+
+    auto movingColliderIt = scene.colliders.find(movingObjectId);
+    if (movingColliderIt == scene.colliders.end()) {
+        return false;
+    }
+
+    if (!movingColliderIt->second.enabled) {
+        return false;
+    }
+
+    GameObject movedCopy = *movingObject;
+    movedCopy.transform.position = newPosition;
+
+    AABB movingBox = buildAABB(movedCopy, movingColliderIt->second);
+
+    for (const auto& otherObject : scene.objects) {
+        if (!otherObject.active || otherObject.id == movingObjectId) {
+            continue;
+        }
+
+        auto otherColliderIt = scene.colliders.find(otherObject.id);
+        if (otherColliderIt == scene.colliders.end()) {
+            continue;
+        }
+
+        const ColliderComponent& otherCollider = otherColliderIt->second;
+        if (!otherCollider.enabled || otherCollider.isTrigger) {
+            continue;
+        }
+
+        AABB otherBox = buildAABB(otherObject, otherCollider);
+
+        if (intersects(movingBox, otherBox)) {
+            return true;
+        }
+    }
+
+    return false;
 }
