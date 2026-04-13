@@ -1,5 +1,6 @@
-#include <unordered_map>
 #pragma once
+
+#include "Scene2D.hpp"
 
 #include <array>
 #include <cstddef>
@@ -9,24 +10,6 @@
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
-#include <vulkan/vulkan_core.h>
-
-struct Transform2D {
-    glm::vec2 position{0.0f, 0.0f};
-    glm::vec2 scale{1.0f, 1.0f};
-    float rotation = 0.0f;
-};
-
-struct Sprite {
-    Transform2D transform;
-    uint32_t textureIndex = 0;
-    int layer = 0;
-    int orderInLayer = 0;
-};
-
-struct Scene2D {
-    std::vector<Sprite> sprites;
-};
 
 class Renderer2D {
 public:
@@ -87,7 +70,7 @@ public:
     void drawSprite(
         VkCommandBuffer commandBuffer,
         VkDescriptorSet descriptorSet,
-        const Sprite& sprite
+        const Transform2D& transform
     ) const;
 
     void renderScene(
@@ -134,6 +117,4 @@ private:
     void createIndexBuffer();
 
     glm::mat4 buildModelMatrix(const Transform2D& transform) const;
-
-    
 };

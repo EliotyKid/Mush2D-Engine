@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GameObject.hpp"
 #include "Renderer2D.hpp"
 
 #include <cstdint>
@@ -42,6 +43,7 @@ private:
     struct Camera2D {
         glm::vec2 position{0.0f, 0.0f};
         float size = 2.0f;
+        GameObjectId targetId = InvalidGameObjectId;
     };
 
     struct UniformBufferObject {
@@ -110,13 +112,7 @@ private:
         2.0f
     };
 
-    Scene2D scene{
-        {
-            {{{-4.0f,  0.0f}, {0.6f, 0.6f}, 0.0f}, 0, 0, 0},
-            {{{ 0.0f,  0.0f}, {0.7f, 0.7f}, 0.0f}, 1, 1, 0},
-            {{{ 4.0f,  0.0f}, {0.6f, 0.6f}, 0.0f}, 0, 2, 0}
-        }
-    };
+    Scene2D scene{};
 
     float cameraMoveSpeed = 1.5f;
     float cameraZoomSpeed = 1.0f;
@@ -128,7 +124,6 @@ private:
     int dragMouseButton = GLFW_MOUSE_BUTTON_MIDDLE;
 
     bool cameraFollowEnabled = true;
-    int cameraTargetSpriteIndex = 1;
     glm::vec2 cameraFollowOffset{0.0f, 0.0f};
 
     bool followTogglePressed = false;
@@ -149,7 +144,7 @@ private:
         {0.0f, 0.0f},
         2.5f
     };
-    int playerSpriteIndex = 1;
+    GameObjectId playerObjectId = InvalidGameObjectId;
 
 private:
     void initWindow();
@@ -241,4 +236,6 @@ private:
     void clampCameraToBounds();
 
     void updatePlayer(float deltaTime);
+
+    void setupInitialScene();
 };

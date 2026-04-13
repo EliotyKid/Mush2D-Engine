@@ -49,11 +49,6 @@ void EngineApp::initWindow() {
 }
 
 void EngineApp::initVulkan() {
-    if (playerSpriteIndex >= 0 &&
-        playerSpriteIndex < static_cast<int>(scene.sprites.size())) {
-        scene.sprites[static_cast<size_t>(playerSpriteIndex)].transform.position = player.position;
-    }
-
     createInstance();
     createSurface();
     pickPhysicalDevice();
@@ -78,6 +73,8 @@ void EngineApp::initVulkan() {
     loadTextures();
     commandBuffers = createCommandBuffers();
     createSyncObjects();
+
+    setupInitialScene();
 }
 
 void EngineApp::mainLoop() {
@@ -899,15 +896,20 @@ glm::mat4 EngineApp::buildProjectionMatrix() const {
 }
 
 void EngineApp::updateScene() {
-    static float angle = 0.0f;
-    angle += 0.0001f;
+    float time = static_cast<float>(glfwGetTime());
 
-    if (!scene.sprites.empty()) {
-        scene.sprites[0].transform.rotation = angle;
-    }
+    for (auto& object : scene.objects) {
+        if (object.id == playerObjectId) {
+            continue;
+        }
 
-    if (scene.sprites.size() > 2) {
-        scene.sprites[2].transform.rotation = angle * 1.3f;
+        if (object.name == "LeftObject") {
+            object.transform.rotation = time;
+        }
+
+        if (object.name == "RightObject") {
+            object.transform.rotation = time * 1.3f;
+        }
     }
 }
 
@@ -1348,7 +1350,12 @@ void EngineApp::updateCameraFollow(float deltaTime) {
         return;
     }
 
-    glm::vec2 desiredPosition = player.position + cameraFollowOffset;
+    const GameObject* target = scene.findObject(camera.targetId);
+    if (!target) {
+        return;
+    }
+
+    glm::vec2 desiredPosition = target->transform.position + cameraFollowOffset;
 
     float t = 1.0f - std::exp(-cameraFollowSmoothness * deltaTime);
     camera.position = glm::mix(camera.position, desiredPosition, t);
@@ -1389,6 +1396,16 @@ void EngineApp::clampCameraToBounds() {
 }
 
 void EngineApp::updatePlayer(float deltaTime) {
+    GameObject* playerObject = scene.findObject(playerObjectId);
+    if (!playerObject) {
+        return;
+    }
+
+    auto playerIt = scene.players.find(playerObjectId);
+    if (playerIt == scene.players.end()) {
+        return;
+    }
+
     glm::vec2 inputDir{0.0f, 0.0f};
 
     if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
@@ -1408,13 +1425,36 @@ void EngineApp::updatePlayer(float deltaTime) {
         inputDir = glm::normalize(inputDir);
     }
 
-    player.velocity = inputDir * player.moveSpeed;
-    player.position += player.velocity * deltaTime;
+    PlayerComponent& playerComponent = playerIt->second;
+    playerComponent.velocity = inputDir * playerComponent.moveSpeed;
 
-    if (playerSpriteIndex >= 0 &&
-        playerSpriteIndex < static_cast<int>(scene.sprites.size())) {
-        Sprite& playerSprite = scene.sprites[static_cast<size_t>(playerSpriteIndex)];
-        playerSprite.transform.position = player.position;
-    }
+    playerObject->transform.position += playerComponent.velocity * deltaTime;
+    player.position = playerObject->transform.position;
 }
 
+void EngineApp::setupInitialScene() {
+    scene.objects.clear();
+    scene.sprites.clear();
+    scene.players.clear();
+    scene.colliders.clear();
+
+    GameObject& left = scene.createObject("LeftObject");
+    left.transform.position = {-4.0f, 0.0f};
+    left.transform.scale = {0.6f, 0.6f};
+    scene.sprites[left.id] = SpriteComponent{0, 0, 0};
+
+    GameObject& playerObject = scene.createObject("Player");
+    playerObject.transform.position = {0.0f, 0.0f};
+    playerObject.transform.scale = {0.7f, 0.7f};
+    scene.sprites[playerObject.id] = SpriteComponent{1, 1, 0};
+    scene.players[playerObject.id] = PlayerComponent{{0.0f, 0.0f}, 2.5f};
+
+    GameObject& right = scene.createObject("RightObject");
+    right.transform.position = {4.0f, 0.0f};
+    right.transform.scale = {0.6f, 0.6f};
+    scene.sprites[right.id] = SpriteComponent{0, 2, 0};
+
+    playerObjectId = playerObject.id;
+    camera.targetId = playerObjectId;
+    player.position = playerObject.transform.position;
+}

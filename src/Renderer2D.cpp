@@ -327,63 +327,49 @@ void Renderer2D::renderScene(
 ) const {
     beginRender(commandBuffer);
 
-    std::vector<const Sprite*> sortedSprites;
-    sortedSprites.reserve(scene.sprites.size());
+    std::vector<const GameObject*> sortedObjects;
+    sortedObjects.reserve(scene.objects.size());
 
-    for (const auto& sprite : scene.sprites) {
-        if (sprite.textureIndex >= descriptorSets.size()) {
+    for (const auto& object : scene.objects) {
+        if (!object.active) {
             continue;
         }
 
-        sortedSprites.push_back(&sprite);
+        auto spriteIt = scene.sprites.find(object.id);
+        if (spriteIt == scene.sprites.end()) {
+            continue;
+        }
+
+        if (!spriteIt->second.visible) {
+            continue;
+        }
+
+        if (spriteIt->second.textureIndex >= descriptorSets.size()) {
+            continue;
+        }
+
+        sortedObjects.push_back(&object);
     }
 
     std::sort(
-        sortedSprites.begin(),
-        sortedSprites.end(),
-        [](const Sprite* a, const Sprite* b) {
-            if (a->layer != b->layer) {
-                return a->layer < b->layer;
+        sortedObjects.begin(),
+        sortedObjects.end(),
+        [&scene](const GameObject* a, const GameObject* b) {
+            const auto& spriteA = scene.sprites.at(a->id);
+            const auto& spriteB = scene.sprites.at(b->id);
+
+            if (spriteA.layer != spriteB.layer) {
+                return spriteA.layer < spriteB.layer;
             }
 
-            return a->orderInLayer < b->orderInLayer;
+            return spriteA.orderInLayer < spriteB.orderInLayer;
         }
     );
 
-    for (const Sprite* sprite : sortedSprites) {
-        VkDescriptorSet descriptorSet = descriptorSets[sprite->textureIndex];
-
-        vkCmdBindDescriptorSets(
-            commandBuffer,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            pipelineLayout,
-            0,
-            1,
-            &descriptorSet,
-            0,
-            nullptr
-        );
-
-        PushConstantData pushData{};
-        pushData.model = buildModelMatrix(sprite->transform);
-
-        vkCmdPushConstants(
-            commandBuffer,
-            pipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT,
-            0,
-            sizeof(PushConstantData),
-            &pushData
-        );
-
-        vkCmdDrawIndexed(
-            commandBuffer,
-            static_cast<uint32_t>(indices.size()),
-            1,
-            0,
-            0,
-            0
-        );
+    for (const GameObject* object : sortedObjects) {
+        const auto& sprite = scene.sprites.at(object->id);
+        VkDescriptorSet descriptorSet = descriptorSets[sprite.textureIndex];
+        drawSprite(commandBuffer, descriptorSet, object->transform);
     }
 }
 
@@ -399,7 +385,7 @@ void Renderer2D::beginRender(VkCommandBuffer commandBuffer) const {
 void Renderer2D::drawSprite(
     VkCommandBuffer commandBuffer,
     VkDescriptorSet descriptorSet,
-    const Sprite& sprite
+    const Transform2D& transform
 ) const {
     vkCmdBindDescriptorSets(
         commandBuffer,
@@ -413,7 +399,7 @@ void Renderer2D::drawSprite(
     );
 
     PushConstantData pushData{};
-    pushData.model = buildModelMatrix(sprite.transform);
+    pushData.model = buildModelMatrix(transform);
 
     vkCmdPushConstants(
         commandBuffer,
