@@ -1,0 +1,5 @@
+# ninja log v7
+1	763	1776044518135516017	CMakeFiles/Mush2DEngine.dir/src/main.cpp.o	4d4f79109d9e3e87
+1522	1572	1776044577947390604	Mush2DEngine	41bd7742cfc45617
+2	1522	1776044576427368379	CMakeFiles/Mush2DEngine.dir/src/EngineApp.cpp.o	17a9ab1f93fbbaaa
+1	835	1776039105674266666	CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o	4a5ecacd65103ec0
