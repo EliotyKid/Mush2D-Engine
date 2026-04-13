@@ -2,6 +2,7 @@
 
 #include "GameObject.hpp"
 
+#include <glm/ext/vector_float2.hpp>
 #include <glm/glm.hpp>
 
 struct SpriteComponent {
@@ -22,4 +23,18 @@ struct ColliderComponent {
     glm::vec2 offset{0.0f, 0.0f};
     bool isTrigger = false;
     bool enabled = true;
+};
+
+enum class TriggerType {
+    Checkpoint,
+    Teleport
+};
+
+struct TriggerComponent {
+    TriggerType type = TriggerType::Checkpoint;
+
+    glm::vec2 targetPosition{0.0f, 0.0f};
+
+    bool oneShot = false;
+    bool consumed = false;
 };

@@ -1212,6 +1212,24 @@ std::vector<VkDescriptorSet> EngineApp::getTextureDescriptorSets() const {
 }
 
 void EngineApp::handleInput(float deltaTime) {
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+        if (!respawnPressed) {
+            GameObject* playerObject = scene.findObject(playerObjectId);
+            if (playerObject) {
+                playerObject->transform.position = lastCheckpointPosition;
+                player.position = lastCheckpointPosition;
+
+                if (cameraFollowEnabled) {
+                    camera.position = lastCheckpointPosition + cameraFollowOffset;
+                }
+            }
+
+            respawnPressed = true;
+        }
+    } else {
+        respawnPressed = false;
+    }
+
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
         if (!followTogglePressed) {
             cameraFollowEnabled = !cameraFollowEnabled;
@@ -1267,6 +1285,8 @@ void EngineApp::handleInput(float deltaTime) {
     if (camera.size > 20.0f) {
         camera.size = 20.0f;
     }
+
+    
 }
 
 void EngineApp::setupInputCallbacks() {
@@ -1452,6 +1472,7 @@ void EngineApp::setupInitialScene() {
     scene.sprites.clear();
     scene.players.clear();
     scene.colliders.clear();
+    scene.triggers.clear();
     activeTriggerOverlaps.clear();
 
     GameObject& leftWall = scene.createObject("LeftWall");
@@ -1490,6 +1511,30 @@ void EngineApp::setupInitialScene() {
     scene.sprites[triggerZone.id] = SpriteComponent{1, 1, 1};
     scene.colliders[triggerZone.id] = ColliderComponent{{1.2f, 1.2f}, {0.0f, 0.0f}, true, true};
 
+    GameObject& checkpoint = scene.createObject("CheckpointTrigger");
+    checkpoint.transform.position = {-1.5f, 1.2f};
+    checkpoint.transform.scale = {1.0f, 1.0f};
+    scene.sprites[checkpoint.id] = SpriteComponent{1, 1, 1};
+    scene.colliders[checkpoint.id] = ColliderComponent{{1.2f, 1.2f}, {0.0f, 0.0f}, true, true};
+    scene.triggers[checkpoint.id] = TriggerComponent{
+        TriggerType::Checkpoint,
+        {0.0f, 0.0f},
+        false,
+        false
+    };
+
+    GameObject& teleport = scene.createObject("TeleportTrigger");
+    teleport.transform.position = {2.8f, 1.2f};
+    teleport.transform.scale = {1.0f, 1.0f};
+    scene.sprites[teleport.id] = SpriteComponent{1, 1, 2};
+    scene.colliders[teleport.id] = ColliderComponent{{1.2f, 1.2f}, {0.0f, 0.0f}, true, true};
+    scene.triggers[teleport.id] = TriggerComponent{
+        TriggerType::Teleport,
+        {-3.0f, -1.5f},
+        false,
+        false
+    };
+
     GameObject& playerObject = scene.createObject("Player");
     playerObject.transform.position = {0.0f, 0.0f};
     playerObject.transform.scale = {0.7f, 0.7f};
@@ -1500,6 +1545,8 @@ void EngineApp::setupInitialScene() {
     playerObjectId = playerObject.id;
     camera.targetId = playerObjectId;
     player.position = playerObject.transform.position;
+
+    lastCheckpointPosition = player.position;
 }
 
 EngineApp::AABB EngineApp::buildAABB(const GameObject& object, const ColliderComponent& collider) const {
@@ -1640,8 +1687,9 @@ void EngineApp::onTriggerEnter(GameObjectId triggerId) {
 
     debugTriggerMessage = "Entrou no trigger: " + triggerObject->name;
     debugTriggerMessageTimer = 2.0f;
-
     std::cout << debugTriggerMessage << std::endl;
+
+    activateTrigger(triggerId);
 }
 
 void EngineApp::onTriggerExit(GameObjectId triggerId) {
@@ -1654,4 +1702,50 @@ void EngineApp::onTriggerExit(GameObjectId triggerId) {
     debugTriggerMessageTimer = 2.0f;
 
     std::cout << debugTriggerMessage << std::endl;
+}
+
+void EngineApp::activateTrigger(GameObjectId triggerId) {
+    auto triggerIt = scene.triggers.find(triggerId);
+    if (triggerIt == scene.triggers.end()) {
+        return;
+    }
+
+    TriggerComponent& trigger = triggerIt->second;
+
+    if (trigger.oneShot && trigger.consumed) {
+        return;
+    }
+
+    GameObject* playerObject = scene.findObject(playerObjectId);
+    if (!playerObject) {
+        return;
+    }
+
+    switch (trigger.type) {
+        case TriggerType::Checkpoint: {
+            lastCheckpointPosition = playerObject->transform.position;
+            debugTriggerMessage = "Checkpoint salvo!";
+            debugTriggerMessageTimer = 2.0f;
+            std::cout << debugTriggerMessage << std::endl;
+            break;
+        }
+
+        case TriggerType::Teleport: {
+            playerObject->transform.position = trigger.targetPosition;
+            player.position = trigger.targetPosition;
+
+            if (cameraFollowEnabled) {
+                camera.position = trigger.targetPosition + cameraFollowOffset;
+            }
+
+            debugTriggerMessage = "Teleportado!";
+            debugTriggerMessageTimer = 2.0f;
+            std::cout << debugTriggerMessage << std::endl;
+            break;
+        }
+    }
+
+    if (trigger.oneShot) {
+        trigger.consumed = true;
+    }
 }

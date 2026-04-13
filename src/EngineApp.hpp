@@ -153,6 +153,10 @@ private:
     std::string debugTriggerMessage;
     float debugTriggerMessageTimer = 0.0f;
 
+    glm::vec2 lastCheckpointPosition{0.0f, 0.0f};
+
+    bool respawnPressed = false;
+
 private:
     void initWindow();
     void initVulkan();
@@ -258,4 +262,5 @@ private:
     void updateTriggers(float deltaTime);
     void onTriggerEnter(GameObjectId triggerId);
     void onTriggerExit(GameObjectId triggerId);
+    void activateTrigger(GameObjectId triggerId);
 };

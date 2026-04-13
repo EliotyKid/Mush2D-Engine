@@ -48,11 +48,16 @@ public:
         return colliders.find(id) != colliders.end();
     }
 
+    bool hasTrigger(GameObjectId id) const {
+        return triggers.find(id) != triggers.end();
+    }
+
 public:
     std::vector<GameObject> objects;
     std::unordered_map<GameObjectId, SpriteComponent> sprites;
     std::unordered_map<GameObjectId, PlayerComponent> players;
     std::unordered_map<GameObjectId, ColliderComponent> colliders;
+    std::unordered_map<GameObjectId, TriggerComponent> triggers;
 
 private:
     GameObjectId nextId = 1;
