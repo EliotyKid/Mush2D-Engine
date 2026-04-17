@@ -72,8 +72,7 @@ void EngineApp::initVulkan() {
     commandBuffers = createCommandBuffers();
     createSyncObjects();
 
-    activeSceneDefinition = std::make_unique<SandboxScene>();
-    setupInitialScene();
+    loadScene(SceneId::Sandbox);
 
     auto* player = scene.findFirstObjectOfType<PlayerObject>();
     if (player) {
@@ -224,8 +223,53 @@ void EngineApp::cleanup() {
     glfwTerminate();
 }
 
+std::unique_ptr<ISceneDefinition> EngineApp::createSceneDefinition(SceneId sceneId) {
+    switch (sceneId) {
+        case SceneId::Sandbox:
+            return std::make_unique<SandboxScene>();
+
+        case SceneId::Test:
+            return std::make_unique<TestScene>();
+    }
+
+    throw std::runtime_error("SceneId invalido ao criar definicao de cena.");
+}
+
+void EngineApp::loadScene(SceneId sceneId) {
+    currentSceneId = sceneId;
+    activeSceneDefinition = createSceneDefinition(sceneId);
+
+    setupInitialScene();
+
+    auto* player = scene.findFirstObjectOfType<PlayerObject>();
+    if (player) {
+        playerObjectId = player->id;
+        camera.position = player->transform.position;
+        camera.targetId = playerObjectId;
+    } else {
+        playerObjectId = InvalidGameObjectId;
+        camera.targetId = InvalidGameObjectId;
+    }
+
+    activeTriggerOverlaps.clear();
+}
+
 void EngineApp::handleGlobalInput(float deltaTime) {
+    if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS) {
+        if (!nextScenePressed) {
+            SceneId nextScene =
+                (currentSceneId == SceneId::Sandbox)
+                ? SceneId::Test
+                : SceneId::Sandbox;
+
+            loadScene(nextScene);
+            nextScenePressed = true;
+        }
+    } else {
+        nextScenePressed = false;
+    }
     const InputState& state = input.getState();
+
 
     if (state.toggleFollow.pressed) {
         camera.followEnabled = !camera.followEnabled;

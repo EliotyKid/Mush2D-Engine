@@ -13,6 +13,7 @@
 #include "../gameplay/Spawn.hpp"
 #include "../gameplay/ISceneDefinition.hpp"
 #include "../gameplay/SandboxScene.hpp"
+#include "../gameplay/TestScene.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -26,6 +27,11 @@
 #include <vulkan/vulkan.h>
 
 class EngineApp {
+    enum class SceneId {
+        Sandbox,
+        Test
+    };
+
 public:
     void run();
 
@@ -113,6 +119,9 @@ private:
 
     std::unique_ptr<ISceneDefinition> activeSceneDefinition;
 
+    SceneId currentSceneId = SceneId::Sandbox;
+    bool nextScenePressed = false;
+
 private:
     void initWindow();
     void initVulkan();
@@ -184,4 +193,7 @@ private:
     TextureResource createTextureResource(const char* path);
     VkDescriptorSet createTextureDescriptorSet(VkImageView imageView, VkSampler sampler);
     void loadTextures();
+
+    void loadScene(SceneId sceneId);
+    std::unique_ptr<ISceneDefinition> createSceneDefinition(SceneId sceneId);
 };

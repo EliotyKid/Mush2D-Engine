@@ -1,19 +1,19 @@
 # ninja log v7
-2	949	1776389865378399385	CMakeFiles/Mush2DEngine.dir/src/main.cpp.o	9c8fdabc2d17794a
-1802	1872	1776389867178402037	Mush2DEngine	21147d0b58c3477f
+1	1001	1776390316877856045	CMakeFiles/Mush2DEngine.dir/src/main.cpp.o	9c8fdabc2d17794a
+1905	1974	1776390318781857308	Mush2DEngine	21147d0b58c3477f
 1	2023	1776124079206351679	CMakeFiles/Mush2DEngine.dir/src/EngineApp.cpp.o	17a9ab1f93fbbaaa
 2	924	1776092151264962875	CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o	4a5ecacd65103ec0
 1	648	1776123889614717087	CMakeFiles/Mush2DEngine.dir/src/PlayerStateSystem.cpp.o	e90aef0e15a7aca2
 5	853	1776388959112575886	CMakeFiles/Mush2DEngine.dir/src/graphics/Camera2D.cpp.o	850c1ec3cbba2a7d
 3	682	1776384613426123141	CMakeFiles/Mush2DEngine.dir/src/gameplay/PlayerStateSystem.cpp.o	d73e748d00592800
 5	1058	1776388959112441579	CMakeFiles/Mush2DEngine.dir/src/graphics/Renderer2D.cpp.o	6c0da4899826c59a
-3	1802	1776389865379399386	CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o	df74d0521252264e
+2	1905	1776390316878999711	CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o	df74d0521252264e
 3	62	1776382624026133795	CMakeFiles/Mush2DEngine.dir/src/platform/GlfwInput.cpp.o	e4e7c99144c00f4f
 5	741	1776388959112702301	CMakeFiles/Mush2DEngine.dir/src/world/Collision.cpp.o	971d51736bd06aa8
 3	804	1776384613425947628	CMakeFiles/Mush2DEngine.dir/src/gameplay/TriggerSystem.cpp.o	30d79d014c5770b9
 2	977	1776389392848488927	CMakeFiles/Mush2DEngine.dir/src/gameplay/Spawn.cpp.o	dead611769acb215
-3	751	1776389865380087821	CMakeFiles/Mush2DEngine.dir/src/gameplay/SandboxScene.cpp.o	5a2397b9a675eb61
 2	780	1776390316879140443	CMakeFiles/Mush2DEngine.dir/src/gameplay/SandboxScene.cpp.o	5a2397b9a675eb61
-1	1001	1776390316877856045	CMakeFiles/Mush2DEngine.dir/src/main.cpp.o	9c8fdabc2d17794a
-2	1905	1776390316878999711	CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o	df74d0521252264e
-1905	1974	1776390318781857308	Mush2DEngine	21147d0b58c3477f
+2	772	1776390757293752663	CMakeFiles/Mush2DEngine.dir/src/gameplay/TestScene.cpp.o	1acfce649e06026
+2	993	1776390757291886705	CMakeFiles/Mush2DEngine.dir/src/main.cpp.o	9c8fdabc2d17794a
+2	1901	1776390757293609698	CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o	df74d0521252264e
+1901	1974	1776390759190871600	Mush2DEngine	5461d1c81cd71409
