@@ -5,23 +5,23 @@
 #include <string>
 #include <unordered_map>
 
-template<typename TSpriteId>
-class SpriteCatalog {
+template<typename TAnimationId>
+class AnimationCatalog {
 public:
     struct Entry {
         std::uint32_t atlasTextureIndex = 0;
-        std::string frameName;
+        std::string animationName;
     };
 
 public:
-    void registerSprite(TSpriteId id, Entry entry) {
+    void registerAnimation(TAnimationId id, Entry entry) {
         entries[id] = entry;
     }
 
-    const Entry& get(TSpriteId id) const {
+    const Entry& get(TAnimationId id) const {
         auto it = entries.find(id);
         if (it == entries.end()) {
-            throw std::runtime_error("SpriteId nao registrado no catalogo.");
+            throw std::runtime_error("AnimationId nao registrado no catalogo.");
         }
 
         return it->second;
@@ -35,5 +35,5 @@ private:
         }
     };
 
-    std::unordered_map<TSpriteId, Entry, EnumClassHash> entries;
+    std::unordered_map<TAnimationId, Entry, EnumClassHash> entries;
 };

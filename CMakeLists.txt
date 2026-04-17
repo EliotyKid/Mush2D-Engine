@@ -7,6 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 add_executable(Mush2DEngine
     src/main.cpp
@@ -17,6 +18,8 @@ add_executable(Mush2DEngine
     src/engine/platform/GlfwInput.cpp
     src/engine/world/Collision.cpp
     src/engine/scenes/SceneRegistry.cpp
+    src/engine/assets/TextureAtlas.cpp
+    src/engine/assets/AtlasLoader.cpp
 
     src/game/spawners/Spawn.cpp
     src/game/scenes/SandboxScene.cpp
@@ -42,4 +45,5 @@ target_link_libraries(Mush2DEngine
     PRIVATE
     glfw
     Vulkan::Vulkan
+    nlohmann_json::nlohmann_json
 )

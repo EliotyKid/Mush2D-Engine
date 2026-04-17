@@ -1183,7 +1183,7 @@ void EngineApp::createUniformBuffer() {
 }
 
 void EngineApp::createDescriptorPool() {
-    constexpr uint32_t textureCount = 2;
+    constexpr uint32_t textureCount = 3;
 
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
 
@@ -1381,8 +1381,9 @@ EngineApp::TextureResource EngineApp::createTextureResource(const char* path) {
 void EngineApp::loadTextures() {
     textures.clear();
 
-    textures.push_back(createTextureResource("textures/test.png"));
-    textures.push_back(createTextureResource("textures/test2.png"));
+    textures.push_back(createTextureResource("assets/atlases/characters.png"));   // 0
+    textures.push_back(createTextureResource("assets/atlases/enemies.png"));      // 1
+    textures.push_back(createTextureResource("assets/atlases/environment.png"));  // 2
 }
 
 std::vector<VkCommandBuffer> EngineApp::createCommandBuffers() {

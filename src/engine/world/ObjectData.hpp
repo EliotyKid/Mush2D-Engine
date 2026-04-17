@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include <glm/glm.hpp>
 
@@ -10,7 +11,8 @@ enum class TriggerType {
 };
 
 struct SpriteData {
-    std::uint32_t textureIndex = 0;
+    std::uint32_t atlasTextureIndex = 0;
+    std::string frameName;
     int layer = 0;
     int orderInLayer = 0;
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};

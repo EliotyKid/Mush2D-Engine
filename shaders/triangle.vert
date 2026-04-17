@@ -8,6 +8,7 @@ layout(binding = 0) uniform UniformBufferObject {
 layout(push_constant) uniform PushConstants {
     mat4 model;
     vec4 color;
+    vec4 uvRect; // x, y, w, h
 } pushData;
 
 layout(location = 0) in vec2 inPosition;
@@ -16,11 +17,13 @@ layout(location = 2) in vec2 inUV;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragUV;
-layout(location = 2) out vec4 spriteColor;
 
 void main() {
     gl_Position = ubo.proj * ubo.view * pushData.model * vec4(inPosition, 0.0, 1.0);
     fragColor = inColor;
-    fragUV = inUV;
-    spriteColor = pushData.color;
+
+    fragUV = vec2(
+        pushData.uvRect.x + inUV.x * pushData.uvRect.z,
+        pushData.uvRect.y + inUV.y * pushData.uvRect.w
+    );
 }

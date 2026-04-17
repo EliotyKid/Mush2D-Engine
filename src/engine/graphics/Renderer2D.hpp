@@ -51,6 +51,7 @@ public:
     struct PushConstantData {
         glm::mat4 model{1.0f};
         glm::vec4 color{1.0f};
+        glm::vec4 uvRect{0.0f, 0.0f, 1.0f, 1.0f}; // x, y, w, h
     };
 
 public:
@@ -72,7 +73,8 @@ public:
         VkCommandBuffer commandBuffer,
         VkDescriptorSet descriptorSet,
         const Transform2D& transform,
-        const glm::vec4& color
+        const glm::vec4& color,
+        const glm::vec4& uvRect
     ) const;
 
     void renderScene(

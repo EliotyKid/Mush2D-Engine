@@ -1,14 +1,16 @@
 #pragma once
 
+#include "../assets/GameAnimationId.hpp"
 #include "../assets/GameAssets.hpp"
 #include "../assets/GameSpriteId.hpp"
 
-#include "../../engine/platform/InputState.hpp"
 #include "../../engine/world/Collision.hpp"
 #include "../../engine/world/GameObject.hpp"
 #include "../../engine/world/Scene2D.hpp"
+#include "../../engine/platform/InputState.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <vector>
 
 class PlayerObject : public GameObject {
@@ -45,13 +47,12 @@ public:
         transform.scale = config.initialScale;
 
         sprite = SpriteData{
-            .textureIndex = 0,
+            .atlasTextureIndex = 0,
+            .frameName = "",
             .layer = config.layer,
             .orderInLayer = config.orderInLayer,
             .color = glm::vec4(0.85f, 0.85f, 0.85f, 1.0f)
         };
-
-        setSprite(scene, GameSpriteId::PlayerIdle);
 
         collider = ColliderData{
             .size = config.colliderSize,
@@ -68,6 +69,13 @@ public:
         history.push_back(State::Idle);
 
         checkpointPosition = transform.position;
+
+        currentAnimation = GameAnimationId::PlayerIdle;
+        currentFrameIndex = 0;
+        currentFrameTimer = 0.0f;
+
+        playAnimation(scene, GameAnimationId::PlayerIdle, true);
+        applyCurrentAnimationFrame(scene);
     }
 
     void applyInput(const InputState& input) {
@@ -123,7 +131,7 @@ public:
             transform.scale.x = std::abs(transform.scale.x);
         }
 
-        updateVisuals(scene);
+        updateVisuals(scene, dt);
     }
 
 public:
@@ -173,13 +181,18 @@ private:
 
     std::vector<State> history;
 
+    GameAnimationId currentAnimation = GameAnimationId::PlayerIdle;
+    std::size_t currentFrameIndex = 0;
+    float currentFrameTimer = 0.0f;
+
 private:
-    void setSprite(Scene2D& scene, GameSpriteId spriteId) {
-        if (!sprite.has_value() || !scene.gameAssets) {
+    void setSpriteFrame(Scene2D& scene, std::uint32_t atlasTextureIndex, const std::string& frameName) {
+        if (!sprite.has_value()) {
             return;
         }
 
-        sprite->textureIndex = scene.gameAssets->sprites.get(spriteId).textureIndex;
+        sprite->atlasTextureIndex = atlasTextureIndex;
+        sprite->frameName = frameName;
     }
 
     void changeState(State newState) {
@@ -237,31 +250,131 @@ private:
         }
     }
 
-    void updateVisuals(Scene2D& scene) {
+    void playAnimation(Scene2D& scene, GameAnimationId animationId, bool restart = false) {
+        if (!scene.gameAssets) {
+            return;
+        }
+
+        if (!restart && currentAnimation == animationId) {
+            return;
+        }
+
+        currentAnimation = animationId;
+        currentFrameIndex = 0;
+        currentFrameTimer = 0.0f;
+        applyCurrentAnimationFrame(scene);
+    }
+
+    void applyCurrentAnimationFrame(Scene2D& scene) {
+        if (!scene.gameAssets) {
+            return;
+        }
+
+        const auto& animationEntry = scene.gameAssets->animations.get(currentAnimation);
+        const TextureAtlas& atlas = scene.gameAssets->getAtlasByTextureIndex(animationEntry.atlasTextureIndex);
+
+        if (!atlas.hasAnimation(animationEntry.animationName)) {
+            return;
+        }
+
+        const AtlasAnimation& animation = atlas.getAnimation(animationEntry.animationName);
+        if (animation.frames.empty()) {
+            return;
+        }
+
+        if (currentFrameIndex >= animation.frames.size()) {
+            currentFrameIndex = 0;
+        }
+
+        const AtlasAnimationFrame& frame = animation.frames[currentFrameIndex];
+        setSpriteFrame(scene, animationEntry.atlasTextureIndex, frame.frameName);
+    }
+
+    void updateAnimation(Scene2D& scene, float dt) {
+        if (!scene.gameAssets) {
+            return;
+        }
+
+        const auto& animationEntry = scene.gameAssets->animations.get(currentAnimation);
+        const TextureAtlas& atlas = scene.gameAssets->getAtlasByTextureIndex(animationEntry.atlasTextureIndex);
+
+        if (!atlas.hasAnimation(animationEntry.animationName)) {
+            return;
+        }
+
+        const AtlasAnimation& animation = atlas.getAnimation(animationEntry.animationName);
+        if (animation.frames.empty()) {
+            return;
+        }
+
+        if (currentFrameIndex >= animation.frames.size()) {
+            currentFrameIndex = 0;
+        }
+
+        currentFrameTimer += dt;
+
+        while (true) {
+            const AtlasAnimationFrame& frame = animation.frames[currentFrameIndex];
+            float frameDurationSeconds = static_cast<float>(frame.durationMs) / 1000.0f;
+
+            if (frameDurationSeconds <= 0.0f) {
+                frameDurationSeconds = 0.1f;
+            }
+
+            if (currentFrameTimer < frameDurationSeconds) {
+                break;
+            }
+
+            currentFrameTimer -= frameDurationSeconds;
+
+            if (currentFrameIndex + 1 < animation.frames.size()) {
+                currentFrameIndex++;
+            } else {
+                if (animation.looping) {
+                    currentFrameIndex = 0;
+                } else {
+                    currentFrameIndex = animation.frames.size() - 1;
+                }
+            }
+
+            applyCurrentAnimationFrame(scene);
+
+            if (!animation.looping && currentFrameIndex == animation.frames.size() - 1) {
+                break;
+            }
+        }
+    }
+
+    void updateVisuals(Scene2D& scene, float dt) {
         if (!sprite.has_value()) {
             return;
         }
 
+        GameAnimationId desiredAnimation = GameAnimationId::PlayerIdle;
+
         switch (state) {
             case State::Idle:
-                setSprite(scene, GameSpriteId::PlayerIdle);
+                desiredAnimation = GameAnimationId::PlayerIdle;
                 sprite->color = glm::vec4(0.85f, 0.85f, 0.85f, 1.0f);
                 break;
 
             case State::Walk:
-                setSprite(scene, GameSpriteId::PlayerWalk);
+                desiredAnimation = GameAnimationId::PlayerWalk;
                 sprite->color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
                 break;
 
             case State::Dash:
-                setSprite(scene, GameSpriteId::PlayerDash);
+                desiredAnimation = GameAnimationId::PlayerDash;
                 sprite->color = glm::vec4(0.6f, 0.9f, 1.0f, 1.0f);
                 break;
 
             case State::Hit:
-                setSprite(scene, GameSpriteId::PlayerHit);
+                desiredAnimation = GameAnimationId::PlayerHit;
                 sprite->color = glm::vec4(1.0f, 0.45f, 0.45f, 1.0f);
                 break;
         }
+
+        playAnimation(scene, desiredAnimation, false);
+        updateAnimation(scene, dt);
     }
 };

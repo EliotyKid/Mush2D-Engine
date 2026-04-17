@@ -106,7 +106,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
             .moveSpeed = 1.2f,
             .patrolDistance = 2.5f,
             .maxHealth = 20,
-            .textureIndex = 0,
             .colliderSize = {0.8f, 0.8f},
             .layer = 1,
             .orderInLayer = 3,

@@ -26,7 +26,8 @@ public:
         addTag("wall");
 
         sprite = SpriteData{
-            .textureIndex = 0,
+            .atlasTextureIndex = 0,
+            .frameName = "",
             .layer = config.layer,
             .orderInLayer = config.orderInLayer,
             .color = glm::vec4(1.0f)
@@ -51,6 +52,8 @@ private:
             return;
         }
 
-        sprite->textureIndex = scene.gameAssets->sprites.get(spriteId).textureIndex;
+        const auto& entry = scene.gameAssets->sprites.get(spriteId);
+        sprite->atlasTextureIndex = entry.atlasTextureIndex;
+        sprite->frameName = entry.frameName;
     }
 };

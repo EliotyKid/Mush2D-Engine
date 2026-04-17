@@ -1,5 +1,7 @@
 #include "Renderer2D.hpp"
 
+#include "../../game/assets/GameAssets.hpp"
+
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -331,7 +333,8 @@ void Renderer2D::drawSprite(
     VkCommandBuffer commandBuffer,
     VkDescriptorSet descriptorSet,
     const Transform2D& transform,
-    const glm::vec4& color
+    const glm::vec4& color,
+    const glm::vec4& uvRect
 ) const {
     vkCmdBindDescriptorSets(
         commandBuffer,
@@ -347,6 +350,7 @@ void Renderer2D::drawSprite(
     PushConstantData pushData{};
     pushData.model = buildModelMatrix(transform);
     pushData.color = color;
+    pushData.uvRect = uvRect;
 
     vkCmdPushConstants(
         commandBuffer,
@@ -385,7 +389,7 @@ void Renderer2D::renderScene(
             continue;
         }
 
-        if (objectPtr->sprite->textureIndex >= descriptorSets.size()) {
+        if (objectPtr->sprite->atlasTextureIndex >= descriptorSets.size()) {
             continue;
         }
 
@@ -405,7 +409,31 @@ void Renderer2D::renderScene(
     );
 
     for (const GameObject* object : sortedObjects) {
-        VkDescriptorSet descriptorSet = descriptorSets[object->sprite->textureIndex];
-        drawSprite(commandBuffer, descriptorSet, object->transform, object->sprite->color);
+        if (!scene.gameAssets) {
+            continue;
+        }
+
+        const TextureAtlas& atlas =
+            scene.gameAssets->getAtlasByTextureIndex(object->sprite->atlasTextureIndex);
+
+        if (!atlas.hasFrame(object->sprite->frameName)) {
+            continue;
+        }
+
+        const AtlasFrame& frame = atlas.getFrame(object->sprite->frameName);
+        const AtlasMeta& meta = atlas.getMeta();
+
+        if (meta.imageWidth <= 0 || meta.imageHeight <= 0) {
+            continue;
+        }
+
+        glm::vec4 uvRect{};
+        uvRect.x = static_cast<float>(frame.x) / static_cast<float>(meta.imageWidth);
+        uvRect.y = static_cast<float>(frame.y) / static_cast<float>(meta.imageHeight);
+        uvRect.z = static_cast<float>(frame.w) / static_cast<float>(meta.imageWidth);
+        uvRect.w = static_cast<float>(frame.h) / static_cast<float>(meta.imageHeight);
+
+        VkDescriptorSet descriptorSet = descriptorSets[object->sprite->atlasTextureIndex];
+        drawSprite(commandBuffer, descriptorSet, object->transform, object->sprite->color, uvRect);
     }
 }
