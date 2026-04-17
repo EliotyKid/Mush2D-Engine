@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../world/GameObject.hpp"
-#include "../world/Scene2D.hpp"
+#include "../../engine/world/GameObject.hpp"
+#include "../../engine/world/Scene2D.hpp"
 
 #include <cmath>
 

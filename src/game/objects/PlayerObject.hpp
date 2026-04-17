@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../platform/InputState.hpp"
-#include "../world/Collision.hpp"
-#include "../world/GameObject.hpp"
-#include "../world/Scene2D.hpp"
+#include "../../engine/platform/InputState.hpp"
+#include "../../engine/world/Collision.hpp"
+#include "../../engine/world/GameObject.hpp"
+#include "../../engine/world/Scene2D.hpp"
 
 #include <cmath>
 #include <vector>

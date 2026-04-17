@@ -1,5 +1,5 @@
 #include "EngineApp.hpp"
-#include "SceneRegistry.hpp"
+#include "../engine/scenes/SceneRegistry.hpp"
 
 #include <algorithm>
 #include <array>

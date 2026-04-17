@@ -2,31 +2,32 @@
 
 #include "PlayerObject.hpp"
 
-#include "../world/GameObject.hpp"
-#include "../world/Scene2D.hpp"
+#include "../../engine/world/GameObject.hpp"
+#include "../../engine/world/Scene2D.hpp"
 
-class CheckpointObject : public GameObject {
+class TeleportObject : public GameObject {
 public:
     struct Config {
         uint32_t textureIndex = 1;
         int layer = 1;
-        int orderInLayer = 1;
+        int orderInLayer = 2;
 
         glm::vec2 triggerSize{1.2f, 1.2f};
-        bool oneShot = false;
+        glm::vec2 targetPosition{0.0f, 0.0f};
 
+        bool oneShot = false;
         glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     };
 
 public:
-    CheckpointObject() = default;
-    explicit CheckpointObject(const Config& config)
+    TeleportObject() = default;
+    explicit TeleportObject(const Config& config)
         : config(config) {}
 
     void onCreate(Scene2D& scene) override {
-        name = "Checkpoint";
+        name = "Teleport";
         addTag("trigger");
-        addTag("checkpoint");
+        addTag("teleport");
 
         sprite = SpriteData{
             .textureIndex = config.textureIndex,
@@ -43,8 +44,8 @@ public:
         };
 
         trigger = TriggerData{
-            .type = TriggerType::Checkpoint,
-            .targetPosition = {0.0f, 0.0f},
+            .type = TriggerType::Teleport,
+            .targetPosition = config.targetPosition,
             .oneShot = config.oneShot,
             .consumed = false
         };
@@ -61,7 +62,7 @@ public:
                 return;
             }
 
-            player->setCheckpointPosition(player->transform.position);
+            player->transform.position = trigger->targetPosition;
 
             if (trigger->oneShot) {
                 trigger->consumed = true;

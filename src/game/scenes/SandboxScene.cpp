@@ -1,7 +1,7 @@
 #include "SandboxScene.hpp"
 
-#include "PlayerObject.hpp"
-#include "Spawn.hpp"
+#include "../objects/PlayerObject.hpp"
+#include "../spawners/Spawn.hpp"
 
 ISceneDefinition::BuildResult SandboxScene::build(
     Scene2D& scene,

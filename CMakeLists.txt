@@ -11,24 +11,30 @@ find_package(glfw3 REQUIRED)
 add_executable(Mush2DEngine
     src/main.cpp
     src/app/EngineApp.cpp
-    src/graphics/Renderer2D.cpp
-    src/graphics/Camera2D.cpp
-    src/platform/GlfwInput.cpp
-    src/world/Collision.cpp
-    src/gameplay/Spawn.cpp
-    src/gameplay/SandboxScene.cpp
-    src/gameplay/TestScene.cpp
-    src/gameplay/SceneRegistry.cpp
+
+    src/engine/graphics/Renderer2D.cpp
+    src/engine/graphics/Camera2D.cpp
+    src/engine/platform/GlfwInput.cpp
+    src/engine/world/Collision.cpp
+
+    src/game/spawners/Spawn.cpp
+    src/game/scenes/SandboxScene.cpp
+    src/game/scenes/TestScene.cpp
+    src/engine/scenes/SceneRegistry.cpp
 )
 
 target_include_directories(Mush2DEngine PRIVATE
     external
     src
     src/app
-    src/graphics
-    src/world
-    src/gameplay
-    src/platform
+    src/engine
+    src/engine/platform
+    src/engine/graphics
+    src/engine/world
+    src/game
+    src/game/scenes
+    src/game/objects
+    src/game/spawners
 )
 
 target_link_libraries(Mush2DEngine

@@ -47,7 +47,7 @@ build cmake_object_order_depends_target_Mush2DEngine: phony || .
 build CMakeFiles/Mush2DEngine.dir/src/main.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/main.cpp || cmake_object_order_depends_target_Mush2DEngine
   DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/main.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
   OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
@@ -55,73 +55,73 @@ build CMakeFiles/Mush2DEngine.dir/src/main.cpp.o: CXX_COMPILER__Mush2DEngine_uns
 build CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/app/EngineApp.cpp || cmake_object_order_depends_target_Mush2DEngine
   DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
   OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/app
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/graphics/Renderer2D.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/graphics/Renderer2D.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/graphics/Renderer2D.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Renderer2D.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/engine/graphics/Renderer2D.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Renderer2D.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/graphics
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/engine/graphics
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/graphics/Camera2D.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/graphics/Camera2D.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/graphics/Camera2D.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Camera2D.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/engine/graphics/Camera2D.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Camera2D.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/graphics
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/engine/graphics
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/platform/GlfwInput.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/platform/GlfwInput.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/platform/GlfwInput.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/engine/platform/GlfwInput.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/engine/platform/GlfwInput.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/engine/platform/GlfwInput.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/platform
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/engine/platform
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/world/Collision.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/world/Collision.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/world/Collision.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/engine/world/Collision.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/engine/world/Collision.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/engine/world/Collision.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/world
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/engine/world
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/gameplay/Spawn.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/gameplay/Spawn.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/gameplay/Spawn.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/game/spawners/Spawn.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/game/spawners/Spawn.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/game/spawners/Spawn.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/gameplay
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/game/spawners
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/gameplay/SandboxScene.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/gameplay/SandboxScene.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/gameplay/SandboxScene.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/game/scenes/SandboxScene.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/game/scenes/SandboxScene.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/game/scenes/SandboxScene.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/gameplay
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/game/scenes
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/gameplay/TestScene.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/gameplay/TestScene.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/gameplay/TestScene.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/game/scenes/TestScene.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/game/scenes/TestScene.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/game/scenes/TestScene.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/gameplay
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/game/scenes
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/gameplay/SceneRegistry.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/gameplay/SceneRegistry.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/gameplay/SceneRegistry.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/engine/scenes/SceneRegistry.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o.d
   FLAGS = -std=gnu++20
-  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/gameplay
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/engine/scenes
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
 
@@ -132,7 +132,7 @@ build CMakeFiles/Mush2DEngine.dir/src/gameplay/SceneRegistry.cpp.o: CXX_COMPILER
 #############################################
 # Link the executable Mush2DEngine
 
-build Mush2DEngine: CXX_EXECUTABLE_LINKER__Mush2DEngine_ CMakeFiles/Mush2DEngine.dir/src/main.cpp.o CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o CMakeFiles/Mush2DEngine.dir/src/graphics/Renderer2D.cpp.o CMakeFiles/Mush2DEngine.dir/src/graphics/Camera2D.cpp.o CMakeFiles/Mush2DEngine.dir/src/platform/GlfwInput.cpp.o CMakeFiles/Mush2DEngine.dir/src/world/Collision.cpp.o CMakeFiles/Mush2DEngine.dir/src/gameplay/Spawn.cpp.o CMakeFiles/Mush2DEngine.dir/src/gameplay/SandboxScene.cpp.o CMakeFiles/Mush2DEngine.dir/src/gameplay/TestScene.cpp.o CMakeFiles/Mush2DEngine.dir/src/gameplay/SceneRegistry.cpp.o | /usr/lib/libglfw.so.3.4 /usr/lib/libvulkan.so
+build Mush2DEngine: CXX_EXECUTABLE_LINKER__Mush2DEngine_ CMakeFiles/Mush2DEngine.dir/src/main.cpp.o CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Renderer2D.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Camera2D.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/platform/GlfwInput.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/world/Collision.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/spawners/Spawn.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/scenes/SandboxScene.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/scenes/TestScene.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o | /usr/lib/libglfw.so.3.4 /usr/lib/libvulkan.so
   DEP_FILE = CMakeFiles/Mush2DEngine.dir/link.d
   LINK_FLAGS = -Wl,--dependency-file=CMakeFiles/Mush2DEngine.dir/link.d
   LINK_LIBRARIES = /usr/lib/libglfw.so.3.4  /usr/lib/libvulkan.so

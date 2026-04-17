@@ -1,12 +1,12 @@
 #pragma once
 
-#include "CheckpointObject.hpp"
-#include "PlayerObject.hpp"
-#include "SlimeEnemy.hpp"
-#include "TeleportObject.hpp"
-#include "WallObject.hpp"
+#include "../objects/CheckpointObject.hpp"
+#include "../objects/PlayerObject.hpp"
+#include "../objects/SlimeEnemy.hpp"
+#include "../objects/TeleportObject.hpp"
+#include "../objects/WallObject.hpp"
 
-#include "../world/Scene2D.hpp"
+#include "../../engine/world/Scene2D.hpp"
 
 namespace Spawn {
 
