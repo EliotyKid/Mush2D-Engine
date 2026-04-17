@@ -1,8 +1,14 @@
 #include "TestScene.hpp"
 
+#include "PlayerObject.hpp"
 #include "Spawn.hpp"
 
-ISceneDefinition::BuildResult TestScene::build(Scene2D& scene) {
+#include <cmath>
+
+ISceneDefinition::BuildResult TestScene::build(
+    Scene2D& scene,
+    const SceneTransitionData& transitionData
+) {
     scene.clear();
 
     auto& floorTop = Spawn::wall(
@@ -136,7 +142,47 @@ ISceneDefinition::BuildResult TestScene::build(Scene2D& scene) {
         }
     );
 
+    if (transitionData.overridePlayerSpawn) {
+        player.transform.position = transitionData.playerSpawnPosition;
+        player.setCheckpointPosition(transitionData.playerSpawnPosition);
+    }
+
     return BuildResult{
         .playerObjectId = player.id
     };
+}
+
+void TestScene::onEnter(Scene2D& scene, const SceneTransitionData& transitionData) {
+    initialized = true;
+    elapsedTime = 0.0f;
+    pulseCycle = 0;
+}
+
+void TestScene::onExit(Scene2D& scene) {
+}
+
+void TestScene::onReload(Scene2D& scene) {
+    elapsedTime = 0.0f;
+    pulseCycle = 0;
+}
+
+void TestScene::update(Scene2D& scene, float deltaTime) {
+    if (!initialized) {
+        return;
+    }
+
+    elapsedTime += deltaTime;
+
+    if (elapsedTime >= 1.0f) {
+        elapsedTime = 0.0f;
+        pulseCycle++;
+    }
+
+    auto* player = scene.findFirstObjectOfType<PlayerObject>();
+    if (!player || !player->sprite.has_value()) {
+        return;
+    }
+
+    float pulse = 0.85f + 0.15f * std::sin(static_cast<float>(pulseCycle) * 0.7f);
+    player->sprite->color.a = pulse;
 }

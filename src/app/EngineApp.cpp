@@ -1,4 +1,5 @@
 #include "EngineApp.hpp"
+#include "SceneRegistry.hpp"
 
 #include <algorithm>
 #include <array>
@@ -121,6 +122,11 @@ void EngineApp::mainLoop() {
         }
 
         scene.step(deltaTime);
+
+        if (activeSceneDefinition) {
+            activeSceneDefinition->update(scene, deltaTime);
+        }
+
         processTriggerOverlaps();
         scene.lateStep(deltaTime);
 
@@ -223,23 +229,27 @@ void EngineApp::cleanup() {
     glfwTerminate();
 }
 
-std::unique_ptr<ISceneDefinition> EngineApp::createSceneDefinition(SceneId sceneId) {
-    switch (sceneId) {
-        case SceneId::Sandbox:
-            return std::make_unique<SandboxScene>();
+void EngineApp::loadScene(SceneId sceneId, const SceneTransitionData& transitionData) {
+    std::string previousSceneName;
 
-        case SceneId::Test:
-            return std::make_unique<TestScene>();
+    if (activeSceneDefinition) {
+        previousSceneName = activeSceneDefinition->getSceneName();
+        activeSceneDefinition->onExit(scene);
     }
 
-    throw std::runtime_error("SceneId invalido ao criar definicao de cena.");
-}
-
-void EngineApp::loadScene(SceneId sceneId) {
     currentSceneId = sceneId;
-    activeSceneDefinition = createSceneDefinition(sceneId);
+    activeSceneDefinition = SceneRegistry::create(sceneId);
+
+    currentSceneTransitionData = transitionData;
+    if (currentSceneTransitionData.previousSceneName.empty()) {
+        currentSceneTransitionData.previousSceneName = previousSceneName;
+    }
 
     setupInitialScene();
+
+    if (activeSceneDefinition) {
+        activeSceneDefinition->onEnter(scene, currentSceneTransitionData);
+    }
 
     auto* player = scene.findFirstObjectOfType<PlayerObject>();
     if (player) {
@@ -254,6 +264,15 @@ void EngineApp::loadScene(SceneId sceneId) {
     activeTriggerOverlaps.clear();
 }
 
+void EngineApp::reloadCurrentScene() {
+    if (!activeSceneDefinition) {
+        throw std::runtime_error("Nao existe cena ativa para recarregar.");
+    }
+
+    activeSceneDefinition->onReload(scene);
+    loadScene(currentSceneId, currentSceneTransitionData);
+}
+
 void EngineApp::handleGlobalInput(float deltaTime) {
     if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS) {
         if (!nextScenePressed) {
@@ -262,12 +281,36 @@ void EngineApp::handleGlobalInput(float deltaTime) {
                 ? SceneId::Test
                 : SceneId::Sandbox;
 
-            loadScene(nextScene);
+            SceneTransitionData transitionData{};
+            transitionData.reason = "TabSceneSwitch";
+
+            // auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
+            // if (!player) {
+            //     player = scene.findFirstObjectOfType<PlayerObject>();
+            // }
+
+            // if (player) {
+            //     transitionData.playerSpawnPosition = player->transform.position;
+            //     transitionData.overridePlayerSpawn = true;
+            //     transitionData.preferredPlayerObjectId = player->id;
+            // }
+
+            loadScene(nextScene, transitionData);
             nextScenePressed = true;
         }
     } else {
         nextScenePressed = false;
     }
+
+    if (glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS) {
+        if (!reloadScenePressed) {
+            reloadCurrentScene();
+            reloadScenePressed = true;
+        }
+    } else {
+        reloadScenePressed = false;
+    }
+
     const InputState& state = input.getState();
 
 
@@ -403,7 +446,9 @@ void EngineApp::setupInitialScene() {
         throw std::runtime_error("Nenhuma definicao de cena ativa foi configurada.");
     }
 
-    ISceneDefinition::BuildResult result = activeSceneDefinition->build(scene);
+    ISceneDefinition::BuildResult result =
+        activeSceneDefinition->build(scene, currentSceneTransitionData);
+
     playerObjectId = result.playerObjectId;
 }
 

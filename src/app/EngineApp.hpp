@@ -14,6 +14,8 @@
 #include "../gameplay/ISceneDefinition.hpp"
 #include "../gameplay/SandboxScene.hpp"
 #include "../gameplay/TestScene.hpp"
+#include "../gameplay/SceneRegistry.hpp"
+#include "../gameplay/SceneId.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -27,11 +29,6 @@
 #include <vulkan/vulkan.h>
 
 class EngineApp {
-    enum class SceneId {
-        Sandbox,
-        Test
-    };
-
 public:
     void run();
 
@@ -122,6 +119,11 @@ private:
     SceneId currentSceneId = SceneId::Sandbox;
     bool nextScenePressed = false;
 
+    bool reloadScenePressed = false;
+
+    SceneTransitionData pendingTransitionData{};
+    SceneTransitionData currentSceneTransitionData{};
+
 private:
     void initWindow();
     void initVulkan();
@@ -151,6 +153,8 @@ private:
     void processTriggerOverlaps();
     void setupInitialScene();
     void updateUniformBuffer();
+
+    void reloadCurrentScene();
 
     std::vector<VkDescriptorSet> getTextureDescriptorSets() const;
 
@@ -194,6 +198,5 @@ private:
     VkDescriptorSet createTextureDescriptorSet(VkImageView imageView, VkSampler sampler);
     void loadTextures();
 
-    void loadScene(SceneId sceneId);
-    std::unique_ptr<ISceneDefinition> createSceneDefinition(SceneId sceneId);
+    void loadScene(SceneId sceneId, const SceneTransitionData& transitionData = {});
 };

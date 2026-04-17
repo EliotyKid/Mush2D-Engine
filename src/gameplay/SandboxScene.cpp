@@ -1,8 +1,12 @@
 #include "SandboxScene.hpp"
 
+#include "PlayerObject.hpp"
 #include "Spawn.hpp"
 
-ISceneDefinition::BuildResult SandboxScene::build(Scene2D& scene) {
+ISceneDefinition::BuildResult SandboxScene::build(
+    Scene2D& scene,
+    const SceneTransitionData& transitionData
+) {
     scene.clear();
 
     auto& leftWall = Spawn::wall(
@@ -134,7 +138,44 @@ ISceneDefinition::BuildResult SandboxScene::build(Scene2D& scene) {
         }
     );
 
+    if (transitionData.overridePlayerSpawn) {
+        player.transform.position = transitionData.playerSpawnPosition;
+        player.setCheckpointPosition(transitionData.playerSpawnPosition);
+    }
+
     return BuildResult{
         .playerObjectId = player.id
     };
+}
+
+void SandboxScene::onEnter(Scene2D& scene, const SceneTransitionData& transitionData) {
+    initialized = true;
+    elapsedTime = 0.0f;
+}
+
+void SandboxScene::onExit(Scene2D& scene) {
+}
+
+void SandboxScene::onReload(Scene2D& scene) {
+    elapsedTime = 0.0f;
+}
+
+void SandboxScene::update(Scene2D& scene, float deltaTime) {
+    if (!initialized) {
+        return;
+    }
+
+    elapsedTime += deltaTime;
+
+    auto* player = scene.findFirstObjectOfType<PlayerObject>();
+    if (!player) {
+        return;
+    }
+
+    // Exemplo leve de estado da cena:
+    // a cada frame, mantemos o alpha do player estável, mas esse ponto agora
+    // é onde lógica própria da cena pode existir sem ir para EngineApp.
+    if (player->sprite.has_value()) {
+        player->sprite->color.a = 1.0f;
+    }
 }
