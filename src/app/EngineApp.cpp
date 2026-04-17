@@ -72,6 +72,7 @@ void EngineApp::initVulkan() {
     commandBuffers = createCommandBuffers();
     createSyncObjects();
 
+    activeSceneDefinition = std::make_unique<SandboxScene>();
     setupInitialScene();
 
     auto* player = scene.findFirstObjectOfType<PlayerObject>();
@@ -354,7 +355,11 @@ void EngineApp::processTriggerOverlaps() {
 void EngineApp::setupInitialScene() {
     activeTriggerOverlaps.clear();
 
-    SandboxScene::BuildResult result = SandboxScene::build(scene);
+    if (!activeSceneDefinition) {
+        throw std::runtime_error("Nenhuma definicao de cena ativa foi configurada.");
+    }
+
+    ISceneDefinition::BuildResult result = activeSceneDefinition->build(scene);
     playerObjectId = result.playerObjectId;
 }
 

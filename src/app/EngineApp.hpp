@@ -11,6 +11,7 @@
 #include "../world/Collision.hpp"
 #include "../world/Scene2D.hpp"
 #include "../gameplay/Spawn.hpp"
+#include "../gameplay/ISceneDefinition.hpp"
 #include "../gameplay/SandboxScene.hpp"
 
 #include <cstdint>
@@ -18,6 +19,7 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include <memory>
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -108,6 +110,8 @@ private:
     float cameraZoomSpeed = 1.0f;
 
     std::unordered_set<GameObjectId> activeTriggerOverlaps;
+
+    std::unique_ptr<ISceneDefinition> activeSceneDefinition;
 
 private:
     void initWindow();

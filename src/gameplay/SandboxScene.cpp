@@ -2,7 +2,7 @@
 
 #include "Spawn.hpp"
 
-SandboxScene::BuildResult SandboxScene::build(Scene2D& scene) {
+ISceneDefinition::BuildResult SandboxScene::build(Scene2D& scene) {
     scene.clear();
 
     auto& leftWall = Spawn::wall(
