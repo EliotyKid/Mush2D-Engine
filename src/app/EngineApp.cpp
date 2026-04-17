@@ -1,18 +1,15 @@
 #include "EngineApp.hpp"
 
-#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
-
-#include <glm/gtc/matrix_transform.hpp>
+#include <utility>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
-
-#include <iostream>
 
 void EngineApp::run() {
     initWindow();
@@ -46,8 +43,7 @@ void EngineApp::initWindow() {
         throw std::runtime_error("Erro: falha ao criar a janela.");
     }
 
-    glfwSetWindowUserPointer(window, this);
-    setupInputCallbacks();
+    input.attachWindow(window);
 }
 
 void EngineApp::initVulkan() {
@@ -77,6 +73,26 @@ void EngineApp::initVulkan() {
     createSyncObjects();
 
     setupInitialScene();
+
+    auto* player = scene.findFirstObjectOfType<PlayerObject>();
+    if (player) {
+        camera.position = player->transform.position;
+        playerObjectId = player->id;
+    }
+
+    camera.size = 2.0f;
+    camera.followEnabled = true;
+    camera.targetId = playerObjectId;
+    camera.followOffset = {0.0f, 0.0f};
+    camera.followSmoothness = 6.0f;
+    camera.snapDistance = 0.001f;
+    camera.boundsEnabled = true;
+    camera.bounds = Camera2D::WorldBounds{
+        -5.0f,
+         5.0f,
+        -3.0f,
+         3.0f
+    };
 }
 
 void EngineApp::mainLoop() {
@@ -84,18 +100,33 @@ void EngineApp::mainLoop() {
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        input.beginFrame();
+        input.poll();
 
         float currentTime = static_cast<float>(glfwGetTime());
         float deltaTime = currentTime - lastTime;
         lastTime = currentTime;
 
-        handleInput(deltaTime);
-        updatePlayer(deltaTime);
-        playerStateSystem.update(scene, playerObjectId, deltaTime);
-        updateScene();
-        updateTriggers(deltaTime);
-        updateCameraFollow(deltaTime);
-        clampCameraToBounds();
+        handleGlobalInput(deltaTime);
+
+        auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
+        if (!player) {
+            player = scene.findFirstObjectOfType<PlayerObject>();
+            if (player) {
+                playerObjectId = player->id;
+            }
+        }
+        if (player) {
+            player->applyInput(input.getState());
+        }
+
+        scene.step(deltaTime);
+        processTriggerOverlaps();
+        scene.lateStep(deltaTime);
+
+        camera.updateFollow(scene, deltaTime);
+        camera.clampToBounds(swapChainExtent);
+
         updateUniformBuffer();
         drawFrame();
     }
@@ -116,6 +147,7 @@ void EngineApp::cleanup() {
         vkDestroyFence(logicalDevice, inFlightFence, nullptr);
     }
 
+    scene.clear();
     renderer2D.cleanup();
 
     if (uniformBuffer != VK_NULL_HANDLE) {
@@ -191,6 +223,378 @@ void EngineApp::cleanup() {
     glfwTerminate();
 }
 
+void EngineApp::handleGlobalInput(float deltaTime) {
+    const InputState& state = input.getState();
+
+    if (state.toggleFollow.pressed) {
+        camera.followEnabled = !camera.followEnabled;
+    }
+
+    auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
+    if (!player) {
+        player = scene.findFirstObjectOfType<PlayerObject>();
+        if (player) {
+            playerObjectId = player->id;
+        }
+    }
+
+    if (state.respawn.pressed && player) {
+        player->respawnAtCheckpoint();
+
+        if (camera.followEnabled) {
+            camera.position = player->transform.position + camera.followOffset;
+        }
+    }
+
+    if (state.scrollDeltaY != 0.0) {
+        camera.size -= static_cast<float>(state.scrollDeltaY) * mouseZoomSensitivity * camera.size;
+    }
+
+    if (camera.followEnabled) {
+        if (state.zoomOut.down) {
+            camera.size += cameraZoomSpeed * deltaTime;
+        }
+        if (state.zoomIn.down) {
+            camera.size -= cameraZoomSpeed * deltaTime;
+        }
+
+        camera.size = std::clamp(camera.size, 0.2f, 20.0f);
+        return;
+    }
+
+    float moveAmount = cameraMoveSpeed * deltaTime;
+    float zoomAmount = cameraZoomSpeed * deltaTime;
+
+    if (state.cameraLeft.down) {
+        camera.position.x -= moveAmount;
+    }
+    if (state.cameraRight.down) {
+        camera.position.x += moveAmount;
+    }
+    if (state.cameraUp.down) {
+        camera.position.y += moveAmount;
+    }
+    if (state.cameraDown.down) {
+        camera.position.y -= moveAmount;
+    }
+
+    if (state.zoomOut.down) {
+        camera.size += zoomAmount;
+    }
+    if (state.zoomIn.down) {
+        camera.size -= zoomAmount;
+    }
+
+    if (state.dragCamera.down) {
+        float worldHeight = camera.size;
+        float worldWidth = camera.size *
+            (static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height));
+
+        float unitsPerPixelX = worldWidth / static_cast<float>(swapChainExtent.width);
+        float unitsPerPixelY = worldHeight / static_cast<float>(swapChainExtent.height);
+
+        camera.position.x -= static_cast<float>(state.mouseDeltaX) * unitsPerPixelX;
+        camera.position.y += static_cast<float>(state.mouseDeltaY) * unitsPerPixelY;
+    }
+
+    camera.size = std::clamp(camera.size, 0.2f, 20.0f);
+}
+
+void EngineApp::processTriggerOverlaps() {
+    GameObject* player = scene.findObject(playerObjectId);
+    if (!player || !player->active || !player->collider.has_value() || !player->collider->enabled) {
+        return;
+    }
+
+    Collision2D::AABB playerBox = Collision2D::buildAABB(*player);
+    std::unordered_set<GameObjectId> currentOverlaps;
+
+    for (auto& objectPtr : scene.getObjects()) {
+        if (!objectPtr || !objectPtr->active) {
+            continue;
+        }
+
+        if (objectPtr->id == playerObjectId) {
+            continue;
+        }
+
+        if (!objectPtr->collider.has_value() || !objectPtr->collider->enabled) {
+            continue;
+        }
+
+        if (!objectPtr->collider->isTrigger) {
+            continue;
+        }
+
+        Collision2D::AABB triggerBox = Collision2D::buildAABB(*objectPtr);
+
+        if (Collision2D::intersects(playerBox, triggerBox)) {
+            currentOverlaps.insert(objectPtr->id);
+
+            if (activeTriggerOverlaps.find(objectPtr->id) == activeTriggerOverlaps.end()) {
+                objectPtr->onTriggerEnter(scene, *player);
+                player->onTriggerEnter(scene, *objectPtr);
+            }
+        }
+    }
+
+    for (GameObjectId previousId : activeTriggerOverlaps) {
+        if (currentOverlaps.find(previousId) == currentOverlaps.end()) {
+            GameObject* previous = scene.findObject(previousId);
+            if (previous) {
+                previous->onTriggerExit(scene, *player);
+                player->onTriggerExit(scene, *previous);
+            }
+        }
+    }
+
+    activeTriggerOverlaps = std::move(currentOverlaps);
+}
+
+void EngineApp::setupInitialScene() {
+    scene.clear();
+    activeTriggerOverlaps.clear();
+
+    auto& leftWall = Spawn::wall(
+        scene,
+        {-4.5f, 0.0f},
+        {0.8f, 4.0f},
+        WallObject::Config{
+            .textureIndex = 0,
+            .layer = 0,
+            .orderInLayer = 0,
+            .size = {0.8f, 4.0f},
+            .colliderOffset = {0.0f, 0.0f}
+        }
+    );
+    leftWall.name = "LeftWall";
+
+    auto& rightWall = Spawn::wall(
+        scene,
+        {4.5f, 0.0f},
+        {0.8f, 4.0f},
+        WallObject::Config{
+            .textureIndex = 0,
+            .layer = 0,
+            .orderInLayer = 1,
+            .size = {0.8f, 4.0f},
+            .colliderOffset = {0.0f, 0.0f}
+        }
+    );
+    rightWall.name = "RightWall";
+
+    auto& topWall = Spawn::wall(
+        scene,
+        {0.0f, 2.5f},
+        {8.0f, 0.8f},
+        WallObject::Config{
+            .textureIndex = 0,
+            .layer = 0,
+            .orderInLayer = 2,
+            .size = {8.0f, 0.8f},
+            .colliderOffset = {0.0f, 0.0f}
+        }
+    );
+    topWall.name = "TopWall";
+
+    auto& bottomWall = Spawn::wall(
+        scene,
+        {0.0f, -2.5f},
+        {8.0f, 0.8f},
+        WallObject::Config{
+            .textureIndex = 0,
+            .layer = 0,
+            .orderInLayer = 3,
+            .size = {8.0f, 0.8f},
+            .colliderOffset = {0.0f, 0.0f}
+        }
+    );
+    bottomWall.name = "BottomWall";
+
+    auto& centerBox = Spawn::wall(
+        scene,
+        {1.5f, 0.0f},
+        {1.0f, 1.0f},
+        WallObject::Config{
+            .textureIndex = 0,
+            .layer = 1,
+            .orderInLayer = 0,
+            .size = {1.0f, 1.0f},
+            .colliderOffset = {0.0f, 0.0f}
+        }
+    );
+    centerBox.name = "CenterBox";
+
+    auto& checkpoint = Spawn::checkpoint(
+        scene,
+        {-1.5f, 1.2f},
+        CheckpointObject::Config{
+            .textureIndex = 1,
+            .layer = 1,
+            .orderInLayer = 1,
+            .triggerSize = {1.2f, 1.2f},
+            .oneShot = false
+        }
+    );
+    checkpoint.name = "CheckpointTrigger";
+
+    auto& teleport = Spawn::teleport(
+        scene,
+        {2.8f, 1.2f},
+        {-3.0f, -1.5f},
+        TeleportObject::Config{
+            .textureIndex = 1,
+            .layer = 1,
+            .orderInLayer = 2,
+            .triggerSize = {1.2f, 1.2f},
+            .oneShot = false
+        }
+    );
+    teleport.name = "TeleportTrigger";
+
+    auto& slime = Spawn::slime(
+        scene,
+        {3.0f, 0.0f},
+        SlimeEnemy::Config{
+            .moveSpeed = 1.2f,
+            .patrolDistance = 2.5f,
+            .maxHealth = 20,
+            .textureIndex = 0,
+            .colliderSize = {0.8f, 0.8f},
+            .layer = 1,
+            .orderInLayer = 3,
+            .initialScale = {0.8f, 0.8f}
+        }
+    );
+    slime.name = "Slime01";
+
+    auto& player = Spawn::player(
+        scene,
+        {0.0f, 0.0f},
+        PlayerObject::Config{
+            .moveSpeed = 2.5f,
+            .dashSpeed = 6.5f,
+            .dashDuration = 0.18f,
+            .hitDuration = 0.35f,
+            .textureIndex = 1,
+            .colliderSize = {0.6f, 0.6f},
+            .layer = 2,
+            .orderInLayer = 0,
+            .initialScale = {0.7f, 0.7f}
+        }
+    );
+
+    playerObjectId = player.id;
+}
+
+void EngineApp::updateUniformBuffer() {
+    UniformBufferObject ubo{};
+    ubo.view = camera.buildViewMatrix();
+    ubo.proj = camera.buildProjectionMatrix(swapChainExtent);
+
+    void* data = nullptr;
+    vkMapMemory(logicalDevice, uniformBufferMemory, 0, sizeof(ubo), 0, &data);
+    std::memcpy(data, &ubo, sizeof(ubo));
+    vkUnmapMemory(logicalDevice, uniformBufferMemory);
+}
+
+std::vector<VkDescriptorSet> EngineApp::getTextureDescriptorSets() const {
+    std::vector<VkDescriptorSet> sets;
+    sets.reserve(textures.size());
+
+    for (const auto& texture : textures) {
+        sets.push_back(texture.descriptorSet);
+    }
+
+    return sets;
+}
+
+void EngineApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("Falha ao iniciar gravacao do command buffer.");
+    }
+
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapChainExtent;
+
+    VkClearValue clearColor = {{{0.05f, 0.05f, 0.08f, 1.0f}}};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    renderer2D.renderScene(commandBuffer, scene, getTextureDescriptorSets());
+
+    vkCmdEndRenderPass(commandBuffer);
+
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("Falha ao finalizar gravacao do command buffer.");
+    }
+}
+
+void EngineApp::drawFrame() {
+    vkWaitForFences(logicalDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+
+    uint32_t imageIndex = 0;
+    VkResult acquireResult = vkAcquireNextImageKHR(
+        logicalDevice,
+        swapChain,
+        UINT64_MAX,
+        imageAvailableSemaphore,
+        VK_NULL_HANDLE,
+        &imageIndex
+    );
+
+    if (acquireResult != VK_SUCCESS) {
+        throw std::runtime_error("Falha ao adquirir imagem da swapchain.");
+    }
+
+    vkResetFences(logicalDevice, 1, &inFlightFence);
+    vkResetCommandBuffer(commandBuffers[imageIndex], 0);
+    recordCommandBuffer(commandBuffers[imageIndex], imageIndex);
+
+    VkSemaphore waitSemaphores[] = { imageAvailableSemaphore };
+    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+
+    VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
+
+    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS) {
+        throw std::runtime_error("Falha ao submeter command buffer para a graphics queue.");
+    }
+
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
+
+    VkSwapchainKHR swapChains[] = { swapChain };
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+    presentInfo.pImageIndices = &imageIndex;
+
+    VkResult presentResult = vkQueuePresentKHR(presentQueue, &presentInfo);
+    if (presentResult != VK_SUCCESS) {
+        throw std::runtime_error("Falha ao apresentar imagem na swapchain.");
+    }
+}
+
 void EngineApp::createInstance() {
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -202,7 +606,6 @@ void EngineApp::createInstance() {
 
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
     if (!glfwExtensions) {
         throw std::runtime_error("Falha ao obter extensoes Vulkan requeridas pelo GLFW.");
     }
@@ -261,7 +664,7 @@ bool EngineApp::checkDeviceExtensionSupport(VkPhysicalDevice device) const {
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
 
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+    std::unordered_set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 
     for (const auto& extension : availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
@@ -293,12 +696,12 @@ EngineApp::SwapChainSupportDetails EngineApp::querySwapChainSupport(VkPhysicalDe
 }
 
 bool EngineApp::isDeviceSuitable(VkPhysicalDevice device) const {
-    const QueueFamilyIndices indices = findQueueFamilies(device);
-    const bool extensionsSupported = checkDeviceExtensionSupport(device);
+    QueueFamilyIndices indices = findQueueFamilies(device);
+    bool extensionsSupported = checkDeviceExtensionSupport(device);
 
     bool swapChainAdequate = false;
     if (extensionsSupported) {
-        const auto swapChainSupport = querySwapChainSupport(device);
+        auto swapChainSupport = querySwapChainSupport(device);
         swapChainAdequate =
             !swapChainSupport.formats.empty() &&
             !swapChainSupport.presentModes.empty();
@@ -331,16 +734,15 @@ void EngineApp::pickPhysicalDevice() {
 }
 
 void EngineApp::createLogicalDevice() {
-    const QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
-    std::set<uint32_t> uniqueQueueFamilies = {
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    std::unordered_set<uint32_t> uniqueQueueFamilies = {
         indices.graphicsFamily.value(),
         indices.presentFamily.value()
     };
 
-    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     float queuePriority = 1.0f;
-
     for (uint32_t queueFamily : uniqueQueueFamilies) {
         VkDeviceQueueCreateInfo queueCreateInfo{};
         queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -359,7 +761,6 @@ void EngineApp::createLogicalDevice() {
     createInfo.pEnabledFeatures = &deviceFeatures;
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-    createInfo.enabledLayerCount = 0;
 
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS) {
         throw std::runtime_error("Falha ao criar VkDevice.");
@@ -369,9 +770,7 @@ void EngineApp::createLogicalDevice() {
     vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-VkSurfaceFormatKHR EngineApp::chooseSwapSurfaceFormat(
-    const std::vector<VkSurfaceFormatKHR>& availableFormats
-) const {
+VkSurfaceFormatKHR EngineApp::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) const {
     for (const auto& availableFormat : availableFormats) {
         if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
             availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
@@ -382,9 +781,7 @@ VkSurfaceFormatKHR EngineApp::chooseSwapSurfaceFormat(
     return availableFormats[0];
 }
 
-VkPresentModeKHR EngineApp::chooseSwapPresentMode(
-    const std::vector<VkPresentModeKHR>& availablePresentModes
-) const {
+VkPresentModeKHR EngineApp::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) const {
     for (const auto& availablePresentMode : availablePresentModes) {
         if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
             return availablePresentMode;
@@ -424,11 +821,11 @@ VkExtent2D EngineApp::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilit
 }
 
 void EngineApp::createSwapChain() {
-    const auto swapChainSupport = querySwapChainSupport(physicalDevice);
+    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
 
-    const VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-    const VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-    const VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+    VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+    VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
     uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
     if (swapChainSupport.capabilities.maxImageCount > 0 &&
@@ -436,7 +833,7 @@ void EngineApp::createSwapChain() {
         imageCount = swapChainSupport.capabilities.maxImageCount;
     }
 
-    const QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {
         indices.graphicsFamily.value(),
         indices.presentFamily.value()
@@ -464,7 +861,6 @@ void EngineApp::createSwapChain() {
     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
-    createInfo.oldSwapchain = VK_NULL_HANDLE;
 
     if (vkCreateSwapchainKHR(logicalDevice, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
         throw std::runtime_error("Falha ao criar VkSwapchainKHR.");
@@ -478,11 +874,7 @@ void EngineApp::createSwapChain() {
     swapChainExtent = extent;
 }
 
-VkImageView EngineApp::createImageView(
-    VkImage image,
-    VkFormat format,
-    VkImageAspectFlags aspectFlags
-) const {
+VkImageView EngineApp::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) const {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;
@@ -568,7 +960,7 @@ void EngineApp::createFramebuffers() {
 }
 
 void EngineApp::createCommandPool() {
-    const QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -586,14 +978,12 @@ void EngineApp::createDescriptorSetLayout() {
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     uboLayoutBinding.descriptorCount = 1;
     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
 
     VkDescriptorSetLayoutBinding samplerLayoutBinding{};
     samplerLayoutBinding.binding = 1;
     samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     samplerLayoutBinding.descriptorCount = 1;
     samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    samplerLayoutBinding.pImmutableSamplers = nullptr;
 
     std::array<VkDescriptorSetLayoutBinding, 2> bindings = {
         uboLayoutBinding,
@@ -737,12 +1127,14 @@ void EngineApp::transitionImageLayout(
         newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
         sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
                newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     } else {
@@ -791,7 +1183,7 @@ void EngineApp::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width
 }
 
 void EngineApp::createUniformBuffer() {
-    const VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -840,181 +1232,6 @@ void EngineApp::createDescriptorPool() {
 
     if (vkCreateDescriptorPool(logicalDevice, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("Falha ao criar VkDescriptorPool.");
-    }
-}
-
-
-std::vector<VkCommandBuffer> EngineApp::createCommandBuffers() {
-    std::vector<VkCommandBuffer> buffers(swapChainFramebuffers.size());
-
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = static_cast<uint32_t>(buffers.size());
-
-    if (vkAllocateCommandBuffers(logicalDevice, &allocInfo, buffers.data()) != VK_SUCCESS) {
-        throw std::runtime_error("Falha ao alocar command buffers.");
-    }
-
-    return buffers;
-}
-
-void EngineApp::createSyncObjects() {
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-    if (vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-        vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
-        vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) {
-        throw std::runtime_error("Falha ao criar objetos de sincronizacao.");
-    }
-}
-
-glm::mat4 EngineApp::buildViewMatrix() const {
-    glm::mat4 view(1.0f);
-    view = glm::translate(view, glm::vec3(-camera.position, 0.0f));
-    return view;
-}
-
-glm::mat4 EngineApp::buildProjectionMatrix() const {
-    const float aspect =
-        static_cast<float>(swapChainExtent.width) /
-        static_cast<float>(swapChainExtent.height);
-
-    const float halfHeight = camera.size * 0.5f;
-    const float halfWidth = halfHeight * aspect;
-
-    glm::mat4 proj = glm::ortho(
-        -halfWidth, halfWidth,
-        -halfHeight, halfHeight,
-        -1.0f, 1.0f
-    );
-
-    proj[1][1] *= -1.0f;
-    return proj;
-}
-
-void EngineApp::updateScene() {
-    float time = static_cast<float>(glfwGetTime());
-
-    for (auto& object : scene.objects) {
-        if (object.id == playerObjectId) {
-            continue;
-        }
-
-        if (object.name == "LeftObject") {
-            object.transform.rotation = time;
-        }
-
-        if (object.name == "RightObject") {
-            object.transform.rotation = time * 1.3f;
-        }
-    }
-}
-
-void EngineApp::updateUniformBuffer() {
-    UniformBufferObject ubo{};
-    ubo.view = buildViewMatrix();
-    ubo.proj = buildProjectionMatrix();
-
-    void* data = nullptr;
-    vkMapMemory(logicalDevice, uniformBufferMemory, 0, sizeof(ubo), 0, &data);
-    std::memcpy(data, &ubo, sizeof(ubo));
-    vkUnmapMemory(logicalDevice, uniformBufferMemory);
-}
-
-void EngineApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("Falha ao iniciar gravacao do command buffer.");
-    }
-
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapChainExtent;
-
-    VkClearValue clearColor = {{{0.05f, 0.05f, 0.08f, 1.0f}}};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
-
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    renderer2D.renderScene(
-        commandBuffer,
-        scene,
-        getTextureDescriptorSets()
-    );
-
-    vkCmdEndRenderPass(commandBuffer);
-
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("Falha ao finalizar gravacao do command buffer.");
-    }
-}
-
-void EngineApp::drawFrame() {
-    vkWaitForFences(logicalDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-
-    uint32_t imageIndex = 0;
-    VkResult acquireResult = vkAcquireNextImageKHR(
-        logicalDevice,
-        swapChain,
-        UINT64_MAX,
-        imageAvailableSemaphore,
-        VK_NULL_HANDLE,
-        &imageIndex
-    );
-
-    if (acquireResult != VK_SUCCESS) {
-        throw std::runtime_error("Falha ao adquirir imagem da swapchain.");
-    }
-
-    vkResetFences(logicalDevice, 1, &inFlightFence);
-    vkResetCommandBuffer(commandBuffers[imageIndex], 0);
-    recordCommandBuffer(commandBuffers[imageIndex], imageIndex);
-
-    VkSemaphore waitSemaphores[] = { imageAvailableSemaphore };
-    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
-
-    VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores;
-
-    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS) {
-        throw std::runtime_error("Falha ao submeter command buffer para a graphics queue.");
-    }
-
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
-
-    VkSwapchainKHR swapChains[] = { swapChain };
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &imageIndex;
-
-    VkResult presentResult = vkQueuePresentKHR(presentQueue, &presentInfo);
-    if (presentResult != VK_SUCCESS) {
-        throw std::runtime_error("Falha ao apresentar imagem na swapchain.");
     }
 }
 
@@ -1070,7 +1287,6 @@ VkDescriptorSet EngineApp::createTextureDescriptorSet(VkImageView imageView, VkS
     return descriptorSetLocal;
 }
 
-
 EngineApp::TextureResource EngineApp::createTextureResource(const char* path) {
     TextureResource texture{};
 
@@ -1120,7 +1336,7 @@ EngineApp::TextureResource EngineApp::createTextureResource(const char* path) {
 
     void* data = nullptr;
     vkMapMemory(logicalDevice, stagingBufferMemory, 0, imageSize, 0, &data);
-    memcpy(data, pixels, static_cast<size_t>(imageSize));
+    std::memcpy(data, pixels, static_cast<size_t>(imageSize));
     vkUnmapMemory(logicalDevice, stagingBufferMemory);
 
     stbi_image_free(pixels);
@@ -1193,7 +1409,6 @@ EngineApp::TextureResource EngineApp::createTextureResource(const char* path) {
     return texture;
 }
 
-
 void EngineApp::loadTextures() {
     textures.clear();
 
@@ -1201,555 +1416,33 @@ void EngineApp::loadTextures() {
     textures.push_back(createTextureResource("textures/test2.png"));
 }
 
-std::vector<VkDescriptorSet> EngineApp::getTextureDescriptorSets() const {
-    std::vector<VkDescriptorSet> sets;
-    sets.reserve(textures.size());
+std::vector<VkCommandBuffer> EngineApp::createCommandBuffers() {
+    std::vector<VkCommandBuffer> buffers(swapChainFramebuffers.size());
 
-    for (const auto& texture : textures) {
-        sets.push_back(texture.descriptorSet);
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = static_cast<uint32_t>(buffers.size());
+
+    if (vkAllocateCommandBuffers(logicalDevice, &allocInfo, buffers.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Falha ao alocar command buffers.");
     }
 
-    return sets;
+    return buffers;
 }
 
-void EngineApp::handleInput(float deltaTime) {
-    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
-        if (!respawnPressed) {
-            GameObject* playerObject = scene.findObject(playerObjectId);
-            if (playerObject) {
-                playerObject->transform.position = lastCheckpointPosition;
-                player.position = lastCheckpointPosition;
-
-                if (cameraFollowEnabled) {
-                    camera.position = lastCheckpointPosition + cameraFollowOffset;
-                }
-            }
-
-            respawnPressed = true;
-        }
-    } else {
-        respawnPressed = false;
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
-        if (!followTogglePressed) {
-            cameraFollowEnabled = !cameraFollowEnabled;
-            followTogglePressed = true;
-        }
-    } else {
-        followTogglePressed = false;
-    }
-    if (cameraFollowEnabled) {
-        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
-            camera.size += cameraZoomSpeed * deltaTime;
-        }
-        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
-            camera.size -= cameraZoomSpeed * deltaTime;
-        }
-
-        if (camera.size < 0.2f) {
-            camera.size = 0.2f;
-        }
-        if (camera.size > 20.0f) {
-            camera.size = 20.0f;
-        }
-
-        return;
-    }
-
-    float moveAmount = cameraMoveSpeed * deltaTime;
-    float zoomAmount = cameraZoomSpeed * deltaTime;
-
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        camera.position.x -= moveAmount;
-    }
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        camera.position.x += moveAmount;
-    }
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        camera.position.y += moveAmount;
-    }
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        camera.position.y -= moveAmount;
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
-        camera.size += zoomAmount;
-    }
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
-        camera.size -= zoomAmount;
-    }
-
-    if (camera.size < 0.2f) {
-        camera.size = 0.2f;
-    }
-    if (camera.size > 20.0f) {
-        camera.size = 20.0f;
-    }
-
-    
-}
-
-void EngineApp::setupInputCallbacks() {
-    glfwSetScrollCallback(window, EngineApp::scrollCallback);
-    glfwSetMouseButtonCallback(window, EngineApp::mouseButtonCallback);
-    glfwSetCursorPosCallback(window, EngineApp::cursorPositionCallback);
-}
-
-void EngineApp::scrollCallback(GLFWwindow* window, double xOffset, double yOffset) {
-    auto* app = static_cast<EngineApp*>(glfwGetWindowUserPointer(window));
-    if (!app) {
-        return;
-    }
-
-    app->onMouseScroll(xOffset, yOffset);
-}
-
-void EngineApp::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-    auto* app = static_cast<EngineApp*>(glfwGetWindowUserPointer(window));
-    if (!app) {
-        return;
-    }
-
-    app->onMouseButton(button, action, mods);
-}
-
-void EngineApp::cursorPositionCallback(GLFWwindow* window, double xpos, double ypos) {
-    auto* app = static_cast<EngineApp*>(glfwGetWindowUserPointer(window));
-    if (!app) {
-        return;
-    }
-
-    app->onMouseMove(xpos, ypos);
-}
-
-void EngineApp::onMouseScroll(double, double yOffset) {
-    camera.size -= static_cast<float>(yOffset) * mouseZoomSensitivity * camera.size;
-
-    if (camera.size < 0.2f) {
-        camera.size = 0.2f;
-    }
-    if (camera.size > 20.0f) {
-        camera.size = 20.0f;
-    }
-}
-
-void EngineApp::onMouseButton(int button, int action, int) {
-    if (button != dragMouseButton) {
-        return;
-    }
-
-    if (action == GLFW_PRESS) {
-        isDraggingCamera = true;
-        glfwGetCursorPos(window, &lastMouseX, &lastMouseY);
-    } else if (action == GLFW_RELEASE) {
-        isDraggingCamera = false;
-    }
-}
-
-void EngineApp::onMouseMove(double xpos, double ypos) {
-    if (!isDraggingCamera) {
-        return;
-    }
-
-    double deltaX = xpos - lastMouseX;
-    double deltaY = ypos - lastMouseY;
-
-    lastMouseX = xpos;
-    lastMouseY = ypos;
-
-    float worldHeight = camera.size;
-    float worldWidth = camera.size *
-        (static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height));
-
-    float unitsPerPixelX = worldWidth / static_cast<float>(swapChainExtent.width);
-    float unitsPerPixelY = worldHeight / static_cast<float>(swapChainExtent.height);
-
-    camera.position.x -= static_cast<float>(deltaX) * unitsPerPixelX;
-    camera.position.y += static_cast<float>(deltaY) * unitsPerPixelY;
-}
-
-void EngineApp::updateCameraFollow(float deltaTime) {
-    if (!cameraFollowEnabled) {
-        return;
-    }
-
-    const GameObject* target = scene.findObject(camera.targetId);
-    if (!target) {
-        return;
-    }
-
-    glm::vec2 desiredPosition = target->transform.position + cameraFollowOffset;
-
-    float t = 1.0f - std::exp(-cameraFollowSmoothness * deltaTime);
-    camera.position = glm::mix(camera.position, desiredPosition, t);
-
-    if (glm::length(desiredPosition - camera.position) < cameraSnapDistance) {
-        camera.position = desiredPosition;
-    }
-}
-
-void EngineApp::clampCameraToBounds() {
-    if (!cameraBoundsEnabled) {
-        return;
-    }
-
-    float aspect =
-        static_cast<float>(swapChainExtent.width) /
-        static_cast<float>(swapChainExtent.height);
-
-    float halfHeight = camera.size * 0.5f;
-    float halfWidth = halfHeight * aspect;
-
-    float minX = worldBounds.left + halfWidth;
-    float maxX = worldBounds.right - halfWidth;
-    float minY = worldBounds.bottom + halfHeight;
-    float maxY = worldBounds.top - halfHeight;
-
-    if (minX > maxX) {
-        camera.position.x = (worldBounds.left + worldBounds.right) * 0.5f;
-    } else {
-        camera.position.x = std::clamp(camera.position.x, minX, maxX);
-    }
-
-    if (minY > maxY) {
-        camera.position.y = (worldBounds.bottom + worldBounds.top) * 0.5f;
-    } else {
-        camera.position.y = std::clamp(camera.position.y, minY, maxY);
-    }
-}
-
-void EngineApp::updatePlayer(float deltaTime) {
-    GameObject* playerObject = scene.findObject(playerObjectId);
-    if (!playerObject) {
-        return;
-    }
-
-    auto playerIt = scene.players.find(playerObjectId);
-    if (playerIt == scene.players.end()) {
-        return;
-    }
-
-    glm::vec2 inputDir{0.0f, 0.0f};
-
-    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-        inputDir.x -= 1.0f;
-    }
-    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-        inputDir.x += 1.0f;
-    }
-    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-        inputDir.y += 1.0f;
-    }
-    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-        inputDir.y -= 1.0f;
-    }
-
-    if (glm::length(inputDir) > 0.0f) {
-        inputDir = glm::normalize(inputDir);
-    }
-
-    PlayerComponent& playerComponent = playerIt->second;
-    playerComponent.velocity = inputDir * playerComponent.moveSpeed;
-
-    glm::vec2 currentPosition = playerObject->transform.position;
-    glm::vec2 desiredPosition = currentPosition + playerComponent.velocity * deltaTime;
-
-    glm::vec2 tryX = {desiredPosition.x, currentPosition.y};
-    if (!collidesAtPosition(playerObjectId, tryX)) {
-        playerObject->transform.position.x = tryX.x;
-    }
-
-    glm::vec2 tryY = {playerObject->transform.position.x, desiredPosition.y};
-    if (!collidesAtPosition(playerObjectId, tryY)) {
-        playerObject->transform.position.y = tryY.y;
-    }
-
-    player.position = playerObject->transform.position;
-}
-
-void EngineApp::setupInitialScene() {
-    scene.objects.clear();
-    scene.sprites.clear();
-    scene.players.clear();
-    scene.colliders.clear();
-    scene.triggers.clear();
-    activeTriggerOverlaps.clear();
-
-    GameObject& leftWall = scene.createObject("LeftWall");
-    leftWall.transform.position = {-4.5f, 0.0f};
-    leftWall.transform.scale = {0.8f, 4.0f};
-    scene.sprites[leftWall.id] = SpriteComponent{0, 0, 0};
-    scene.colliders[leftWall.id] = ColliderComponent{{0.8f, 4.0f}, {0.0f, 0.0f}, false, true};
-
-    GameObject& rightWall = scene.createObject("RightWall");
-    rightWall.transform.position = {4.5f, 0.0f};
-    rightWall.transform.scale = {0.8f, 4.0f};
-    scene.sprites[rightWall.id] = SpriteComponent{0, 0, 1};
-    scene.colliders[rightWall.id] = ColliderComponent{{0.8f, 4.0f}, {0.0f, 0.0f}, false, true};
-
-    GameObject& topWall = scene.createObject("TopWall");
-    topWall.transform.position = {0.0f, 2.5f};
-    topWall.transform.scale = {8.0f, 0.8f};
-    scene.sprites[topWall.id] = SpriteComponent{0, 0, 2};
-    scene.colliders[topWall.id] = ColliderComponent{{8.0f, 0.8f}, {0.0f, 0.0f}, false, true};
-
-    GameObject& bottomWall = scene.createObject("BottomWall");
-    bottomWall.transform.position = {0.0f, -2.5f};
-    bottomWall.transform.scale = {8.0f, 0.8f};
-    scene.sprites[bottomWall.id] = SpriteComponent{0, 0, 3};
-    scene.colliders[bottomWall.id] = ColliderComponent{{8.0f, 0.8f}, {0.0f, 0.0f}, false, true};
-
-    GameObject& box = scene.createObject("CenterBox");
-    box.transform.position = {1.5f, 0.0f};
-    box.transform.scale = {1.0f, 1.0f};
-    scene.sprites[box.id] = SpriteComponent{0, 1, 0};
-    scene.colliders[box.id] = ColliderComponent{{1.0f, 1.0f}, {0.0f, 0.0f}, false, true};
-
-    GameObject& triggerZone = scene.createObject("CheckpointTrigger");
-    triggerZone.transform.position = {-1.5f, 1.2f};
-    triggerZone.transform.scale = {1.0f, 1.0f};
-    scene.sprites[triggerZone.id] = SpriteComponent{1, 1, 1};
-    scene.colliders[triggerZone.id] = ColliderComponent{{1.2f, 1.2f}, {0.0f, 0.0f}, true, true};
-
-    GameObject& checkpoint = scene.createObject("CheckpointTrigger");
-    checkpoint.transform.position = {-1.5f, 1.2f};
-    checkpoint.transform.scale = {1.0f, 1.0f};
-    scene.sprites[checkpoint.id] = SpriteComponent{1, 1, 1};
-    scene.colliders[checkpoint.id] = ColliderComponent{{1.2f, 1.2f}, {0.0f, 0.0f}, true, true};
-    scene.triggers[checkpoint.id] = TriggerComponent{
-        TriggerType::Checkpoint,
-        {0.0f, 0.0f},
-        false,
-        false
-    };
-
-    GameObject& teleport = scene.createObject("TeleportTrigger");
-    teleport.transform.position = {2.8f, 1.2f};
-    teleport.transform.scale = {1.0f, 1.0f};
-    scene.sprites[teleport.id] = SpriteComponent{1, 1, 2};
-    scene.colliders[teleport.id] = ColliderComponent{{1.2f, 1.2f}, {0.0f, 0.0f}, true, true};
-    scene.triggers[teleport.id] = TriggerComponent{
-        TriggerType::Teleport,
-        {-3.0f, -1.5f},
-        false,
-        false
-    };
-
-    GameObject& playerObject = scene.createObject("Player");
-    playerObject.transform.position = {0.0f, 0.0f};
-    playerObject.transform.scale = {0.7f, 0.7f};
-
-    scene.sprites[playerObject.id] = SpriteComponent{1, 2, 0};
-    scene.players[playerObject.id] = PlayerComponent{{0.0f, 0.0f}, 2.5f};
-    scene.playerStateMachines[playerObject.id] = PlayerStateMachineComponent{};
-    scene.colliders[playerObject.id] = ColliderComponent{{0.6f, 0.6f}, {0.0f, 0.0f}, false, true};
-
-    playerObjectId = playerObject.id;
-    scene.playerStateMachines[playerObject.id].history.push_back(PlayerStateId::Idle);
-    camera.targetId = playerObjectId;
-    player.position = playerObject.transform.position;
-
-    lastCheckpointPosition = player.position;
-}
-
-EngineApp::AABB EngineApp::buildAABB(const GameObject& object, const ColliderComponent& collider) const {
-    glm::vec2 center = object.transform.position + collider.offset;
-    glm::vec2 halfSize = collider.size * 0.5f;
-
-    AABB box{};
-    box.min = center - halfSize;
-    box.max = center + halfSize;
-    return box;
-}
-
-bool EngineApp::intersects(const AABB& a, const AABB& b) const {
-    if (a.max.x <= b.min.x || a.min.x >= b.max.x) {
-        return false;
-    }
-
-    if (a.max.y <= b.min.y || a.min.y >= b.max.y) {
-        return false;
-    }
-
-    return true;
-}
-
-bool EngineApp::collidesAtPosition(GameObjectId movingObjectId, const glm::vec2& newPosition) const {
-    const GameObject* movingObject = scene.findObject(movingObjectId);
-    if (!movingObject) {
-        return false;
-    }
-
-    auto movingColliderIt = scene.colliders.find(movingObjectId);
-    if (movingColliderIt == scene.colliders.end()) {
-        return false;
-    }
-
-    if (!movingColliderIt->second.enabled) {
-        return false;
-    }
-
-    GameObject movedCopy = *movingObject;
-    movedCopy.transform.position = newPosition;
-
-    AABB movingBox = buildAABB(movedCopy, movingColliderIt->second);
-
-    for (const auto& otherObject : scene.objects) {
-        if (!otherObject.active || otherObject.id == movingObjectId) {
-            continue;
-        }
-
-        auto otherColliderIt = scene.colliders.find(otherObject.id);
-        if (otherColliderIt == scene.colliders.end()) {
-            continue;
-        }
-
-        const ColliderComponent& otherCollider = otherColliderIt->second;
-        if (!otherCollider.enabled || otherCollider.isTrigger) {
-            continue;
-        }
-
-        AABB otherBox = buildAABB(otherObject, otherCollider);
-
-        if (intersects(movingBox, otherBox)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-void EngineApp::updateTriggers(float deltaTime) {
-    if (debugTriggerMessageTimer > 0.0f) {
-        debugTriggerMessageTimer -= deltaTime;
-        if (debugTriggerMessageTimer <= 0.0f) {
-            debugTriggerMessage.clear();
-            debugTriggerMessageTimer = 0.0f;
-        }
-    }
-
-    const GameObject* playerObject = scene.findObject(playerObjectId);
-    if (!playerObject) {
-        return;
-    }
-
-    auto playerColliderIt = scene.colliders.find(playerObjectId);
-    if (playerColliderIt == scene.colliders.end()) {
-        return;
-    }
-
-    const ColliderComponent& playerCollider = playerColliderIt->second;
-    if (!playerCollider.enabled) {
-        return;
-    }
-
-    AABB playerBox = buildAABB(*playerObject, playerCollider);
-
-    std::unordered_set<GameObjectId> currentOverlaps;
-
-    for (const auto& object : scene.objects) {
-        if (!object.active || object.id == playerObjectId) {
-            continue;
-        }
-
-        auto colliderIt = scene.colliders.find(object.id);
-        if (colliderIt == scene.colliders.end()) {
-            continue;
-        }
-
-        const ColliderComponent& collider = colliderIt->second;
-        if (!collider.enabled || !collider.isTrigger) {
-            continue;
-        }
-
-        AABB triggerBox = buildAABB(object, collider);
-
-        if (intersects(playerBox, triggerBox)) {
-            currentOverlaps.insert(object.id);
-
-            if (activeTriggerOverlaps.find(object.id) == activeTriggerOverlaps.end()) {
-                onTriggerEnter(object.id);
-            }
-        }
-    }
-
-    for (GameObjectId previousId : activeTriggerOverlaps) {
-        if (currentOverlaps.find(previousId) == currentOverlaps.end()) {
-            onTriggerExit(previousId);
-        }
-    }
-
-    activeTriggerOverlaps = std::move(currentOverlaps);
-}
-
-void EngineApp::onTriggerEnter(GameObjectId triggerId) {
-    const GameObject* triggerObject = scene.findObject(triggerId);
-    if (!triggerObject) {
-        return;
-    }
-
-    debugTriggerMessage = "Entrou no trigger: " + triggerObject->name;
-    debugTriggerMessageTimer = 2.0f;
-    std::cout << debugTriggerMessage << std::endl;
-
-    activateTrigger(triggerId);
-}
-
-void EngineApp::onTriggerExit(GameObjectId triggerId) {
-    const GameObject* triggerObject = scene.findObject(triggerId);
-    if (!triggerObject) {
-        return;
-    }
-
-    debugTriggerMessage = "Saiu do trigger: " + triggerObject->name;
-    debugTriggerMessageTimer = 2.0f;
-
-    std::cout << debugTriggerMessage << std::endl;
-}
-
-void EngineApp::activateTrigger(GameObjectId triggerId) {
-    auto triggerIt = scene.triggers.find(triggerId);
-    if (triggerIt == scene.triggers.end()) {
-        return;
-    }
-
-    TriggerComponent& trigger = triggerIt->second;
-
-    if (trigger.oneShot && trigger.consumed) {
-        return;
-    }
-
-    GameObject* playerObject = scene.findObject(playerObjectId);
-    if (!playerObject) {
-        return;
-    }
-
-    switch (trigger.type) {
-        case TriggerType::Checkpoint: {
-            lastCheckpointPosition = playerObject->transform.position;
-            debugTriggerMessage = "Checkpoint salvo!";
-            debugTriggerMessageTimer = 2.0f;
-            std::cout << debugTriggerMessage << std::endl;
-            break;
-        }
-
-        case TriggerType::Teleport: {
-            playerObject->transform.position = trigger.targetPosition;
-            player.position = trigger.targetPosition;
-
-            if (cameraFollowEnabled) {
-                camera.position = trigger.targetPosition + cameraFollowOffset;
-            }
-
-            debugTriggerMessage = "Teleportado!";
-            debugTriggerMessageTimer = 2.0f;
-            std::cout << debugTriggerMessage << std::endl;
-            break;
-        }
-    }
-
-    if (trigger.oneShot) {
-        trigger.consumed = true;
+void EngineApp::createSyncObjects() {
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    if (vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
+        vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
+        vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) {
+        throw std::runtime_error("Falha ao criar objetos de sincronizacao.");
     }
 }

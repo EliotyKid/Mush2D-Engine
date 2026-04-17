@@ -10,14 +10,22 @@ find_package(glfw3 REQUIRED)
 
 add_executable(Mush2DEngine
     src/main.cpp
-    src/EngineApp.cpp
-    src/Renderer2D.cpp
-    src/PlayerStateSystem.cpp
+    src/app/EngineApp.cpp
+    src/graphics/Renderer2D.cpp
+    src/graphics/Camera2D.cpp
+    src/platform/GlfwInput.cpp
+    src/world/Collision.cpp
+    src/gameplay/Spawn.cpp
 )
 
 target_include_directories(Mush2DEngine PRIVATE
     external
     src
+    src/app
+    src/graphics
+    src/world
+    src/gameplay
+    src/platform
 )
 
 target_link_libraries(Mush2DEngine

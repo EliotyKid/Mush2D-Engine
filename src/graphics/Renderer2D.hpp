@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Scene2D.hpp"
+#include "../world/Scene2D.hpp"
 
 #include <array>
 #include <cstddef>
@@ -50,6 +50,7 @@ public:
 
     struct PushConstantData {
         glm::mat4 model{1.0f};
+        glm::vec4 color{1.0f};
     };
 
 public:
@@ -70,7 +71,8 @@ public:
     void drawSprite(
         VkCommandBuffer commandBuffer,
         VkDescriptorSet descriptorSet,
-        const Transform2D& transform
+        const Transform2D& transform,
+        const glm::vec4& color
     ) const;
 
     void renderScene(

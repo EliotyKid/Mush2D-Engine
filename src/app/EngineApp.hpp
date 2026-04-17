@@ -1,21 +1,26 @@
 #pragma once
 
-#include "GameObject.hpp"
-#include "Renderer2D.hpp"
-#include "PlayerStateSystem.hpp"
+#include "../gameplay/CheckpointObject.hpp"
+#include "../gameplay/PlayerObject.hpp"
+#include "../gameplay/SlimeEnemy.hpp"
+#include "../gameplay/TeleportObject.hpp"
+#include "../gameplay/WallObject.hpp"
+#include "../graphics/Camera2D.hpp"
+#include "../graphics/Renderer2D.hpp"
+#include "../platform/GlfwInput.hpp"
+#include "../world/Collision.hpp"
+#include "../world/Scene2D.hpp"
+#include "../gameplay/Spawn.hpp"
 
 #include <cstdint>
-#include <glm/ext/vector_float2.hpp>
 #include <optional>
-#include <set>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
-
-#include <unordered_set>
-#include <string>
 
 class EngineApp {
 public:
@@ -44,12 +49,6 @@ private:
         std::vector<VkPresentModeKHR> presentModes;
     };
 
-    struct Camera2D {
-        glm::vec2 position{0.0f, 0.0f};
-        float size = 2.0f;
-        GameObjectId targetId = InvalidGameObjectId;
-    };
-
     struct UniformBufferObject {
         glm::mat4 view{1.0f};
         glm::mat4 proj{1.0f};
@@ -61,19 +60,6 @@ private:
         VkImageView imageView = VK_NULL_HANDLE;
         VkSampler sampler = VK_NULL_HANDLE;
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-    };
-
-    struct WorldBounds {
-        float left = -5.0f;
-        float right = 5.0f;
-        float bottom = -3.0f;
-        float top = 3.0f;
-    };
-
-    struct Player {
-        glm::vec2 position{0.0f, 0.0f};
-        glm::vec2 velocity{0.0f, 0.0f};
-        float moveSpeed = 2.5f;
     };
 
 private:
@@ -107,58 +93,20 @@ private:
     VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
     VkFence inFlightFence = VK_NULL_HANDLE;
 
-    std::vector<TextureResource> textures;
-
     Renderer2D renderer2D;
-
-    Camera2D camera{
-        {0.0f, 0.0f},
-        2.0f
-    };
+    Camera2D camera{};
+    GlfwInput input;
 
     Scene2D scene{};
+    std::vector<TextureResource> textures;
 
+    GameObjectId playerObjectId = InvalidGameObjectId;
+
+    float mouseZoomSensitivity = 0.15f;
     float cameraMoveSpeed = 1.5f;
     float cameraZoomSpeed = 1.0f;
 
-    bool isDraggingCamera = false;
-    double lastMouseX = 0.0;
-    double lastMouseY = 0.0;
-    float mouseZoomSensitivity = 0.15f;
-    int dragMouseButton = GLFW_MOUSE_BUTTON_MIDDLE;
-
-    bool cameraFollowEnabled = true;
-    glm::vec2 cameraFollowOffset{0.0f, 0.0f};
-
-    bool followTogglePressed = false;
-
-    float cameraFollowSmoothness = 6.0f;
-    float cameraSnapDistance = 0.001f;
-
-    WorldBounds worldBounds{
-        -5.0f,
-        5.0f,
-        -3.0f,
-        3.0f
-    };
-    bool cameraBoundsEnabled = true;
-
-    Player player{
-        {0.0f, 0.0f},
-        {0.0f, 0.0f},
-        2.5f
-    };
-    GameObjectId playerObjectId = InvalidGameObjectId;
-
     std::unordered_set<GameObjectId> activeTriggerOverlaps;
-    std::string debugTriggerMessage;
-    float debugTriggerMessageTimer = 0.0f;
-
-    glm::vec2 lastCheckpointPosition{0.0f, 0.0f};
-
-    bool respawnPressed = false;
-
-    PlayerStateSystem playerStateSystem;
 
 private:
     void initWindow();
@@ -175,14 +123,9 @@ private:
     void createRenderPass();
     void createFramebuffers();
     void createCommandPool();
-
     void createDescriptorSetLayout();
     void createUniformBuffer();
     void createDescriptorPool();
-
-    TextureResource createTextureResource(const char* path);
-    VkDescriptorSet createTextureDescriptorSet(VkImageView imageView, VkSampler sampler);
-    void loadTextures();
 
     std::vector<VkCommandBuffer> createCommandBuffers();
     void createSyncObjects();
@@ -190,11 +133,12 @@ private:
     void drawFrame();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
-    void updateScene();
+    void handleGlobalInput(float deltaTime);
+    void processTriggerOverlaps();
+    void setupInitialScene();
     void updateUniformBuffer();
 
-    glm::mat4 buildViewMatrix() const;
-    glm::mat4 buildProjectionMatrix() const;
+    std::vector<VkDescriptorSet> getTextureDescriptorSets() const;
 
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) const;
     bool checkDeviceExtensionSupport(VkPhysicalDevice device) const;
@@ -232,38 +176,7 @@ private:
     VkCommandBuffer beginSingleTimeCommands();
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
-    std::vector<VkDescriptorSet> getTextureDescriptorSets() const;
-
-    void handleInput(float deltaTime);
-
-    void setupInputCallbacks();
-    void onMouseScroll(double xOffset, double yOffset);
-    void onMouseButton(int button, int action, int mods);
-    void onMouseMove(double xpos, double ypos);
-
-    static void scrollCallback(GLFWwindow* window, double xOffset, double yOffset);
-    static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-    static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos);
-
-    void updateCameraFollow(float deltaTime);
-
-    void clampCameraToBounds();
-
-    void updatePlayer(float deltaTime);
-
-    void setupInitialScene();
-
-    struct AABB {
-        glm::vec2 min{0.0f, 0.0f};
-        glm::vec2 max{0.0f, 0.0f};
-    };
-
-    AABB buildAABB(const GameObject& object, const ColliderComponent& collider) const;
-    bool intersects(const AABB& a, const AABB& b) const;
-    bool collidesAtPosition(GameObjectId movingObjectId, const glm::vec2& newPosition) const;
-
-    void updateTriggers(float deltaTime);
-    void onTriggerEnter(GameObjectId triggerId);
-    void onTriggerExit(GameObjectId triggerId);
-    void activateTrigger(GameObjectId triggerId);
+    TextureResource createTextureResource(const char* path);
+    VkDescriptorSet createTextureDescriptorSet(VkImageView imageView, VkSampler sampler);
+    void loadTextures();
 };

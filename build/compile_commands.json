@@ -1,26 +1,44 @@
 [
 {
   "directory": "/home/elioty/Documents/Work/mush2dengine/build",
-  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/main.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/main.cpp",
+  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/main.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/main.cpp",
   "file": "/home/elioty/Documents/Work/mush2dengine/src/main.cpp",
   "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/main.cpp.o"
 },
 {
   "directory": "/home/elioty/Documents/Work/mush2dengine/build",
-  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/EngineApp.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/EngineApp.cpp",
-  "file": "/home/elioty/Documents/Work/mush2dengine/src/EngineApp.cpp",
-  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/EngineApp.cpp.o"
+  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/app/EngineApp.cpp",
+  "file": "/home/elioty/Documents/Work/mush2dengine/src/app/EngineApp.cpp",
+  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o"
 },
 {
   "directory": "/home/elioty/Documents/Work/mush2dengine/build",
-  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/Renderer2D.cpp",
-  "file": "/home/elioty/Documents/Work/mush2dengine/src/Renderer2D.cpp",
-  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/Renderer2D.cpp.o"
+  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/graphics/Renderer2D.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/graphics/Renderer2D.cpp",
+  "file": "/home/elioty/Documents/Work/mush2dengine/src/graphics/Renderer2D.cpp",
+  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/graphics/Renderer2D.cpp.o"
 },
 {
   "directory": "/home/elioty/Documents/Work/mush2dengine/build",
-  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/PlayerStateSystem.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/PlayerStateSystem.cpp",
-  "file": "/home/elioty/Documents/Work/mush2dengine/src/PlayerStateSystem.cpp",
-  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/PlayerStateSystem.cpp.o"
+  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/graphics/Camera2D.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/graphics/Camera2D.cpp",
+  "file": "/home/elioty/Documents/Work/mush2dengine/src/graphics/Camera2D.cpp",
+  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/graphics/Camera2D.cpp.o"
+},
+{
+  "directory": "/home/elioty/Documents/Work/mush2dengine/build",
+  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/platform/GlfwInput.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/platform/GlfwInput.cpp",
+  "file": "/home/elioty/Documents/Work/mush2dengine/src/platform/GlfwInput.cpp",
+  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/platform/GlfwInput.cpp.o"
+},
+{
+  "directory": "/home/elioty/Documents/Work/mush2dengine/build",
+  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/world/Collision.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/world/Collision.cpp",
+  "file": "/home/elioty/Documents/Work/mush2dengine/src/world/Collision.cpp",
+  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/world/Collision.cpp.o"
+},
+{
+  "directory": "/home/elioty/Documents/Work/mush2dengine/build",
+  "command": "/usr/bin/c++ -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/graphics -I/home/elioty/Documents/Work/mush2dengine/src/world -I/home/elioty/Documents/Work/mush2dengine/src/gameplay -I/home/elioty/Documents/Work/mush2dengine/src/platform -std=gnu++20 -o CMakeFiles/Mush2DEngine.dir/src/gameplay/Spawn.cpp.o -c /home/elioty/Documents/Work/mush2dengine/src/gameplay/Spawn.cpp",
+  "file": "/home/elioty/Documents/Work/mush2dengine/src/gameplay/Spawn.cpp",
+  "output": "/home/elioty/Documents/Work/mush2dengine/build/CMakeFiles/Mush2DEngine.dir/src/gameplay/Spawn.cpp.o"
 }
 ]

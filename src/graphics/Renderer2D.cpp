@@ -1,12 +1,11 @@
 #include "Renderer2D.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
 
 #include <glm/gtc/matrix_transform.hpp>
-
-#include <algorithm>
 
 std::vector<char> Renderer2D::readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -129,14 +128,15 @@ void Renderer2D::createGraphicsPipeline() {
         fragShaderStageInfo
     };
 
-    const auto bindingDescription = Vertex::getBindingDescription();
-    const auto attributeDescriptions = Vertex::getAttributeDescriptions();
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputInfo.vertexBindingDescriptionCount = 1;
     vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.vertexAttributeDescriptionCount =
+        static_cast<uint32_t>(attributeDescriptions.size());
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -186,11 +186,9 @@ void Renderer2D::createGraphicsPipeline() {
         VK_COLOR_COMPONENT_A_BIT;
 
     colorBlendAttachment.blendEnable = VK_TRUE;
-
     colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
     colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-
     colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
@@ -202,7 +200,7 @@ void Renderer2D::createGraphicsPipeline() {
     colorBlending.pAttachments = &colorBlendAttachment;
 
     VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(PushConstantData);
 
@@ -249,7 +247,7 @@ void Renderer2D::createGraphicsPipeline() {
 }
 
 void Renderer2D::createVertexBuffer() {
-    const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -285,7 +283,7 @@ void Renderer2D::createVertexBuffer() {
 }
 
 void Renderer2D::createIndexBuffer() {
-    const VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -320,59 +318,6 @@ void Renderer2D::createIndexBuffer() {
     vkUnmapMemory(logicalDevice, indexBufferMemory);
 }
 
-void Renderer2D::renderScene(
-    VkCommandBuffer commandBuffer,
-    const Scene2D& scene,
-    const std::vector<VkDescriptorSet>& descriptorSets
-) const {
-    beginRender(commandBuffer);
-
-    std::vector<const GameObject*> sortedObjects;
-    sortedObjects.reserve(scene.objects.size());
-
-    for (const auto& object : scene.objects) {
-        if (!object.active) {
-            continue;
-        }
-
-        auto spriteIt = scene.sprites.find(object.id);
-        if (spriteIt == scene.sprites.end()) {
-            continue;
-        }
-
-        if (!spriteIt->second.visible) {
-            continue;
-        }
-
-        if (spriteIt->second.textureIndex >= descriptorSets.size()) {
-            continue;
-        }
-
-        sortedObjects.push_back(&object);
-    }
-
-    std::sort(
-        sortedObjects.begin(),
-        sortedObjects.end(),
-        [&scene](const GameObject* a, const GameObject* b) {
-            const auto& spriteA = scene.sprites.at(a->id);
-            const auto& spriteB = scene.sprites.at(b->id);
-
-            if (spriteA.layer != spriteB.layer) {
-                return spriteA.layer < spriteB.layer;
-            }
-
-            return spriteA.orderInLayer < spriteB.orderInLayer;
-        }
-    );
-
-    for (const GameObject* object : sortedObjects) {
-        const auto& sprite = scene.sprites.at(object->id);
-        VkDescriptorSet descriptorSet = descriptorSets[sprite.textureIndex];
-        drawSprite(commandBuffer, descriptorSet, object->transform);
-    }
-}
-
 void Renderer2D::beginRender(VkCommandBuffer commandBuffer) const {
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
@@ -385,7 +330,8 @@ void Renderer2D::beginRender(VkCommandBuffer commandBuffer) const {
 void Renderer2D::drawSprite(
     VkCommandBuffer commandBuffer,
     VkDescriptorSet descriptorSet,
-    const Transform2D& transform
+    const Transform2D& transform,
+    const glm::vec4& color
 ) const {
     vkCmdBindDescriptorSets(
         commandBuffer,
@@ -400,11 +346,12 @@ void Renderer2D::drawSprite(
 
     PushConstantData pushData{};
     pushData.model = buildModelMatrix(transform);
+    pushData.color = color;
 
     vkCmdPushConstants(
         commandBuffer,
         pipelineLayout,
-        VK_SHADER_STAGE_VERTEX_BIT,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         0,
         sizeof(PushConstantData),
         &pushData
@@ -418,4 +365,47 @@ void Renderer2D::drawSprite(
         0,
         0
     );
+}
+
+void Renderer2D::renderScene(
+    VkCommandBuffer commandBuffer,
+    const Scene2D& scene,
+    const std::vector<VkDescriptorSet>& descriptorSets
+) const {
+    beginRender(commandBuffer);
+
+    std::vector<const GameObject*> sortedObjects;
+
+    for (const auto& objectPtr : scene.getObjects()) {
+        if (!objectPtr || !objectPtr->active || !objectPtr->visible) {
+            continue;
+        }
+
+        if (!objectPtr->sprite.has_value()) {
+            continue;
+        }
+
+        if (objectPtr->sprite->textureIndex >= descriptorSets.size()) {
+            continue;
+        }
+
+        sortedObjects.push_back(objectPtr.get());
+    }
+
+    std::sort(
+        sortedObjects.begin(),
+        sortedObjects.end(),
+        [](const GameObject* a, const GameObject* b) {
+            if (a->sprite->layer != b->sprite->layer) {
+                return a->sprite->layer < b->sprite->layer;
+            }
+
+            return a->sprite->orderInLayer < b->sprite->orderInLayer;
+        }
+    );
+
+    for (const GameObject* object : sortedObjects) {
+        VkDescriptorSet descriptorSet = descriptorSets[object->sprite->textureIndex];
+        drawSprite(commandBuffer, descriptorSet, object->transform, object->sprite->color);
+    }
 }
