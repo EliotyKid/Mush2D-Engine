@@ -98,6 +98,10 @@ void Renderer2D::cleanup() {
     }
 }
 
+void Renderer2D::setPixelArtSettings(const PixelArtSettings& settings) {
+    pixelArtSettings = settings;
+}
+
 glm::mat4 Renderer2D::buildModelMatrix(const Transform2D& transform) const {
     glm::mat4 model(1.0f);
     model = glm::translate(model, glm::vec3(transform.position, 0.0f));

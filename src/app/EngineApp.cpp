@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 #include <utility>
+#include <vulkan/vulkan_core.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -66,6 +67,12 @@ void EngineApp::initVulkan() {
         renderPass,
         descriptorSetLayout
     );
+
+    renderer2D.setPixelArtSettings(Renderer2D::PixelArtSettings{
+        .enabled = true,
+        .pixelsPerUnit = 32.0f,
+        .snapPosition = true
+    });
 
     createUniformBuffer();
     createDescriptorPool();
@@ -1350,18 +1357,18 @@ EngineApp::TextureResource EngineApp::createTextureResource(const char* path) {
 
     VkSamplerCreateInfo samplerInfo{};
     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerInfo.magFilter = VK_FILTER_LINEAR;
-    samplerInfo.minFilter = VK_FILTER_LINEAR;
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.magFilter = VK_FILTER_NEAREST;
+    samplerInfo.minFilter = VK_FILTER_NEAREST;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerInfo.anisotropyEnable = VK_FALSE;
     samplerInfo.maxAnisotropy = 1.0f;
     samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     samplerInfo.unnormalizedCoordinates = VK_FALSE;
     samplerInfo.compareEnable = VK_FALSE;
     samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     samplerInfo.mipLodBias = 0.0f;
     samplerInfo.minLod = 0.0f;
     samplerInfo.maxLod = 0.0f;

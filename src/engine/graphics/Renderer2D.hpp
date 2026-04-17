@@ -51,7 +51,13 @@ public:
     struct PushConstantData {
         glm::mat4 model{1.0f};
         glm::vec4 color{1.0f};
-        glm::vec4 uvRect{0.0f, 0.0f, 1.0f, 1.0f}; // x, y, w, h
+        glm::vec4 uvRect{0.0f, 0.0f, 1.0f, 1.0f};
+    };
+
+    struct PixelArtSettings {
+        bool enabled = true;
+        float pixelsPerUnit = 32.0f;
+        bool snapPosition = true;
     };
 
 public:
@@ -83,6 +89,8 @@ public:
         const std::vector<VkDescriptorSet>& descriptorSets
     ) const;
 
+    void setPixelArtSettings(const PixelArtSettings& settings);
+
 private:
     VkDevice logicalDevice = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
@@ -98,6 +106,8 @@ private:
 
     VkBuffer indexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+
+    PixelArtSettings pixelArtSettings{};
 
     const std::vector<Vertex> vertices = {
         {{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
@@ -121,4 +131,5 @@ private:
     void createIndexBuffer();
 
     glm::mat4 buildModelMatrix(const Transform2D& transform) const;
+    glm::vec2 snapWorldPosition(const glm::vec2& position) const;
 };
