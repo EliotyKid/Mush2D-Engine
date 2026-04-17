@@ -16,6 +16,7 @@ add_executable(Mush2DEngine
     src/platform/GlfwInput.cpp
     src/world/Collision.cpp
     src/gameplay/Spawn.cpp
+    src/gameplay/SandboxScene.cpp
 )
 
 target_include_directories(Mush2DEngine PRIVATE

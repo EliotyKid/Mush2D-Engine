@@ -11,6 +11,7 @@
 #include "../world/Collision.hpp"
 #include "../world/Scene2D.hpp"
 #include "../gameplay/Spawn.hpp"
+#include "../gameplay/SandboxScene.hpp"
 
 #include <cstdint>
 #include <optional>
