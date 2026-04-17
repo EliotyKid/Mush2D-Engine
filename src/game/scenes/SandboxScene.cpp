@@ -14,7 +14,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
         {-4.5f, 0.0f},
         {0.8f, 4.0f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 0,
             .orderInLayer = 0,
             .size = {0.8f, 4.0f},
@@ -28,7 +27,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
         {4.5f, 0.0f},
         {0.8f, 4.0f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 0,
             .orderInLayer = 1,
             .size = {0.8f, 4.0f},
@@ -42,7 +40,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
         {0.0f, 2.5f},
         {8.0f, 0.8f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 0,
             .orderInLayer = 2,
             .size = {8.0f, 0.8f},
@@ -56,7 +53,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
         {0.0f, -2.5f},
         {8.0f, 0.8f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 0,
             .orderInLayer = 3,
             .size = {8.0f, 0.8f},
@@ -70,7 +66,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
         {1.5f, 0.0f},
         {1.0f, 1.0f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 1,
             .orderInLayer = 0,
             .size = {1.0f, 1.0f},
@@ -83,7 +78,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
         scene,
         {-1.5f, 1.2f},
         CheckpointObject::Config{
-            .textureIndex = 1,
             .layer = 1,
             .orderInLayer = 1,
             .triggerSize = {1.2f, 1.2f},
@@ -97,7 +91,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
         {2.8f, 1.2f},
         {-3.0f, -1.5f},
         TeleportObject::Config{
-            .textureIndex = 1,
             .layer = 1,
             .orderInLayer = 2,
             .triggerSize = {1.2f, 1.2f},
@@ -130,7 +123,6 @@ ISceneDefinition::BuildResult SandboxScene::build(
             .dashSpeed = 6.5f,
             .dashDuration = 0.18f,
             .hitDuration = 0.35f,
-            .textureIndex = 1,
             .colliderSize = {0.6f, 0.6f},
             .layer = 2,
             .orderInLayer = 0,

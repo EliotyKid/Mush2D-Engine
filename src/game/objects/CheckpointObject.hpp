@@ -1,5 +1,8 @@
 #pragma once
 
+#include "../assets/GameAssets.hpp"
+#include "../assets/GameSpriteId.hpp"
+
 #include "PlayerObject.hpp"
 
 #include "../../engine/world/GameObject.hpp"
@@ -8,7 +11,6 @@
 class CheckpointObject : public GameObject {
 public:
     struct Config {
-        uint32_t textureIndex = 1;
         int layer = 1;
         int orderInLayer = 1;
 
@@ -29,11 +31,13 @@ public:
         addTag("checkpoint");
 
         sprite = SpriteData{
-            .textureIndex = config.textureIndex,
+            .textureIndex = 0,
             .layer = config.layer,
             .orderInLayer = config.orderInLayer,
             .color = config.color
         };
+
+        setSprite(scene, GameSpriteId::Checkpoint);
 
         collider = ColliderData{
             .size = config.triggerSize,
@@ -71,4 +75,13 @@ public:
 
 private:
     Config config{};
+
+private:
+    void setSprite(Scene2D& scene, GameSpriteId spriteId) {
+        if (!sprite.has_value() || !scene.gameAssets) {
+            return;
+        }
+
+        sprite->textureIndex = scene.gameAssets->sprites.get(spriteId).textureIndex;
+    }
 };

@@ -16,6 +16,7 @@
 #include "../game/scenes/TestScene.hpp"
 #include "../engine/scenes/SceneRegistry.hpp"
 #include "../engine/scenes/SceneId.hpp"
+#include "../game/assets/GameAssets.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -123,6 +124,8 @@ private:
 
     SceneTransitionData pendingTransitionData{};
     SceneTransitionData currentSceneTransitionData{};
+
+    GameAssets gameAssets;
 
 private:
     void initWindow();

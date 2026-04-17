@@ -7,7 +7,12 @@
 #include <type_traits>
 #include <vector>
 
+struct GameAssets;
+
 class Scene2D {
+public:
+    GameAssets* gameAssets = nullptr;
+
 public:
     template<typename TObject, typename... Args>
     TObject& createObject(Args&&... args) {

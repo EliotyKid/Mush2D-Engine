@@ -1,12 +1,14 @@
 #pragma once
 
+#include "../assets/GameAssets.hpp"
+#include "../assets/GameSpriteId.hpp"
+
 #include "../../engine/world/GameObject.hpp"
 #include "../../engine/world/Scene2D.hpp"
 
 class WallObject : public GameObject {
 public:
     struct Config {
-        uint32_t textureIndex = 0;
         int layer = 0;
         int orderInLayer = 0;
 
@@ -24,11 +26,13 @@ public:
         addTag("wall");
 
         sprite = SpriteData{
-            .textureIndex = config.textureIndex,
+            .textureIndex = 0,
             .layer = config.layer,
             .orderInLayer = config.orderInLayer,
             .color = glm::vec4(1.0f)
         };
+
+        setSprite(scene, GameSpriteId::Wall);
 
         collider = ColliderData{
             .size = config.size,
@@ -40,4 +44,13 @@ public:
 
 private:
     Config config{};
+
+private:
+    void setSprite(Scene2D& scene, GameSpriteId spriteId) {
+        if (!sprite.has_value() || !scene.gameAssets) {
+            return;
+        }
+
+        sprite->textureIndex = scene.gameAssets->sprites.get(spriteId).textureIndex;
+    }
 };

@@ -70,6 +70,10 @@ void EngineApp::initVulkan() {
     createUniformBuffer();
     createDescriptorPool();
     loadTextures();
+
+    gameAssets.registerDefaults();
+    scene.gameAssets = &gameAssets;
+    
     commandBuffers = createCommandBuffers();
     createSyncObjects();
 

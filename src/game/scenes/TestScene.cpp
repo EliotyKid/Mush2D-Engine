@@ -16,7 +16,6 @@ ISceneDefinition::BuildResult TestScene::build(
         {0.0f, 2.8f},
         {10.0f, 0.6f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 0,
             .orderInLayer = 0,
             .size = {10.0f, 0.6f},
@@ -30,7 +29,6 @@ ISceneDefinition::BuildResult TestScene::build(
         {0.0f, -2.8f},
         {10.0f, 0.6f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 0,
             .orderInLayer = 1,
             .size = {10.0f, 0.6f},
@@ -44,7 +42,6 @@ ISceneDefinition::BuildResult TestScene::build(
         {-5.0f, 0.0f},
         {0.6f, 6.0f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 0,
             .orderInLayer = 2,
             .size = {0.6f, 6.0f},
@@ -58,7 +55,6 @@ ISceneDefinition::BuildResult TestScene::build(
         {5.0f, 0.0f},
         {0.6f, 6.0f},
         WallObject::Config{
-            .textureIndex = 0,
             .layer = 0,
             .orderInLayer = 3,
             .size = {0.6f, 6.0f},
@@ -103,7 +99,6 @@ ISceneDefinition::BuildResult TestScene::build(
         scene,
         {0.0f, 1.8f},
         CheckpointObject::Config{
-            .textureIndex = 1,
             .layer = 1,
             .orderInLayer = 2,
             .triggerSize = {1.2f, 1.2f},
@@ -117,7 +112,6 @@ ISceneDefinition::BuildResult TestScene::build(
         {0.0f, -1.8f},
         {0.0f, 0.0f},
         TeleportObject::Config{
-            .textureIndex = 1,
             .layer = 1,
             .orderInLayer = 3,
             .triggerSize = {1.2f, 1.2f},
@@ -134,7 +128,6 @@ ISceneDefinition::BuildResult TestScene::build(
             .dashSpeed = 7.0f,
             .dashDuration = 0.18f,
             .hitDuration = 0.35f,
-            .textureIndex = 1,
             .colliderSize = {0.6f, 0.6f},
             .layer = 2,
             .orderInLayer = 0,

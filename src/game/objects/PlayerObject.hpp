@@ -1,5 +1,8 @@
 #pragma once
 
+#include "../assets/GameAssets.hpp"
+#include "../assets/GameSpriteId.hpp"
+
 #include "../../engine/platform/InputState.hpp"
 #include "../../engine/world/Collision.hpp"
 #include "../../engine/world/GameObject.hpp"
@@ -16,7 +19,6 @@ public:
         float dashDuration = 0.18f;
         float hitDuration = 0.35f;
 
-        uint32_t textureIndex = 1;
         glm::vec2 colliderSize{0.6f, 0.6f};
         int layer = 2;
         int orderInLayer = 0;
@@ -33,22 +35,23 @@ public:
 
 public:
     PlayerObject() = default;
-
     explicit PlayerObject(const Config& config)
         : config(config) {}
 
     void onCreate(Scene2D& scene) override {
         name = "Player";
-        addTag("Player");
+        addTag("player");
 
         transform.scale = config.initialScale;
 
         sprite = SpriteData{
-            .textureIndex = config.textureIndex,
+            .textureIndex = 0,
             .layer = config.layer,
             .orderInLayer = config.orderInLayer,
             .color = glm::vec4(0.85f, 0.85f, 0.85f, 1.0f)
         };
+
+        setSprite(scene, GameSpriteId::PlayerIdle);
 
         collider = ColliderData{
             .size = config.colliderSize,
@@ -120,7 +123,7 @@ public:
             transform.scale.x = std::abs(transform.scale.x);
         }
 
-        updateVisuals();
+        updateVisuals(scene);
     }
 
 public:
@@ -171,6 +174,14 @@ private:
     std::vector<State> history;
 
 private:
+    void setSprite(Scene2D& scene, GameSpriteId spriteId) {
+        if (!sprite.has_value() || !scene.gameAssets) {
+            return;
+        }
+
+        sprite->textureIndex = scene.gameAssets->sprites.get(spriteId).textureIndex;
+    }
+
     void changeState(State newState) {
         previousState = state;
         state = newState;
@@ -226,25 +237,29 @@ private:
         }
     }
 
-    void updateVisuals() {
+    void updateVisuals(Scene2D& scene) {
         if (!sprite.has_value()) {
             return;
         }
 
         switch (state) {
             case State::Idle:
+                setSprite(scene, GameSpriteId::PlayerIdle);
                 sprite->color = glm::vec4(0.85f, 0.85f, 0.85f, 1.0f);
                 break;
 
             case State::Walk:
+                setSprite(scene, GameSpriteId::PlayerWalk);
                 sprite->color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
                 break;
 
             case State::Dash:
+                setSprite(scene, GameSpriteId::PlayerDash);
                 sprite->color = glm::vec4(0.6f, 0.9f, 1.0f, 1.0f);
                 break;
 
             case State::Hit:
+                setSprite(scene, GameSpriteId::PlayerHit);
                 sprite->color = glm::vec4(1.0f, 0.45f, 0.45f, 1.0f);
                 break;
         }

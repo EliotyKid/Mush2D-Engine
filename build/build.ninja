@@ -92,6 +92,14 @@ build CMakeFiles/Mush2DEngine.dir/src/engine/world/Collision.cpp.o: CXX_COMPILER
   OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/engine/world
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
+build CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/engine/scenes/SceneRegistry.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o.d
+  FLAGS = -std=gnu++20
+  INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
+  OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/engine/scenes
+  TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
+
 build CMakeFiles/Mush2DEngine.dir/src/game/spawners/Spawn.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/game/spawners/Spawn.cpp || cmake_object_order_depends_target_Mush2DEngine
   DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/game/spawners/Spawn.cpp.o.d
   FLAGS = -std=gnu++20
@@ -116,12 +124,12 @@ build CMakeFiles/Mush2DEngine.dir/src/game/scenes/TestScene.cpp.o: CXX_COMPILER_
   OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/game/scenes
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
-build CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/engine/scenes/SceneRegistry.cpp || cmake_object_order_depends_target_Mush2DEngine
-  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o.d
+build CMakeFiles/Mush2DEngine.dir/src/game/assets/GameAssets.cpp.o: CXX_COMPILER__Mush2DEngine_unscanned_ /home/elioty/Documents/Work/mush2dengine/src/game/assets/GameAssets.cpp || cmake_object_order_depends_target_Mush2DEngine
+  DEP_FILE = CMakeFiles/Mush2DEngine.dir/src/game/assets/GameAssets.cpp.o.d
   FLAGS = -std=gnu++20
   INCLUDES = -I/home/elioty/Documents/Work/mush2dengine/external -I/home/elioty/Documents/Work/mush2dengine/src -I/home/elioty/Documents/Work/mush2dengine/src/app -I/home/elioty/Documents/Work/mush2dengine/src/engine -I/home/elioty/Documents/Work/mush2dengine/src/engine/platform -I/home/elioty/Documents/Work/mush2dengine/src/engine/graphics -I/home/elioty/Documents/Work/mush2dengine/src/engine/world -I/home/elioty/Documents/Work/mush2dengine/src/game -I/home/elioty/Documents/Work/mush2dengine/src/game/scenes -I/home/elioty/Documents/Work/mush2dengine/src/game/objects -I/home/elioty/Documents/Work/mush2dengine/src/game/spawners
   OBJECT_DIR = CMakeFiles/Mush2DEngine.dir
-  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/engine/scenes
+  OBJECT_FILE_DIR = CMakeFiles/Mush2DEngine.dir/src/game/assets
   TARGET_SUPPORT_DIR = CMakeFiles/Mush2DEngine.dir
 
 
@@ -132,7 +140,7 @@ build CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o: CXX_COM
 #############################################
 # Link the executable Mush2DEngine
 
-build Mush2DEngine: CXX_EXECUTABLE_LINKER__Mush2DEngine_ CMakeFiles/Mush2DEngine.dir/src/main.cpp.o CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Renderer2D.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Camera2D.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/platform/GlfwInput.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/world/Collision.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/spawners/Spawn.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/scenes/SandboxScene.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/scenes/TestScene.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o | /usr/lib/libglfw.so.3.4 /usr/lib/libvulkan.so
+build Mush2DEngine: CXX_EXECUTABLE_LINKER__Mush2DEngine_ CMakeFiles/Mush2DEngine.dir/src/main.cpp.o CMakeFiles/Mush2DEngine.dir/src/app/EngineApp.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Renderer2D.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/graphics/Camera2D.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/platform/GlfwInput.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/world/Collision.cpp.o CMakeFiles/Mush2DEngine.dir/src/engine/scenes/SceneRegistry.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/spawners/Spawn.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/scenes/SandboxScene.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/scenes/TestScene.cpp.o CMakeFiles/Mush2DEngine.dir/src/game/assets/GameAssets.cpp.o | /usr/lib/libglfw.so.3.4 /usr/lib/libvulkan.so
   DEP_FILE = CMakeFiles/Mush2DEngine.dir/link.d
   LINK_FLAGS = -Wl,--dependency-file=CMakeFiles/Mush2DEngine.dir/link.d
   LINK_LIBRARIES = /usr/lib/libglfw.so.3.4  /usr/lib/libvulkan.so

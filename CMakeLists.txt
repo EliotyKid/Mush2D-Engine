@@ -16,11 +16,12 @@ add_executable(Mush2DEngine
     src/engine/graphics/Camera2D.cpp
     src/engine/platform/GlfwInput.cpp
     src/engine/world/Collision.cpp
+    src/engine/scenes/SceneRegistry.cpp
 
     src/game/spawners/Spawn.cpp
     src/game/scenes/SandboxScene.cpp
     src/game/scenes/TestScene.cpp
-    src/engine/scenes/SceneRegistry.cpp
+    src/game/assets/GameAssets.cpp
 )
 
 target_include_directories(Mush2DEngine PRIVATE
