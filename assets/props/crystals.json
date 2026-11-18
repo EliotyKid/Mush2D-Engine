@@ -1,0 +1,140 @@
+{
+ "frames": {
+  "crystal 0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 100,
+   "pivot": {
+    "x": 16,
+    "y": 31
+   }
+  },
+  "crystal 1": {
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 100,
+   "pivot": {
+    "x": 16,
+    "y": 31
+   }
+  },
+  "crystal 2": {
+   "frame": {
+    "x": 64,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 100,
+   "pivot": {
+    "x": 16,
+    "y": 31
+   }
+  },
+  "crystal 3": {
+   "frame": {
+    "x": 96,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 100,
+   "pivot": {
+    "x": 16,
+    "y": 31
+   }
+  },
+  "halo 0": {
+   "frame": {
+    "x": 128,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 100,
+   "pivot": {
+    "x": 16,
+    "y": 16
+   }
+  }
+ },
+ "meta": {
+  "app": "tools/gen_showcase.py",
+  "image": "crystals.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 160,
+   "h": 32
+  },
+  "scale": "1",
+  "frameTags": []
+ }
+}

@@ -2,12 +2,17 @@
 
 #include "engine/core/Paths.hpp"
 #include "engine/world/Collision.hpp"
+#include "game/assets/GameAtlasId.hpp"
+#include "game/objects/CritterObject.hpp"
+#include "game/objects/PivotSprite.hpp"
 #include "game/objects/PlayerObject.hpp"
 #include "game/scenes/SceneRegistry.hpp"
+#include "game/spawners/Spawn.hpp"
 
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
@@ -17,36 +22,28 @@ void ShowcaseGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
     s.scene.userData = &gameAssets;
 
-    // Index order = GameAtlasId (Characters, Enemies, Environment).
     atlasMaterials.clear();
-    for (const char* name : {"characters", "enemies", "environment"}) {
-        atlasMaterials.push_back(s.materials.load(assetPath(std::string("assets/atlases/") + name + ".png")));
+    for (const char* path : GameAtlasId::ImagePaths) {
+        atlasMaterials.push_back(s.materials.load(assetPath(path)));
     }
-
-    loadScene(s, SceneId::Sandbox);
+    registerLevelEntities();
 
     Camera2D& camera = s.camera;
-    auto* player = s.scene.findFirstObjectOfType<PlayerObject>();
-    if (player) {
-        camera.position = player->transform.position;
-        playerObjectId = player->id;
-    }
-
     camera.size = 2.0f;
     camera.followEnabled = true;
-    camera.targetId = playerObjectId;
-    camera.followOffset = {0.0f, 0.0f};
+    camera.followOffset = {0.0f, 0.6f};
     camera.followSmoothness = 6.0f;
     camera.snapDistance = 0.001f;
     camera.boundsEnabled = true;
-    camera.bounds = Camera2D::WorldBounds{
-        -5.0f,
-         5.0f,
-        -3.0f,
-         3.0f
-    };
-}
 
+    loadScene(s, SceneId::Showcase);
+
+    // Debug (MUSH2D_CAMERA_X=<world x>): park the camera there, e.g. for parallax screenshots.
+    if (const char* camX = std::getenv("MUSH2D_CAMERA_X")) {
+        camera.followEnabled = false;
+        camera.position.x = static_cast<float>(std::atof(camX));
+    }
+}
 void ShowcaseGame::update(EngineServices& s, float deltaTime) {
     Scene2D& scene = s.scene;
 
@@ -94,6 +91,7 @@ std::pair<Material, glm::vec4> ShowcaseGame::lookupAtlasFrame(std::uint32_t atla
 void ShowcaseGame::submitRenderData(EngineServices& s) {
     SpriteBatch& batch = s.renderer.sprites();
     batch.clear();
+    levelLoader.appendStatic(batch);
     appendSceneSprites(s.scene, batch, [this](std::uint32_t atlasIndex, const std::string& frameName) {
         return lookupAtlasFrame(atlasIndex, frameName);
     });
@@ -118,15 +116,19 @@ void ShowcaseGame::submitRenderData(EngineServices& s) {
         }
     }
 
-    // Test light: warm, slightly flickering, above and in front of the player.
     LightList& lights = s.renderer.lights();
     lights.clear();
+    if (currentSceneId == SceneId::Showcase) {
+        submitShowcaseExtras(s);
+        return;
+    }
+
+    // Test light: warm, slightly flickering, above and in front of the player.
     if (const GameObject* player = s.scene.findObject(playerObjectId)) {
         glm::vec2 p = player->transform.position + glm::vec2(0.6f, 0.8f);
         lights.add(GpuLight{{p.x, p.y, 1.0f, 5.0f}, {1.0f, 0.8f, 0.55f, 2.5f}, {0.0f, 0.08f, 7.0f, 0.0f}});
     }
 }
-
 void ShowcaseGame::shutdown(EngineServices& s) {
     s.scene.clear();
     s.scene.userData = nullptr;
@@ -167,15 +169,14 @@ void ShowcaseGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTran
     }
 
     activeTriggerOverlaps.clear();
+    std::fprintf(stderr, "Scene: %s\n", activeSceneDefinition ? activeSceneDefinition->getSceneName() : "Showcase");
 }
 
 void ShowcaseGame::reloadCurrentScene(EngineServices& s) {
     Scene2D& scene = s.scene;
-    if (!activeSceneDefinition) {
-        throw std::runtime_error("Nao existe cena ativa para recarregar.");
+    if (activeSceneDefinition) {
+        activeSceneDefinition->onReload(scene);
     }
-
-    activeSceneDefinition->onReload(scene);
     loadScene(s, currentSceneId, currentSceneTransitionData);
 }
 
@@ -186,9 +187,9 @@ void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
     if (input.isKeyDown(GLFW_KEY_TAB)) {
         if (!nextScenePressed) {
             SceneId nextScene =
-                (currentSceneId == SceneId::Sandbox)
-                ? SceneId::Test
-                : SceneId::Sandbox;
+                currentSceneId == SceneId::Showcase ? SceneId::Sandbox
+                : currentSceneId == SceneId::Sandbox ? SceneId::Test
+                : SceneId::Showcase;
 
             SceneTransitionData transitionData{};
             transitionData.reason = "TabSceneSwitch";
@@ -352,6 +353,16 @@ void ShowcaseGame::processTriggerOverlaps(EngineServices& s) {
 void ShowcaseGame::setupInitialScene(EngineServices& s) {
     Scene2D& scene = s.scene;
     activeTriggerOverlaps.clear();
+    levelLoader.clear();
+    levelLights.clear();
+    crystals.clear();
+    s.renderer.settings() = FrameSettings{};
+    s.camera.bounds = Camera2D::WorldBounds{-5.0f, 5.0f, -3.0f, 3.0f};
+
+    if (currentSceneId == SceneId::Showcase) {
+        loadShowcaseLevel(s);
+        return;
+    }
 
     if (!activeSceneDefinition) {
         throw std::runtime_error("Nenhuma definicao de cena ativa foi configurada.");
@@ -363,3 +374,148 @@ void ShowcaseGame::setupInitialScene(EngineServices& s) {
     playerObjectId = result.playerObjectId;
 }
 
+namespace {
+constexpr glm::vec3 CrystalGlow[4] = {{0.0f, 1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}, {0.0f, 0.9f, 1.0f}, {1.0f, 0.16f, 0.86f}};
+
+float numberField(const LdtkEntity& e, const char* key, float fallback) {
+    auto it = e.fields.find(key);
+    return it != e.fields.end() && it->is_number() ? it->get<float>() : fallback;
+}
+
+std::string stringField(const LdtkEntity& e, const char* key, const std::string& fallback) {
+    auto it = e.fields.find(key);
+    return it != e.fields.end() && it->is_string() ? it->get<std::string>() : fallback;
+}
+
+bool boolField(const LdtkEntity& e, const char* key) {
+    auto it = e.fields.find(key);
+    return it != e.fields.end() && it->is_boolean() && it->get<bool>();
+}
+
+// "#RRGGBB" -> linear-ish 0..1 (lights are HDR intensities, so plain /255 is fine).
+glm::vec3 colorField(const LdtkEntity& e, const char* key, glm::vec3 fallback) {
+    std::string hex = stringField(e, key, "");
+    unsigned rgb = 0;
+    if (hex.size() != 7 || hex[0] != '#' || std::sscanf(hex.c_str() + 1, "%6x", &rgb) != 1) return fallback;
+    return glm::vec3((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF) / 255.0f;
+}
+
+// Entities use pivot (0.5, 1): the bottom-centre of the box is where they stand.
+glm::vec2 bottomOf(const LdtkEntity& e, glm::vec2 centre) {
+    return centre - glm::vec2(0.0f, e.size.y / (2.0f * LdtkPixelsPerUnit));
+}
+}
+
+void ShowcaseGame::registerLevelEntities() {
+    levelLoader.registerEntity("PlayerStart", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        PlayerObject::Config c{};
+        c.movementMode = PlayerObject::Config::MovementMode::Platformer;
+        c.moveSpeed = 4.5f;
+        c.colliderSize = {0.6f, 1.6f};
+        c.gravity = -32.0f;  // apex = 11^2 / 64 = 1.89 units = 3.8 tiles
+        c.jumpSpeed = 11.0f;
+        c.jumpCutFactor = 0.5f;
+        c.maxFallSpeed = -18.0f;
+        PlayerObject& player = Spawn::player(s.scene, bottomOf(e, pos) + glm::vec2(0.0f, 0.5f * c.colliderSize.y), c);
+        player.setCheckpointPosition(player.transform.position);
+    });
+
+    levelLoader.registerEntity("Light", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices&) {
+        glm::vec3 color = colorField(e, "color", glm::vec3(1.0f, 0.76f, 0.48f));
+        levelLights.push_back(GpuLight{
+            {pos.x, pos.y, numberField(e, "height", 1.5f), numberField(e, "radius", 6.0f)},
+            {color, numberField(e, "intensity", 2.0f)},
+            {numberField(e, "depth", 0.0f), numberField(e, "flicker", 0.0f), 5.0f, 0.0f}});
+    });
+
+    levelLoader.registerEntity("Crystal", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices&) {
+        int variant = static_cast<int>(numberField(e, "variant", 0.0f));
+        crystals.push_back({bottomOf(e, pos), std::clamp(variant, 0, 3)});
+    });
+
+    levelLoader.registerEntity("Prop", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        std::string frameName = stringField(e, "frame", "");
+        const TextureAtlas& atlas = gameAssets.getAtlasByTextureIndex(GameAtlasId::KaaProps);
+        if (!atlas.hasFrame(frameName)) {
+            std::fprintf(stderr, "Showcase: prop frame '%s' not found, ignored\n", frameName.c_str());
+            return;
+        }
+        float depth = e.fields.contains("depth") ? numberField(e, "depth", e.depth) : e.depth;
+        GameObject& prop = s.scene.createObject<GameObject>();
+        prop.name = "Prop";
+        prop.transform.position = bottomOf(e, pos);
+        // Foreground props read as dark silhouettes, as in Ori.
+        glm::vec4 color = depth < 0.0f ? glm::vec4(0.32f, 0.36f, 0.42f, 1.0f) : glm::vec4(1.0f);
+        prop.sprite = SpriteData{.atlasTextureIndex = GameAtlasId::KaaProps, .frameName = frameName, .layer = 1,
+                                 .color = color, .depth = depth, .parallax = e.parallax};
+        placeFrameAtPivot(prop, atlas.getFrame(frameName), {0.0f, 0.0f}, boolField(e, "flipX"));
+    });
+
+    levelLoader.registerEntity("Critter", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        CritterObject& critter = s.scene.createObject<CritterObject>(
+            GameAtlasId::KaaAnimals, stringField(e, "anim", "fox_idle"), boolField(e, "flipX"));
+        critter.transform.position = bottomOf(e, pos);
+    });
+}
+
+void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
+    s.scene.clear();
+    LdtkLevel level = loadLdtkLevel(sourceAssetPath("assets/levels/showcase.ldtk"), "Showcase");
+    levelLoader.load(level, s, s.materials);
+
+    glm::vec2 size = glm::vec2(level.pxSize) / LdtkPixelsPerUnit;
+    s.camera.bounds = Camera2D::WorldBounds{0.0f, size.x, 0.0f, size.y};
+
+    FrameSettings& fs = s.renderer.settings();
+    fs.ambientColor = {0.4f, 0.5f, 0.66f};
+    fs.ambientIntensity = 0.6f;
+    fs.fogColor = {0.18f, 0.4f, 0.5f};
+    fs.saturation = 1.3f;
+    fs.exposure = 1.1f;
+    fs.fogDensity = 0.05f;
+    fs.bloomThreshold = 0.9f;
+    fs.bloomIntensity = 0.7f;
+}
+
+void ShowcaseGame::submitShowcaseExtras(EngineServices& s) {
+    SpriteBatch& batch = s.renderer.sprites();
+    LightList& lights = s.renderer.lights();
+    for (const GpuLight& light : levelLights) lights.add(light);
+
+    const glm::vec4 haloUv = lookupAtlasFrame(GameAtlasId::Crystals, "halo 0").second; // black in crystals_e
+    for (const Crystal& c : crystals) {
+        auto [material, uv] = lookupAtlasFrame(GameAtlasId::Crystals, "crystal " + std::to_string(c.variant));
+        if (uv.z <= 0.0f) continue;
+        const glm::vec3 glow = CrystalGlow[c.variant];
+        const glm::vec2 centre = c.anchor + glm::vec2(0.0f, 15.0f / ArtPixelsPerUnit); // pivot (16, 31) of a 32 px cell
+
+        SpriteInstance inst{};
+        inst.position = centre;
+        inst.size = {1.0f, 1.0f};
+        inst.uvRect = uv;
+        inst.color = glm::vec4(1.0f);
+        inst.depth = 0.1f; // just behind the player
+        inst.parallax = {1.0f, 1.0f};
+        inst.albedo = material.albedo; inst.normal = material.normal;
+        inst.emissive = material.emissive; inst.mask = material.mask;
+        inst.flags = SpriteFlagNearest;
+        batch.add(inst);
+
+        if (haloUv.z > 0.0f) {
+            SpriteInstance halo = inst;
+            halo.size = {2.8f, 2.8f};
+            halo.uvRect = haloUv;
+            halo.color = glm::vec4(glow * 0.45f, 1.0f);
+            halo.depth = 0.0f;
+            halo.flags = SpriteFlagAdditive; // LINEAR: soft
+            batch.add(halo);
+        }
+        lights.add(GpuLight{{centre.x, centre.y, 0.6f, 3.0f}, {glow, 1.4f}, {0.0f, 0.06f, 2.0f, 0.0f}});
+    }
+
+    // The player's own light: warm, radius 6, height 1.5, depth 0.
+    if (const GameObject* player = s.scene.findObject(playerObjectId)) {
+        glm::vec2 p = player->transform.position + glm::vec2(0.0f, 0.4f);
+        lights.add(GpuLight{{p.x, p.y, 1.5f, 6.0f}, {1.0f, 0.78f, 0.52f, 1.6f}, {0.0f, 0.04f, 6.0f, 0.0f}});
+    }
+}

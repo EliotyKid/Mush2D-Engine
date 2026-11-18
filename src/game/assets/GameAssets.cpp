@@ -3,6 +3,7 @@
 #include "engine/core/Paths.hpp"
 #include "engine/assets/AtlasLoader.hpp"
 
+#include <filesystem>
 #include <stdexcept>
 
 #include "GameAtlasId.hpp"
@@ -11,26 +12,14 @@ void GameAssets::registerDefaults() {
     atlases.clear();
     atlasNamesByTextureIndex.clear();
 
-    registerAtlas(
-        GameAtlasId::Characters,
-        "characters",
-        assetPath("assets/atlases/characters.json").string(),
-        assetPath("assets/atlases/characters.png").string()
-    );
-
-    registerAtlas(
-        GameAtlasId::Enemies,
-        "enemies",
-        assetPath("assets/atlases/enemies.json").string(),
-        assetPath("assets/atlases/enemies.png").string()
-    );
-
-    registerAtlas(
-        GameAtlasId::Environment,
-        "environment",
-        assetPath("assets/atlases/environment.json").string(),
-        assetPath("assets/atlases/environment.png").string()
-    );
+    static constexpr const char* names[GameAtlasId::Count] = {
+        "characters", "enemies", "environment", "kaa_player", "kaa_animals", "kaa_props", "crystals"};
+    for (std::uint32_t i = 0; i < GameAtlasId::Count; ++i) {
+        std::filesystem::path image = assetPath(GameAtlasId::ImagePaths[i]);
+        std::filesystem::path json = image;
+        json.replace_extension(".json");
+        registerAtlas(i, names[i], json.string(), image.string());
+    }
 
     registerSprite(GameSpriteId::PlayerIdle, GameAtlasId::Characters, "Sprite-0001 0.");
     registerSprite(GameSpriteId::PlayerWalk, GameAtlasId::Characters, "Sprite-0001 5.");
@@ -48,6 +37,11 @@ void GameAssets::registerDefaults() {
     registerAnimation(GameAnimationId::PlayerWalk, GameAtlasId::Characters, "player_walk");
     registerAnimation(GameAnimationId::PlayerDash, GameAtlasId::Characters, "player_dash");
     registerAnimation(GameAnimationId::PlayerHit, GameAtlasId::Characters, "player_hit");
+
+    registerAnimation(GameAnimationId::KaaIdle, GameAtlasId::KaaPlayer, "idle");
+    registerAnimation(GameAnimationId::KaaRun, GameAtlasId::KaaPlayer, "run");
+    registerAnimation(GameAnimationId::KaaJump, GameAtlasId::KaaPlayer, "jump");
+    registerAnimation(GameAnimationId::KaaFall, GameAtlasId::KaaPlayer, "fall");
 
     registerAnimation(GameAnimationId::SlimeIdle, GameAtlasId::Enemies, "slime_idle");
     registerAnimation(GameAnimationId::SlimeWalk, GameAtlasId::Enemies, "slime_walk");

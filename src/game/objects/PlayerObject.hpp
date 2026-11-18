@@ -3,12 +3,14 @@
 #include "game/assets/GameAnimationId.hpp"
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
+#include "game/objects/PivotSprite.hpp"
 
 #include "engine/world/Collision.hpp"
 #include "engine/world/GameObject.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/platform/InputState.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -26,6 +28,14 @@ public:
         int orderInLayer = 0;
 
         glm::vec2 initialScale{0.7f, 0.7f};
+
+        enum class MovementMode { TopDown, Platformer };
+        MovementMode movementMode = MovementMode::TopDown;
+        // Platformer only (world units / s). Releasing jump while rising multiplies velocity.y by jumpCutFactor.
+        float gravity = -30.0f;
+        float jumpSpeed = 11.0f;
+        float jumpCutFactor = 0.5f;
+        float maxFallSpeed = -18.0f;
     };
 
     enum class State {
@@ -70,11 +80,15 @@ public:
 
         checkpointPosition = transform.position;
 
-        currentAnimation = GameAnimationId::PlayerIdle;
+        currentAnimation = idleAnimation();
         currentFrameIndex = 0;
         currentFrameTimer = 0.0f;
 
-        playAnimation(scene, GameAnimationId::PlayerIdle, true);
+        if (platformer()) {
+            sprite->color = glm::vec4(1.0f);
+        }
+
+        playAnimation(scene, idleAnimation(), true);
         applyCurrentAnimationFrame(scene);
     }
 
@@ -98,9 +112,19 @@ public:
         if (input.hit.pressed) {
             hitRequested = true;
         }
+
+        if (input.jump.pressed || input.moveUp.pressed) {
+            jumpRequested = true;
+        }
+        jumpHeld = input.jump.down || input.moveUp.down;
     }
 
     void onStep(Scene2D& scene, float dt) override {
+        if (platformer()) {
+            stepPlatformer(scene, dt);
+            return;
+        }
+
         stateTime += dt;
         updateState();
 
@@ -164,6 +188,11 @@ public:
 
     void respawnAtCheckpoint() {
         transform.position = checkpointPosition;
+        velocity = glm::vec2(0.0f);
+    }
+
+    bool isGrounded() const {
+        return grounded;
     }
 
 private:
@@ -176,6 +205,10 @@ private:
     glm::vec2 inputDir{0.0f};
     bool dashRequested = false;
     bool hitRequested = false;
+    bool jumpRequested = false;
+    bool jumpHeld = false;
+    bool jumpWasHeld = false;
+    bool grounded = false;
 
     glm::vec2 checkpointPosition{0.0f, 0.0f};
 
@@ -186,6 +219,66 @@ private:
     float currentFrameTimer = 0.0f;
 
 private:
+    bool platformer() const {
+        return config.movementMode == Config::MovementMode::Platformer;
+    }
+
+    GameAnimationId idleAnimation() const {
+        return platformer() ? GameAnimationId::KaaIdle : GameAnimationId::PlayerIdle;
+    }
+
+    // Moves along one axis up to `delta`, stopping at contact (bisection). Returns true when blocked.
+    bool moveAxis(Scene2D& scene, int axis, float delta) {
+        glm::vec2 target = transform.position;
+        target[axis] += delta;
+        if (!Collision2D::collidesAtPosition(scene, id, target)) {
+            transform.position = target;
+            return false;
+        }
+        float lo = 0.0f, hi = 1.0f; // lo = free fraction, hi = blocked fraction
+        for (int i = 0; i < 10; ++i) {
+            float mid = 0.5f * (lo + hi);
+            glm::vec2 p = transform.position;
+            p[axis] += delta * mid;
+            (Collision2D::collidesAtPosition(scene, id, p) ? hi : lo) = mid;
+        }
+        transform.position[axis] += delta * lo;
+        return true;
+    }
+
+    void stepPlatformer(Scene2D& scene, float dt) {
+        grounded = Collision2D::collidesAtPosition(scene, id, transform.position + glm::vec2(0.0f, -0.02f));
+
+        velocity.x = inputDir.x * config.moveSpeed;
+        if (jumpRequested && grounded) {
+            velocity.y = config.jumpSpeed;
+            grounded = false;
+        }
+        jumpRequested = false;
+        if (jumpWasHeld && !jumpHeld && velocity.y > 0.0f) {
+            velocity.y *= config.jumpCutFactor; // variable jump: once, on release
+        }
+        jumpWasHeld = jumpHeld;
+        velocity.y = std::max(velocity.y + config.gravity * dt, config.maxFallSpeed);
+
+        if (moveAxis(scene, 0, velocity.x * dt)) velocity.x = 0.0f;
+        if (moveAxis(scene, 1, velocity.y * dt)) velocity.y = 0.0f;
+
+        if (inputDir.x != 0.0f) {
+            facingDir = {inputDir.x > 0.0f ? 1.0f : -1.0f, 0.0f};
+        }
+
+        GameAnimationId desired = GameAnimationId::KaaIdle;
+        if (!grounded) {
+            desired = velocity.y > 0.0f ? GameAnimationId::KaaJump : GameAnimationId::KaaFall;
+        } else if (inputDir.x != 0.0f) {
+            desired = GameAnimationId::KaaRun;
+        }
+        playAnimation(scene, desired, false);
+        updateAnimation(scene, dt);
+        applyCurrentAnimationFrame(scene); // facing may have changed without a frame change
+    }
+
     void setSpriteFrame(Scene2D& scene, std::uint32_t atlasTextureIndex, const std::string& frameName) {
         if (!sprite.has_value()) {
             return;
@@ -288,6 +381,16 @@ private:
 
         const AtlasAnimationFrame& frame = animation.frames[currentFrameIndex];
         setSpriteFrame(scene, animationEntry.atlasTextureIndex, frame.frameName);
+
+        if (platformer()) {
+            // Frame pivot (feet) on the collider bottom; size from the frame.
+            placeFrameAtPivot(*this, atlas.getFrame(frame.frameName), {0.0f, -0.5f * config.colliderSize.y},
+                              facingDir.x < 0.0f);
+        }
+    }
+
+    bool holdsLastFrame(GameAnimationId id) const {
+        return id == GameAnimationId::KaaJump || id == GameAnimationId::KaaFall;
     }
 
     void updateAnimation(Scene2D& scene, float dt) {
@@ -312,6 +415,7 @@ private:
         }
 
         currentFrameTimer += dt;
+        const bool looping = animation.looping && !holdsLastFrame(currentAnimation);
 
         while (true) {
             const AtlasAnimationFrame& frame = animation.frames[currentFrameIndex];
@@ -330,7 +434,7 @@ private:
             if (currentFrameIndex + 1 < animation.frames.size()) {
                 currentFrameIndex++;
             } else {
-                if (animation.looping) {
+                if (looping) {
                     currentFrameIndex = 0;
                 } else {
                     currentFrameIndex = animation.frames.size() - 1;
@@ -339,7 +443,7 @@ private:
 
             applyCurrentAnimationFrame(scene);
 
-            if (!animation.looping && currentFrameIndex == animation.frames.size() - 1) {
+            if (!looping && currentFrameIndex == animation.frames.size() - 1) {
                 break;
             }
         }

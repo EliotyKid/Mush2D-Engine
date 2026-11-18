@@ -6,6 +6,11 @@ enum class GameAnimationId {
     PlayerDash,
     PlayerHit,
 
+    KaaIdle,
+    KaaRun,
+    KaaJump,
+    KaaFall,
+
     SlimeIdle,
     SlimeWalk
 };

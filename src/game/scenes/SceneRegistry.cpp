@@ -7,6 +7,9 @@
 
 std::unique_ptr<ISceneDefinition> SceneRegistry::create(SceneId sceneId) {
     switch (sceneId) {
+        case SceneId::Showcase:
+            return nullptr; // built from LDtk by ShowcaseGame
+
         case SceneId::Sandbox:
             return std::make_unique<SandboxScene>();
 
