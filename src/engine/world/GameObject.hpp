@@ -1,11 +1,14 @@
 #pragma once
 
+#include "Component.hpp"
 #include "ObjectData.hpp"
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_set>
 #include <vector>
 
@@ -76,6 +79,38 @@ public:
         return tags.find(tag) != tags.end();
     }
 
+    // Attaches a component (onAttach runs now). The object must belong to a scene (call from onCreate or later).
+    template<typename T, typename... Args>
+    T& addComponent(Args&&... args) {
+        static_assert(std::is_base_of_v<Component, T>, "T precisa herdar de Component.");
+        auto component = std::make_unique<T>(std::forward<Args>(args)...);
+        T& ref = *component;
+        attach(std::move(component));
+        return ref;
+    }
+
+    // First component of type T, or nullptr. Still returns one marked by removeComponent until the next flush.
+    template<typename T>
+    T* getComponent() const {
+        for (const auto& c : components_) {
+            if (auto* casted = dynamic_cast<T*>(c.get())) return casted;
+        }
+        return nullptr;
+    }
+
+    // Deferred: stops stepping now, onDetach runs and the component is freed at the next flush.
+    template<typename T>
+    void removeComponent() {
+        for (const auto& c : components_) {
+            if (!c->removing_ && dynamic_cast<T*>(c.get())) {
+                markRemoved(*c);
+                return;
+            }
+        }
+    }
+
+    const std::vector<std::unique_ptr<Component>>& components() const { return components_; }
+
     bool pendingDestroy() const { return pendingDestroy_; }
 
     GameObjectId parent() const { return parent_; }
@@ -87,6 +122,11 @@ public:
 
 private:
     friend class Scene2D;
+    void attach(std::unique_ptr<Component> component); // Scene2D.cpp: needs the full Scene2D
+    void markRemoved(Component& component);
+
+    Scene2D* scene_ = nullptr; // set when the scene takes the object
+    std::vector<std::unique_ptr<Component>> components_;
     bool pendingDestroy_ = false;
     std::uint64_t creationSeq_ = 0; // tie-break for updateOrder
     GameObjectId parent_ = InvalidGameObjectId;

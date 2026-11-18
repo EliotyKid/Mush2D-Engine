@@ -39,6 +39,8 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
 
         SpriteInstance inst{};
         const Transform2D world = object->world();
+        // shortcut: sprite.offset is not rotated or scaled by the world transform; rotate/scale it here if
+        // an object with an offset ever needs to turn or grow.
         inst.position = world.position + sprite.offset;
         inst.size = world.scale;
         inst.uvRect = uvRect;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 
 void Scene2D::insert(std::unique_ptr<GameObject> object) {
     std::uint32_t index;
@@ -15,6 +16,7 @@ void Scene2D::insert(std::unique_ptr<GameObject> object) {
     }
     Slot& slot = slots_[index];
     object->id = GameObjectId{index, slot.generation};
+    object->scene_ = this;
     object->creationSeq_ = nextSeq_++;
     slot.object = std::move(object);
     ++aliveCount_;
@@ -44,7 +46,11 @@ bool Scene2D::setParent(GameObjectId childId, GameObjectId parentId, bool keepWo
         return false;
     }
     for (const GameObject* p = parent; p; p = find(p->parent_)) { // reject cycles (and parent == child)
-        if (p == child) return false;
+        if (p == child) {
+            std::fprintf(stderr, "Scene2D: setParent rejected, '%s' is an ancestor of '%s' (cycle)\n",
+                         child->name.c_str(), parent->name.c_str());
+            return false;
+        }
     }
     if (child->parent_ == parentId) {
         return true;
@@ -78,6 +84,8 @@ void Scene2D::computeWorld(GameObject& object) {
     const GameObject* parent = find(object.parent_);
     if (parent) {
         Transform2D p = parent->world();
+        // shortcut: rotation and scale composition is approximate under negative or non-uniform parent scale
+        // combined with child rotation; upgrade to a 2x3 matrix if that ever matters.
         float c = std::cos(p.rotation), s = std::sin(p.rotation);
         glm::vec2 scaled = p.scale * object.transform.position;
         object.world_.position = p.position + glm::vec2{c * scaled.x - s * scaled.y, s * scaled.x + c * scaled.y};
@@ -123,7 +131,15 @@ void Scene2D::processDestroys() {
         batch.swap(destroyQueue_);
         // Whole batch gets onDestroy before any is freed, so they can still see each other.
         for (GameObjectId id : batch) {
-            slots_[id.index].object->onDestroy(*this); // onDestroy may create/destroy; queue grows, slots_ may realloc
+            // Order: components detach first, then the object's onDestroy, so onDestroy never sees live components.
+            // Both may create/destroy; the queue grows and slots_ may realloc, so re-index every time.
+            GameObject& object = *slots_[id.index].object;
+            for (std::size_t i = 0; i < object.components_.size(); ++i) {
+                object.components_[i]->onDetach(object, *this); // index loop: onDetach may add components
+            }
+            object.components_.clear();
+            slots_[id.index].object->onDestroy(*this);
+            events_.emit(ObjectDestroyed{id});
         }
         for (GameObjectId id : batch) { // unlink from surviving parents while every object is still alive
             const GameObject* o = slots_[id.index].object.get();
@@ -141,11 +157,40 @@ void Scene2D::processDestroys() {
     }
 }
 
+void GameObject::attach(std::unique_ptr<Component> component) {
+    assert(scene_ && "addComponent before the scene owns the object (use onCreate or later)");
+    Component& ref = *component;
+    components_.push_back(std::move(component));
+    ref.onAttach(*this, *scene_);
+}
+
+void GameObject::markRemoved(Component& component) {
+    component.removing_ = true;
+    if (scene_) scene_->componentsDirty_ = true;
+}
+
+void Scene2D::processComponentRemovals() {
+    if (!componentsDirty_) return;
+    componentsDirty_ = false;
+    IterGuard guard(iterating_);
+    for (std::size_t i = 0; i < slots_.size(); ++i) { // onDetach may create objects (slots_ may grow): index loop
+        if (!slots_[i].object || slots_[i].object->pendingDestroy_) continue;
+        GameObject& object = *slots_[i].object;
+        std::vector<std::unique_ptr<Component>> removed;
+        for (auto& c : object.components_) {
+            if (c->removing_) removed.push_back(std::move(c));
+        }
+        std::erase_if(object.components_, [](const auto& c) { return !c; });
+        for (auto& c : removed) c->onDetach(object, *this);
+    }
+}
+
 void Scene2D::flush() {
     if (iterating_ > 0) {
         return;
     }
     processDestroys();
+    processComponentRemovals();
 
     auto before = [](const GameObject* a, const GameObject* b) {
         return a->updateOrder != b->updateOrder ? a->updateOrder < b->updateOrder : a->creationSeq_ < b->creationSeq_;
@@ -161,6 +206,12 @@ void Scene2D::flush() {
         std::sort(live_.begin(), live_.end(), before);
     }
     updateTransforms();
+    dispatchEvents();
+}
+
+void Scene2D::dispatchEvents() {
+    IterGuard guard(iterating_); // a handler calling flush() must not re-enter dispatch
+    events_.dispatch();
 }
 
 void Scene2D::clear() {
@@ -169,6 +220,7 @@ void Scene2D::clear() {
         destroy(GameObjectId{i, slots_[i].generation});
     }
     processDestroys();
+    dispatchEvents(); // deliver ObjectDestroyed now so it does not leak into the next level
 
     // shortcut: objects created by onDestroy during clear() are dropped without onDestroy (old behaviour);
     // loop the destroy pass instead if a game ever relies on them.
@@ -208,7 +260,14 @@ void Scene2D::step(float deltaTime) {
         IterGuard guard(iterating_);
         for (std::size_t i = 0; i < live_.size(); ++i) {
             GameObject* object = live_[i];
-            if (object->active && !object->pendingDestroy_) object->onStep(*this, deltaTime);
+            if (object->active && !object->pendingDestroy_) {
+                object->onStep(*this, deltaTime);
+                // Index loop: a component may add components. A destroyed owner stops its components too.
+                for (std::size_t c = 0; c < object->components_.size() && !object->pendingDestroy_; ++c) {
+                    Component& comp = *object->components_[c];
+                    if (comp.enabled && !comp.removing_) comp.onStep(*object, *this, deltaTime);
+                }
+            }
         }
     }
     flush();

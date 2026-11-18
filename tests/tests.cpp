@@ -1,5 +1,6 @@
 #include "engine/assets/AtlasLoader.hpp"
 #include "engine/core/Paths.hpp"
+#include "engine/render/LightComponent.hpp"
 #include "engine/render/Materials.hpp"
 #include "engine/render/PixelScale.hpp"
 #include "engine/render/SceneRenderer.hpp"
@@ -199,7 +200,8 @@ struct Counted : GameObject {
         if (log) log->push_back(tag);
     }
     static inline std::unordered_map<GameObjectId, int> destroyLog; // survives the object being freed
-    void onDestroy(Scene2D&) override { ++destroys; ++destroyLog[id]; }
+    static inline std::vector<GameObjectId> destroyOrder;
+    void onDestroy(Scene2D&) override { ++destroys; ++destroyLog[id]; destroyOrder.push_back(id); }
 };
 struct Spawner : GameObject {
     std::vector<GameObjectId> spawned;
@@ -366,11 +368,12 @@ TEST(destroy_parent_destroys_children) {
     auto& g = scene.createObject<Counted>();
     GameObjectId ip = p.id, ic = c.id, ig = g.id;
     CHECK(scene.setParent(ic, ip) && scene.setParent(ig, ic));
-    Counted::destroyLog.clear();
+    Counted::destroyLog.clear(); Counted::destroyOrder.clear();
     scene.destroy(ip);
     scene.flush();
     CHECK(!scene.find(ip) && !scene.find(ic) && !scene.find(ig));
     CHECK(Counted::destroyLog[ip] == 1 && Counted::destroyLog[ic] == 1 && Counted::destroyLog[ig] == 1);
+    CHECK((Counted::destroyOrder == std::vector<GameObjectId>{ig, ic, ip})); // children before parents
     CHECK(scene.aliveCount() == 0);
     // destroying only a child unlinks it from the parent
     auto& p2 = scene.createObject<Counted>(); auto& c2 = scene.createObject<Counted>();
@@ -427,6 +430,140 @@ TEST(iteration_guard_survives_throw) {
     scene.destroy(b.id);
     scene.flush();
     CHECK(scene.aliveCount() == 1); // flush ran, so iterating_ was released
+}
+
+namespace {
+struct Probe2 : Component {
+    std::vector<std::string>* log = nullptr; std::string name;
+    void onAttach(GameObject&, Scene2D&) override { log->push_back(name + ":attach"); }
+    void onStep(GameObject&, Scene2D&, float) override { log->push_back(name + ":step"); }
+    void onDetach(GameObject&, Scene2D&) override { log->push_back(name + ":detach"); }
+};
+struct CompA : Probe2 { CompA(std::vector<std::string>* l) { log = l; name = "A"; } };
+struct CompB : Probe2 { CompB(std::vector<std::string>* l) { log = l; name = "B"; } };
+struct LoggedOwner : GameObject {
+    std::vector<std::string>* log = nullptr;
+    void onStep(Scene2D&, float) override { log->push_back("owner:step"); }
+    void onDestroy(Scene2D&) override { log->push_back("owner:destroy"); }
+};
+}
+
+TEST(component_lifecycle_and_step_order) {
+    Scene2D scene;
+    std::vector<std::string> log;
+    auto& o = scene.createObject<LoggedOwner>(); o.log = &log;
+    o.addComponent<CompA>(&log); auto& b = o.addComponent<CompB>(&log);
+    CHECK(o.getComponent<CompA>() && o.getComponent<CompB>() == &b);
+    CHECK(o.getComponent<LightComponent>() == nullptr);
+    CHECK((log == std::vector<std::string>{"A:attach", "B:attach"}));
+    log.clear();
+    scene.step(0.016f);
+    CHECK((log == std::vector<std::string>{"owner:step", "A:step", "B:step"}));
+    b.enabled = false; log.clear();
+    scene.step(0.016f);
+    CHECK((log == std::vector<std::string>{"owner:step", "A:step"}));
+    // removal is deferred to flush
+    o.removeComponent<CompA>(); log.clear();
+    CHECK(o.getComponent<CompA>() != nullptr && log.empty());
+    scene.flush();
+    CHECK((log == std::vector<std::string>{"A:detach"}));
+    CHECK(o.getComponent<CompA>() == nullptr && o.getComponent<CompB>() != nullptr);
+    // destroy: components detach before the owner's onDestroy
+    log.clear();
+    scene.destroy(o.id); scene.flush();
+    CHECK((log == std::vector<std::string>{"B:detach", "owner:destroy"}));
+}
+
+TEST(event_bus_deferred_dispatch_and_unsubscribe) {
+    struct Ping { int n; };
+    EventBus bus;
+    std::vector<int> got;
+    auto sub = bus.subscribe<Ping>([&](const Ping& p) { got.push_back(p.n); });
+    bus.emit(Ping{1}); bus.emit(Ping{2});
+    CHECK(got.empty()); // deferred
+    bus.dispatch();
+    CHECK((got == std::vector<int>{1, 2}));
+    // event emitted from a handler lands in the next round, same dispatch()
+    EventBus::Subscription chain;
+    chain = bus.subscribe<Ping>([&](const Ping& p) { if (p.n == 10) bus.emit(Ping{11}); });
+    got.clear(); bus.emit(Ping{10}); bus.dispatch();
+    CHECK((got == std::vector<int>{10, 11}));
+    // handler unsubscribing itself and another during dispatch is safe
+    EventBus::Subscription self, other;
+    int selfHits = 0, otherHits = 0;
+    other = bus.subscribe<Ping>([&](const Ping&) { ++otherHits; });
+    self = bus.subscribe<Ping>([&](const Ping&) { ++selfHits; self = {}; other = {}; });
+    bus.emit(Ping{0}); bus.dispatch(); bus.emit(Ping{0}); bus.dispatch();
+    CHECK(selfHits == 1 && otherHits <= 1);
+    sub = {}; got.clear();
+    bus.emit(Ping{3}); bus.dispatch();
+    CHECK(got.empty());
+    // runaway re-emit is capped (8 rounds) instead of looping forever
+    int rounds = 0;
+    auto loop = bus.subscribe<Ping>([&](const Ping&) { ++rounds; bus.emit(Ping{0}); });
+    bus.emit(Ping{0}); bus.dispatch();
+    CHECK(rounds == 8);
+}
+
+TEST(subscription_dies_with_owner) {
+    struct Hit { int n; };
+    static int hits = 0; hits = 0;
+    struct Listener : GameObject {
+        EventBus::Subscription sub;
+        void onCreate(Scene2D& s) override { sub = s.events().subscribe<Hit>([this](const Hit&) { ++hits; }); }
+    };
+    Scene2D scene;
+    GameObjectId l = scene.createObject<Listener>().id;
+    scene.events().emit(Hit{1}); scene.events().dispatch();
+    CHECK(hits == 1);
+    scene.destroy(l); scene.flush();
+    scene.events().emit(Hit{1}); scene.events().dispatch();
+    CHECK(hits == 1); // dead listener must not be called
+    // Subscription outliving its bus is harmless
+    EventBus::Subscription late;
+    { EventBus tmp; late = tmp.subscribe<Hit>([](const Hit&) {}); }
+    late = {};
+    CHECK(true);
+}
+
+TEST(object_destroyed_event_emitted_on_flush) {
+    Scene2D scene;
+    std::vector<GameObjectId> seen;
+    auto sub = scene.events().subscribe<ObjectDestroyed>([&](const ObjectDestroyed& e) { seen.push_back(e.id); });
+    GameObjectId a = scene.createObject<GameObject>().id, b = scene.createObject<GameObject>().id;
+    scene.destroy(a); scene.destroy(b);
+    CHECK(seen.empty());
+    scene.flush();
+    CHECK(seen.size() == 2 && seen[0] == a && seen[1] == b);
+}
+
+TEST(light_component_follows_owner) {
+    Scene2D scene;
+    auto& o = scene.createObject<GameObject>();
+    o.transform.position = {10, 5};
+    auto& lc = o.addComponent<LightComponent>();
+    lc.light = GpuLight{{1, 0, 0.5f, 4}, {1, 1, 1, 2}, {0, 0, 0, 0}};
+    scene.flush(); // forEach only visits flushed objects
+    LightList lights;
+    collectComponentLights(scene, lights);
+    CHECK(lights.size() == 1);
+    CHECK(std::abs(lights.data()[0].posHeightRadius.x - 11) < 1e-4f && std::abs(lights.data()[0].posHeightRadius.y - 5) < 1e-4f);
+    CHECK(lights.data()[0].posHeightRadius.z == 0.5f && lights.data()[0].posHeightRadius.w == 4);
+    // moves with owner; rotation and scale apply to the local offset
+    o.transform.position = {0, 0}; o.transform.rotation = glm::half_pi<float>(); o.transform.scale = {2, 2};
+    lights.clear(); collectComponentLights(scene, lights);
+    CHECK(std::abs(lights.data()[0].posHeightRadius.x) < 1e-4f && std::abs(lights.data()[0].posHeightRadius.y - 2) < 1e-4f);
+    // child owner uses the parent's world transform
+    auto& child = scene.createObject<GameObject>();
+    child.addComponent<LightComponent>().light = lc.light;
+    scene.setParent(child.id, o.id, false); scene.flush();
+    lights.clear(); collectComponentLights(scene, lights);
+    CHECK(lights.size() == 2);
+    // disabled component and inactive owner are skipped
+    lc.enabled = false; lights.clear(); collectComponentLights(scene, lights);
+    CHECK(lights.size() == 1);
+    child.active = false; lights.clear(); collectComponentLights(scene, lights);
+    CHECK(lights.size() == 0);
 }
 
 int main() {

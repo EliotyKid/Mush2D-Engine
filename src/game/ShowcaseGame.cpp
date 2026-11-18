@@ -1,6 +1,7 @@
 #include "game/ShowcaseGame.hpp"
 
 #include "engine/core/Paths.hpp"
+#include "engine/render/LightComponent.hpp"
 #include "engine/world/Collision.hpp"
 #include "game/assets/GameAtlasId.hpp"
 #include "game/objects/CritterObject.hpp"
@@ -120,6 +121,7 @@ void ShowcaseGame::submitRenderData(EngineServices& s) {
     lights.clear();
     if (currentSceneId == SceneId::Showcase) {
         submitShowcaseExtras(s);
+        collectComponentLights(s.scene, lights);
         return;
     }
 
@@ -128,6 +130,7 @@ void ShowcaseGame::submitRenderData(EngineServices& s) {
         glm::vec2 p = player->transform.position + glm::vec2(0.6f, 0.8f);
         lights.add(GpuLight{{p.x, p.y, 1.0f, 5.0f}, {1.0f, 0.8f, 0.55f, 2.5f}, {0.0f, 0.08f, 7.0f, 0.0f}});
     }
+    collectComponentLights(s.scene, lights);
 }
 void ShowcaseGame::shutdown(EngineServices& s) {
     s.scene.clear();

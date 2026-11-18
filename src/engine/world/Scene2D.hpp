@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EventBus.hpp"
 #include "GameObject.hpp"
 
 #include <cstddef>
@@ -8,6 +9,11 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+
+// Emitted for every object freed at a flush; delivered when that flush dispatches events.
+struct ObjectDestroyed {
+    GameObjectId id;
+};
 
 // Owns GameObjects in a slot map. Create/destroy are deferred: they take effect at flush points
 // (start and end of step, end of lateStep, or an explicit flush()), so they are safe inside callbacks.
@@ -119,10 +125,14 @@ public:
         }
     }
 
+    // Deferred events; dispatched at the end of every flush.
+    EventBus& events() { return events_; }
+
     // Objects holding a slot, including created-but-unflushed and pending-destroy ones.
     std::size_t aliveCount() const { return aliveCount_; }
 
 private:
+    friend class GameObject; // attach/markRemoved reach scene state
     struct Slot {
         std::unique_ptr<GameObject> object;
         std::uint32_t generation = 1;
@@ -147,6 +157,8 @@ private:
     void markDestroy(GameObject& object);
     void computeWorld(GameObject& object);
     void processDestroys();
+    void processComponentRemovals();
+    void dispatchEvents();
 
     std::vector<Slot> slots_;
     std::vector<std::uint32_t> freeSlots_;
@@ -155,5 +167,7 @@ private:
     std::uint64_t nextSeq_ = 0;
     std::size_t aliveCount_ = 0;
     bool liveDirty_ = false;
+    bool componentsDirty_ = false; // some component awaits removal
+    EventBus events_;
     mutable int iterating_ = 0;
 };
