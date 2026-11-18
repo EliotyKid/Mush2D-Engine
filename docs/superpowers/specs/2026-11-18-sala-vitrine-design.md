@@ -16,7 +16,7 @@ A **sala vitrine** é o primeiro marco. Ela prova a direção visual e a nova ar
 1. Uma sala do metroidvania montada no LDtk e carregada pela engine.
 2. De 4 a 6 camadas de parallax, com profundidade.
 3. Player com normal map, andando e pulando, colidindo com o cenário.
-4. Três tipos de luz: ambiente, pontual e a luz própria do player.
+4. Dois tipos de luz: ambiente e pontual. O player não emite luz.
 5. HDR, bloom e névoa entre as camadas.
 6. Painel ImGui dentro do jogo para ajustar ao vivo luzes, névoa, cor, bloom e parallax, salvando em arquivo.
 7. 60 fps estáveis no notebook com Intel UHD Graphics, que é mais fraco que o Steam Deck.
@@ -148,7 +148,6 @@ Assets e shaders são resolvidos a partir do diretório do executável. O CMake 
 - **Entidades:** a engine lê identificador, posição, `iid` e campos. O jogo registra fábricas por identificador. A vitrine precisa de:
   - `PlayerStart`;
   - `Light` (cor, intensidade, raio, altura, profundidade, `flicker` opcional).
-- A luz do player é criada em código, presa ao objeto do player.
 - Unidade: 1 unidade de mundo = `pixelsPerUnit` pixels do LDtk (32, como hoje).
 
 ## Overrides visuais (ImGui)

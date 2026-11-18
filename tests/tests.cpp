@@ -3,6 +3,7 @@
 #include "engine/render/Materials.hpp"
 #include "engine/render/PixelScale.hpp"
 #include "engine/render/SceneRenderer.hpp"
+#include "engine/tools/LookFile.hpp"
 #include "engine/world/Ldtk.hpp"
 
 #include <filesystem>
@@ -144,6 +145,30 @@ TEST(atlas_keeps_file_order_and_pivot) {
     CHECK(atlas.getAnimation("idle").frames.size() == 2 && atlas.getAnimation("idle").frames[1].frameName == "idle 1");
     CHECK(atlas.getFrame("run 0").pivotX == 2 && atlas.getFrame("run 0").pivotY == 6);
     CHECK(atlas.getFrame("idle 0").pivotX == 2 && atlas.getFrame("idle 0").pivotY == 3); // default: centre
+}
+
+TEST(look_roundtrip) {
+    LookFile a; a.settings.fogDensity = 0.2f; a.lights["abc"] = {{1, 0.5f, 0}, 3, 6, 1.5f, 0, 0.1f};
+    a.layers["Far"] = {{0.25f, 0.5f}, 3.0f};
+    auto b = parseLook(serializeLook(a), FrameSettings{});
+    CHECK(b && b->settings.fogDensity == 0.2f && b->lights.at("abc").radius == 6);
+    CHECK(b && b->lights.at("abc").color.y == 0.5f && b->layers.at("Far").parallax.y == 0.5f && b->layers.at("Far").depth == 3.0f);
+}
+TEST(look_ignores_unknown_and_corrupt) {
+    CHECK(!parseLook("{ not json", FrameSettings{}));
+    CHECK(!parseLook("[1,2]", FrameSettings{}));
+    auto l = parseLook(R"({"exposure":1.5,"futureKey":3})", FrameSettings{});
+    CHECK(l && l->settings.exposure == 1.5f && l->settings.fogDensity == FrameSettings{}.fogDensity);
+}
+TEST(look_apply_skips_stale_ids) {
+    LookFile look; look.lights["gone"] = {{1, 1, 1}, 9, 9, 9, 9, 9}; look.lights["here"] = {{1, 1, 1}, 4, 5, 6, 7, 8};
+    look.layers["Nope"] = {{0, 0}, 1};
+    std::vector<EditableLight> lights{{"here", {0, 0}, {{0, 0, 0}, 1, 1, 1, 1, 1}}};
+    std::vector<EditableLayer> layers{{"Far", {{1, 1}, 0}}};
+    applyLook(look, lights, layers);
+    CHECK(lights.size() == 1 && lights[0].value.radius == 5 && layers[0].value.depth == 0);
+    LookFile out; captureLook(out, lights, layers);
+    CHECK(out.lights.size() == 1 && out.layers.at("Far").parallax.x == 1);
 }
 
 int main() {

@@ -465,6 +465,22 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
           bloomOn ? targets_.bloomIndex(0) : targets_.index(RenderTargets::Hdr), 0});
     vkCmdDraw(cmd, 3, 1, 0, 0);
     vkCmdEndRendering(cmd);
+    if (overlay) {
+        VkMemoryBarrier2 mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2}; // composite writes -> overlay LOAD + blend
+        mb.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        mb.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        mb.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        mb.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        VkDependencyInfo di{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        di.memoryBarrierCount = 1;
+        di.pMemoryBarriers = &mb;
+        vkCmdPipelineBarrier2(cmd, &di);
+        VkRenderingAttachmentInfo o = attachment(gpu.swapchain().view(frame.imageIndex), {{0.0f, 0.0f, 0.0f, 1.0f}});
+        o.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+        beginRendering(cmd, extent, &o, 1);
+        overlay(cmd);
+        vkCmdEndRendering(cmd);
+    }
     transition(cmd, swapImage, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     timers_.end(cmd);
 

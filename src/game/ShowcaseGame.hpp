@@ -2,6 +2,7 @@
 
 #include "engine/core/IGame.hpp"
 #include "engine/scenes/ISceneDefinition.hpp"
+#include "engine/tools/LookPanel.hpp"
 #include "engine/world/LevelLoader.hpp"
 #include "game/assets/GameAssets.hpp"
 #include "game/scenes/SceneId.hpp"
@@ -17,6 +18,7 @@ class ShowcaseGame : public IGame {
 public:
     void init(EngineServices& s) override;
     void update(EngineServices& s, float dt) override;
+    void onImGui(EngineServices& s) override;
     void shutdown(EngineServices& s) override;
 
 private:
@@ -26,7 +28,10 @@ private:
     // Showcase room (LDtk)
     struct Crystal { glm::vec2 anchor; int variant; };
     LevelLoader levelLoader;
-    std::vector<GpuLight> levelLights;
+    LookFile look;                       // showcase.look.json, edited live by the panel
+    LookPanel lookPanel;
+    std::vector<EditableLight> lightEdits;   // one per LDtk Light entity, by iid
+    std::vector<EditableLayer> layerEdits;   // one per static tile layer
     std::vector<Crystal> crystals;
     GameObjectId playerObjectId = InvalidGameObjectId;
 

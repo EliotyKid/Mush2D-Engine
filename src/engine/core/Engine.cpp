@@ -5,6 +5,10 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
+
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
@@ -88,7 +92,16 @@ void Engine::run(IGame& game) {
     MaterialLibrary materials;
     SceneRenderer renderer;
     EngineServices services{gpu, renderer, materials, input, camera, scene};
+    VkDescriptorPool imguiPool = VK_NULL_HANDLE;
+    bool imguiReady = false;
     auto teardown = [&] {
+        if (imguiReady) {
+            vkDeviceWaitIdle(gpu.device());
+            ImGui_ImplVulkan_Shutdown();
+            ImGui_ImplGlfw_Shutdown();
+            ImGui::DestroyContext();
+            vkDestroyDescriptorPool(gpu.device(), imguiPool, nullptr);
+        }
         scene.clear();
         renderer.shutdown();
         materials.shutdown();
@@ -111,9 +124,53 @@ void Engine::run(IGame& game) {
         gpu.onResize = [&](VkExtent2D extent) { renderer.resize(extent); };
         game.init(services);
 
+        // Dear ImGui (after attachWindow: it chains our scroll callback). Own descriptor pool, dynamic rendering.
+        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16};
+        VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        poolInfo.maxSets = 16;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        if (vkCreateDescriptorPool(gpu.device(), &poolInfo, nullptr, &imguiPool) != VK_SUCCESS) {
+            throw std::runtime_error("Erro: falha ao criar o descriptor pool do ImGui.");
+        }
+        ImGui::CreateContext();
+        ImGui::GetIO().IniFilename = nullptr; // no imgui.ini next to the exe
+        ImGui_ImplGlfw_InitForVulkan(window, true);
+        VkFormat swapFormat = gpu.swapchain().format();
+        ImGui_ImplVulkan_InitInfo vkInit{};
+        vkInit.Instance = gpu.instance();
+        vkInit.PhysicalDevice = gpu.physicalDevice();
+        vkInit.Device = gpu.device();
+        vkInit.QueueFamily = gpu.graphicsFamily();
+        vkInit.Queue = gpu.graphicsQueue();
+        vkInit.DescriptorPool = imguiPool;
+        vkInit.MinImageCount = 2;
+        vkInit.ImageCount = std::max(2u, gpu.swapchain().imageCount());
+        vkInit.UseDynamicRendering = true;
+        vkInit.PipelineRenderingCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+        vkInit.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+        vkInit.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapFormat;
+        ImGui_ImplVulkan_Init(&vkInit);
+        imguiReady = true;
+
+        bool showPanel = std::getenv("MUSH2D_SHOW_PANEL") != nullptr; // F1 toggles
+        bool f1Held = false;
+        ImGuiIO& io = ImGui::GetIO();
+
         float lastTime = static_cast<float>(glfwGetTime());
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
+            bool f1 = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
+            if (f1 && !f1Held) showPanel = !showPanel;
+            f1Held = f1;
+            // Hidden panel never blocks the game (io.Want* is stale from the last drawn frame).
+            input.setBlocked(showPanel && io.WantCaptureKeyboard, showPanel && io.WantCaptureMouse);
+            if (showPanel) {
+                ImGui_ImplVulkan_NewFrame();
+                ImGui_ImplGlfw_NewFrame();
+                ImGui::NewFrame();
+            }
             input.beginFrame();
             input.poll();
 
@@ -127,10 +184,18 @@ void Engine::run(IGame& game) {
             camera.updateFollow(scene, deltaTime);
             camera.clampToBounds(gpu.swapchain().extent());
 
+            if (showPanel) {
+                game.onImGui(services);
+                ImGui::Render();
+            }
+
             FrameContext* frame = gpu.beginFrame();
             if (!frame) {
                 continue;
             }
+            renderer.overlay = showPanel ? std::function<void(VkCommandBuffer)>{[](VkCommandBuffer cmd) {
+                ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+            }} : nullptr;
             renderer.render(*frame, camera, currentTime);
 
             bool shoot = !screenshotPath.empty() && ++framesRendered == SCREENSHOT_FRAME;

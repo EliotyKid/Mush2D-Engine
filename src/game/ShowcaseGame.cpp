@@ -353,7 +353,8 @@ void ShowcaseGame::setupInitialScene(EngineServices& s) {
     Scene2D& scene = s.scene;
     activeTriggerOverlaps.clear();
     levelLoader.clear();
-    levelLights.clear();
+    lightEdits.clear();
+    layerEdits.clear();
     crystals.clear();
     s.renderer.settings() = FrameSettings{};
     s.camera.bounds = Camera2D::WorldBounds{-5.0f, 5.0f, -3.0f, 3.0f};
@@ -422,10 +423,9 @@ void ShowcaseGame::registerLevelEntities() {
 
     levelLoader.registerEntity("Light", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices&) {
         glm::vec3 color = colorField(e, "color", glm::vec3(1.0f, 0.76f, 0.48f));
-        levelLights.push_back(GpuLight{
-            {pos.x, pos.y, numberField(e, "height", 1.5f), numberField(e, "radius", 6.0f)},
-            {color, numberField(e, "intensity", 2.0f)},
-            {numberField(e, "depth", 0.0f), numberField(e, "flicker", 0.0f), 5.0f, 0.0f}});
+        lightEdits.push_back({e.iid, pos,
+            {color, numberField(e, "intensity", 2.0f), numberField(e, "radius", 6.0f), numberField(e, "height", 1.5f),
+             numberField(e, "depth", 0.0f), numberField(e, "flicker", 0.0f)}});
     });
 
     levelLoader.registerEntity("Crystal", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices&) {
@@ -467,21 +467,33 @@ void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
     s.camera.bounds = Camera2D::WorldBounds{0.0f, size.x, 0.0f, size.y};
     s.camera.followOffset = {0.0f, 0.6f};
 
-    FrameSettings& fs = s.renderer.settings();
-    fs.ambientColor = {0.4f, 0.5f, 0.66f};
-    fs.ambientIntensity = 0.6f;
-    fs.fogColor = {0.18f, 0.4f, 0.5f};
-    fs.saturation = 1.3f;
-    fs.exposure = 1.1f;
-    fs.fogDensity = 0.05f;
-    fs.bloomThreshold = 0.9f;
-    fs.bloomIntensity = 0.7f;
+    // Look comes from showcase.look.json (Debug: the source-tree file, so panel saves survive rebuilds).
+    for (const LevelLoader::LayerState& l : levelLoader.layers()) layerEdits.push_back({l.identifier, {l.parallax, l.depth}});
+    look = loadLookOrDefault(sourceAssetPath("assets/levels/showcase.look.json"), FrameSettings{});
+    applyLook(look, lightEdits, layerEdits);
+    for (const EditableLayer& l : layerEdits) levelLoader.setLayer(l.identifier, l.value.parallax, l.value.depth);
+    s.renderer.settings() = look.settings;
+}
+
+void ShowcaseGame::onImGui(EngineServices& s) {
+    if (currentSceneId != SceneId::Showcase) return;
+    bool save = false;
+    lookPanel.draw(look, lightEdits, layerEdits, s.renderer.timers(), save);
+    s.renderer.settings() = look.settings;
+    for (const EditableLayer& l : layerEdits) levelLoader.setLayer(l.identifier, l.value.parallax, l.value.depth);
+    if (save) {
+        captureLook(look, lightEdits, layerEdits);
+        saveLook(sourceAssetPath("assets/levels/showcase.look.json"), look);
+    }
 }
 
 void ShowcaseGame::submitShowcaseExtras(EngineServices& s) {
     SpriteBatch& batch = s.renderer.sprites();
     LightList& lights = s.renderer.lights();
-    for (const GpuLight& light : levelLights) lights.add(light);
+    for (const EditableLight& l : lightEdits) {
+        const LightOverride& v = l.value;
+        lights.add(GpuLight{{l.pos.x, l.pos.y, v.height, v.radius}, {v.color, v.intensity}, {v.depth, v.flicker, 5.0f, 0.0f}});
+    }
 
     const glm::vec4 haloUv = lookupAtlasFrame(GameAtlasId::Crystals, "halo 0").second; // black in crystals_e
     const TextureAtlas& crystalAtlas = gameAssets.getAtlasByTextureIndex(GameAtlasId::Crystals);
@@ -515,11 +527,5 @@ void ShowcaseGame::submitShowcaseExtras(EngineServices& s) {
             batch.add(halo);
         }
         lights.add(GpuLight{{centre.x, centre.y, 0.6f, 3.0f}, {glow, 1.4f}, {0.0f, 0.06f, 2.0f, 0.0f}});
-    }
-
-    // The player's own light: warm, radius 6, height 1.5, depth 0.
-    if (const GameObject* player = s.scene.findObject(playerObjectId)) {
-        glm::vec2 p = player->transform.position + glm::vec2(0.0f, 0.4f);
-        lights.add(GpuLight{{p.x, p.y, 1.5f, 6.0f}, {1.0f, 0.78f, 0.52f, 1.6f}, {0.0f, 0.04f, 6.0f, 0.0f}});
     }
 }

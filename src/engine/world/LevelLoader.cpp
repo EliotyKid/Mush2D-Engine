@@ -9,6 +9,8 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
     auto toWorld = [&](glm::vec2 px) { return glm::vec2(px.x / U, (H - px.y) / U); };
     const glm::vec2 centre = glm::vec2(level.pxSize) / (2.0f * U);
     sprites_.clear(); // reload must not duplicate
+    layers_.clear();
+    levelCentre_ = centre;
 
     for (int li = 0; li < n; ++li) {
         const LdtkLayer& L = level.layers[li];
@@ -18,9 +20,12 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
             Material mat = materials.load(level.baseDir / L.tilesetPath);
             const float g = float(L.gridSize);
             const glm::vec2 scroll{L.parallaxX, L.parallaxY};
+            const int layerIndex = int(layers_.size());
+            layers_.push_back({L.identifier, scroll, L.depth});
             for (const LdtkTile& t : L.tiles) {
                 SpriteInstance s{};
-                s.position = ldtkParallaxAnchor(toWorld(glm::vec2(t.px) + g * 0.5f), scroll, centre); // centre-based
+                const glm::vec2 authored = toWorld(glm::vec2(t.px) + g * 0.5f);
+                s.position = ldtkParallaxAnchor(authored, scroll, centre); // centre-based
                 s.size = {g / U, g / U};
                 float u = t.src.x / float(L.tilesetPx.x), v = t.src.y / float(L.tilesetPx.y);
                 float w = g / L.tilesetPx.x, h = g / L.tilesetPx.y;
@@ -32,7 +37,7 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
                 s.parallax = {L.parallaxX, L.parallaxY};
                 s.albedo = mat.albedo; s.normal = mat.normal; s.emissive = mat.emissive; s.mask = mat.mask;
                 s.flags = SpriteFlagNearest;
-                sprites_.push_back({s, order});
+                sprites_.push_back({s, order, layerIndex, authored});
             }
         }
 
@@ -56,6 +61,21 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
                 continue;
             }
             f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, centre), services);
+        }
+    }
+}
+
+void LevelLoader::setLayer(const std::string& identifier, glm::vec2 parallax, float depth) {
+    for (int i = 0; i < int(layers_.size()); ++i) {
+        LayerState& l = layers_[i];
+        if (l.identifier != identifier || (l.parallax == parallax && l.depth == depth)) continue;
+        l.parallax = parallax;
+        l.depth = depth;
+        for (StaticSprite& s : sprites_) {
+            if (s.layer != i) continue;
+            s.instance.position = ldtkParallaxAnchor(s.authoredPos, parallax, levelCentre_);
+            s.instance.parallax = parallax;
+            s.instance.depth = depth;
         }
     }
 }

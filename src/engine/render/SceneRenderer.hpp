@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstddef>
+#include <functional>
 
 #include <glm/glm.hpp>
 
@@ -61,6 +62,8 @@ public:
     SpriteBatch& sprites() { return sprites_; }
     LightList& lights() { return lights_; }
     FrameSettings& settings() { return settings_; }
+    // Optional: records extra drawing (e.g. ImGui) onto the swapchain image after the composite, inside a dynamic-rendering pass (LOAD).
+    std::function<void(VkCommandBuffer)> overlay;
     const GpuTimers& timers() const { return timers_; }
 
     // Leaves the swapchain image in PRESENT_SRC_KHR.

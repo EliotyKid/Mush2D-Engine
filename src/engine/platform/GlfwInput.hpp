@@ -10,13 +10,17 @@ public:
     void beginFrame();
     void poll();
     const InputState& getState() const;
-    bool isKeyDown(int key) const { return glfwGetKey(window, key) == GLFW_PRESS; }
+    bool isKeyDown(int key) const { return !keyboardBlocked && glfwGetKey(window, key) == GLFW_PRESS; }
+    // UI (ImGui) captured the keyboard / mouse: the game sees them as idle.
+    void setBlocked(bool keyboard, bool mouse) { keyboardBlocked = keyboard; mouseBlocked = mouse; }
 
     static void scrollCallback(GLFWwindow* window, double xOffset, double yOffset);
 
 private:
     GLFWwindow* window = nullptr;
     InputState state{};
+    bool keyboardBlocked = false;
+    bool mouseBlocked = false;
 
     bool previousMoveLeft = false;
     bool previousMoveRight = false;

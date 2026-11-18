@@ -64,28 +64,28 @@ void GlfwInput::poll() {
         return;
     }
 
-    updateButton(state.moveLeft, glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS, previousMoveLeft);
-    updateButton(state.moveRight, glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS, previousMoveRight);
-    updateButton(state.moveUp, glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS, previousMoveUp);
-    updateButton(state.moveDown, glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS, previousMoveDown);
+    updateButton(state.moveLeft, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS, previousMoveLeft);
+    updateButton(state.moveRight, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS, previousMoveRight);
+    updateButton(state.moveUp, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS, previousMoveUp);
+    updateButton(state.moveDown, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS, previousMoveDown);
 
-    updateButton(state.cameraLeft, glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS, previousCameraLeft);
-    updateButton(state.cameraRight, glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS, previousCameraRight);
-    updateButton(state.cameraUp, glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS, previousCameraUp);
-    updateButton(state.cameraDown, glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS, previousCameraDown);
+    updateButton(state.cameraLeft, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS, previousCameraLeft);
+    updateButton(state.cameraRight, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS, previousCameraRight);
+    updateButton(state.cameraUp, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS, previousCameraUp);
+    updateButton(state.cameraDown, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS, previousCameraDown);
 
-    updateButton(state.zoomIn, glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS, previousZoomIn);
-    updateButton(state.zoomOut, glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS, previousZoomOut);
+    updateButton(state.zoomIn, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS, previousZoomIn);
+    updateButton(state.zoomOut, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS, previousZoomOut);
 
-    updateButton(state.jump, glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS, previousJump);
-    updateButton(state.dash, glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS, previousDash);
-    updateButton(state.hit, glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS, previousHit);
-    updateButton(state.toggleFollow, glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS, previousToggleFollow);
-    updateButton(state.respawn, glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS, previousRespawn);
+    updateButton(state.jump, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS, previousJump);
+    updateButton(state.dash, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS, previousDash);
+    updateButton(state.hit, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS, previousHit);
+    updateButton(state.toggleFollow, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS, previousToggleFollow);
+    updateButton(state.respawn, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS, previousRespawn);
 
     updateButton(
         state.dragCamera,
-        glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
+        !mouseBlocked && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
         previousDragCamera
     );
 
@@ -106,7 +106,7 @@ const InputState& GlfwInput::getState() const {
 
 void GlfwInput::scrollCallback(GLFWwindow* window, double xOffset, double yOffset) {
     auto* input = static_cast<GlfwInput*>(glfwGetWindowUserPointer(window));
-    if (!input) {
+    if (!input || input->mouseBlocked) {
         return;
     }
 
