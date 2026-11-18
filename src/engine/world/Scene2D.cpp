@@ -1,5 +1,7 @@
 #include "Scene2D.hpp"
 
+#include "Collision.hpp"
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -86,9 +88,7 @@ void Scene2D::computeWorld(GameObject& object) {
         Transform2D p = parent->world();
         // shortcut: rotation and scale composition is approximate under negative or non-uniform parent scale
         // combined with child rotation; upgrade to a 2x3 matrix if that ever matters.
-        float c = std::cos(p.rotation), s = std::sin(p.rotation);
-        glm::vec2 scaled = p.scale * object.transform.position;
-        object.world_.position = p.position + glm::vec2{c * scaled.x - s * scaled.y, s * scaled.x + c * scaled.y};
+        object.world_.position = localToWorld(p, object.transform.position);
         object.world_.rotation = p.rotation + object.transform.rotation;
         object.world_.scale = p.scale * object.transform.scale;
     }
@@ -139,6 +139,7 @@ void Scene2D::processDestroys() {
             }
             object.components_.clear();
             slots_[id.index].object->onDestroy(*this);
+            grid_.remove(id);
             events_.emit(ObjectDestroyed{id});
         }
         for (GameObjectId id : batch) { // unlink from surviving parents while every object is still alive
@@ -195,6 +196,7 @@ void Scene2D::flush() {
     auto before = [](const GameObject* a, const GameObject* b) {
         return a->updateOrder != b->updateOrder ? a->updateOrder < b->updateOrder : a->creationSeq_ < b->creationSeq_;
     };
+    const bool rebuilt = liveDirty_;
     if (liveDirty_) {
         live_.clear();
         for (const Slot& slot : slots_) {
@@ -206,7 +208,19 @@ void Scene2D::flush() {
         std::sort(live_.begin(), live_.end(), before);
     }
     updateTransforms();
+    if (rebuilt) syncGrid(); // objects that joined live_ enter the grid with their world box
     dispatchEvents();
+}
+
+void Scene2D::syncGrid() {
+    for (const GameObject* o : live_) {
+        if (o->pendingDestroy_) continue; // removed from the grid when freed
+        if (Collision2D::hasCollider(*o)) {
+            grid_.update(o->id, Collision2D::buildAABB(*o), o->collider->isTrigger);
+        } else {
+            grid_.remove(o->id);
+        }
+    }
 }
 
 void Scene2D::dispatchEvents() {
@@ -225,6 +239,7 @@ void Scene2D::clear() {
     // shortcut: objects created by onDestroy during clear() are dropped without onDestroy (old behaviour);
     // loop the destroy pass instead if a game ever relies on them.
     live_.clear();
+    grid_.clear();
     freeSlots_.clear();
     for (std::uint32_t i = static_cast<std::uint32_t>(slots_.size()); i-- > 0;) {
         Slot& slot = slots_[i];
@@ -256,6 +271,7 @@ std::vector<const GameObject*> Scene2D::findObjectsByTag(const std::string& tag)
 
 void Scene2D::step(float deltaTime) {
     flush();
+    syncGrid(); // objects moved or edited since the last step; within a step, boxes may lag one frame
     {
         IterGuard guard(iterating_);
         for (std::size_t i = 0; i < live_.size(); ++i) {

@@ -2,6 +2,7 @@
 
 #include "EventBus.hpp"
 #include "GameObject.hpp"
+#include "SpatialGrid.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -125,6 +126,10 @@ public:
         }
     }
 
+    // Broadphase over objects with an enabled collider. Inserted at flush, removed on destroy, and every live
+    // object's box is refreshed at the start of each step (catches moves, size and enable/trigger changes).
+    const SpatialGrid& grid() const { return grid_; }
+
     // Deferred events; dispatched at the end of every flush.
     EventBus& events() { return events_; }
 
@@ -159,7 +164,9 @@ private:
     void processDestroys();
     void processComponentRemovals();
     void dispatchEvents();
+    void syncGrid();
 
+    SpatialGrid grid_;
     std::vector<Slot> slots_;
     std::vector<std::uint32_t> freeSlots_;
     std::vector<GameObject*> live_; // update order, rebuilt at flush

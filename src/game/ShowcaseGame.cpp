@@ -312,34 +312,21 @@ void ShowcaseGame::processTriggerOverlaps(EngineServices& s) {
     Collision2D::AABB playerBox = Collision2D::buildAABB(*player);
     std::unordered_set<GameObjectId> currentOverlaps;
 
-    scene.forEach([&](GameObject& object) {
-        if (!object.active) {
-            return;
+    for (GameObjectId id : Collision2D::queryAABB(scene, playerBox, Collision2D::QueryKind::Trigger)) {
+        GameObject* object = scene.findObject(id);
+        // Handlers may destroy or edit objects; re-check live state. Triggers are static, so the grid box is current.
+        if (!object || !object->active || id == playerObjectId || !Collision2D::hasCollider(*object) ||
+            !object->collider->isTrigger || !Collision2D::intersects(playerBox, Collision2D::buildAABB(*object))) {
+            continue;
         }
 
-        if (object.id == playerObjectId) {
-            return;
+        currentOverlaps.insert(id);
+
+        if (activeTriggerOverlaps.find(id) == activeTriggerOverlaps.end()) {
+            object->onTriggerEnter(scene, *player);
+            player->onTriggerEnter(scene, *object);
         }
-
-        if (!object.collider.has_value() || !object.collider->enabled) {
-            return;
-        }
-
-        if (!object.collider->isTrigger) {
-            return;
-        }
-
-        Collision2D::AABB triggerBox = Collision2D::buildAABB(object);
-
-        if (Collision2D::intersects(playerBox, triggerBox)) {
-            currentOverlaps.insert(object.id);
-
-            if (activeTriggerOverlaps.find(object.id) == activeTriggerOverlaps.end()) {
-                object.onTriggerEnter(scene, *player);
-                player->onTriggerEnter(scene, object);
-            }
-        }
-    });
+    }
 
     for (GameObjectId previousId : activeTriggerOverlaps) {
         if (currentOverlaps.find(previousId) == currentOverlaps.end()) {

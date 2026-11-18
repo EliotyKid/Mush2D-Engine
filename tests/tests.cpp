@@ -5,9 +5,11 @@
 #include "engine/render/PixelScale.hpp"
 #include "engine/render/SceneRenderer.hpp"
 #include "engine/tools/LookFile.hpp"
+#include "engine/world/Collision.hpp"
 #include "engine/world/Ldtk.hpp"
 #include "engine/world/Scene2D.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <glm/gtc/constants.hpp>
@@ -494,7 +496,7 @@ TEST(event_bus_deferred_dispatch_and_unsubscribe) {
     other = bus.subscribe<Ping>([&](const Ping&) { ++otherHits; });
     self = bus.subscribe<Ping>([&](const Ping&) { ++selfHits; self = {}; other = {}; });
     bus.emit(Ping{0}); bus.dispatch(); bus.emit(Ping{0}); bus.dispatch();
-    CHECK(selfHits == 1 && otherHits <= 1);
+    CHECK(selfHits == 1 && otherHits == 1);
     sub = {}; got.clear();
     bus.emit(Ping{3}); bus.dispatch();
     CHECK(got.empty());
@@ -521,9 +523,10 @@ TEST(subscription_dies_with_owner) {
     CHECK(hits == 1); // dead listener must not be called
     // Subscription outliving its bus is harmless
     EventBus::Subscription late;
-    { EventBus tmp; late = tmp.subscribe<Hit>([](const Hit&) {}); }
+    int lateHits = 0;
+    { EventBus tmp; late = tmp.subscribe<Hit>([&](const Hit&) { ++lateHits; }); tmp.emit(Hit{1}); }
     late = {};
-    CHECK(true);
+    CHECK(lateHits == 0); // bus died undispatched: handler never ran
 }
 
 TEST(object_destroyed_event_emitted_on_flush) {
@@ -564,6 +567,85 @@ TEST(light_component_follows_owner) {
     CHECK(lights.size() == 1);
     child.active = false; lights.clear(); collectComponentLights(scene, lights);
     CHECK(lights.size() == 0);
+}
+
+namespace {
+using Collision2D::AABB;
+bool sameId(const GameObjectId& a, const GameObjectId& b) { return a.index < b.index; }
+}
+
+TEST(spatial_grid_matches_bruteforce) {
+    std::uint32_t seed = 12345;
+    auto rnd = [&](float lo, float hi) {
+        seed = seed * 1664525u + 1013904223u;
+        return lo + (hi - lo) * float(seed >> 8) / float(1u << 24);
+    };
+    auto randomBox = [&](float maxSize) {
+        glm::vec2 c{rnd(-30, 30), rnd(-30, 30)}, h{rnd(0.05f, maxSize) * 0.5f, rnd(0.05f, maxSize) * 0.5f};
+        return AABB{c - h, c + h};
+    };
+    SpatialGrid grid;
+    std::vector<AABB> boxes;
+    for (std::uint32_t i = 0; i < 500; ++i) {
+        boxes.push_back(randomBox(5.0f));
+        grid.insert(GameObjectId{i, 1}, boxes.back());
+    }
+    // move a few and remove a few so update/remove are covered too
+    for (std::uint32_t i = 0; i < 500; i += 7) { boxes[i] = randomBox(5.0f); grid.update(GameObjectId{i, 1}, boxes[i]); }
+    std::vector<bool> removed(500, false);
+    for (std::uint32_t i = 3; i < 500; i += 11) { removed[i] = true; grid.remove(GameObjectId{i, 1}); }
+    for (int q = 0; q < 200; ++q) {
+        AABB box = randomBox(12.0f);
+        std::vector<GameObjectId> got, expected;
+        grid.query(box, got);
+        for (std::uint32_t i = 0; i < 500; ++i) {
+            if (!removed[i] && Collision2D::intersects(box, boxes[i])) expected.push_back(GameObjectId{i, 1});
+        }
+        std::sort(got.begin(), got.end(), sameId);
+        CHECK(got == expected); // also proves no duplicates
+    }
+}
+
+TEST(grid_tracks_collider_changes) {
+    Scene2D scene;
+    auto& o = scene.createObject<GameObject>();
+    o.collider = ColliderData{};
+    o.transform.position = {0, 0};
+    scene.flush();
+    const AABB far{{5.5f, -0.5f}, {6.5f, 0.5f}};
+    const AABB near{{-0.2f, -0.2f}, {0.2f, 0.2f}};
+    CHECK(Collision2D::queryAABB(scene, near).size() == 1);
+    CHECK(Collision2D::queryAABB(scene, far).empty());
+    o.collider->size = {20, 1}; scene.step(0.016f);        // size change
+    CHECK(Collision2D::queryAABB(scene, far).size() == 1);
+    o.transform.position = {0, 10}; scene.step(0.016f);   // move
+    CHECK(Collision2D::queryAABB(scene, near).empty());
+    o.collider->isTrigger = true; scene.step(0.016f);     // trigger flag
+    AABB top{{-0.2f, 9.8f}, {0.2f, 10.2f}};
+    CHECK(Collision2D::queryAABB(scene, top, Collision2D::QueryKind::Solid).empty());
+    CHECK(Collision2D::queryAABB(scene, top, Collision2D::QueryKind::Trigger).size() == 1);
+    o.collider->enabled = false; scene.step(0.016f);      // disabled
+    CHECK(Collision2D::queryAABB(scene, top).empty());
+    o.collider->enabled = true; scene.step(0.016f);
+    CHECK(Collision2D::queryAABB(scene, top).size() == 1);
+    scene.destroy(o.id); scene.flush();                   // destroyed
+    CHECK(Collision2D::queryAABB(scene, top).empty());
+}
+
+TEST(parented_mover_collides_in_world_space) {
+    Scene2D scene;
+    auto& wall = scene.createObject<GameObject>();
+    wall.transform.position = {5, 0};
+    wall.collider = ColliderData{};
+    auto& parent = scene.createObject<GameObject>();
+    parent.transform.position = {4, 0};
+    auto& mover = scene.createObject<GameObject>();
+    mover.collider = ColliderData{};
+    scene.setParent(mover.id, parent.id, false);
+    scene.flush();
+    CHECK(Collision2D::collidesAtPosition(scene, mover.id, {1.5f, 0}));   // local 1.5 = world 5.5, inside the wall
+    CHECK(!Collision2D::collidesAtPosition(scene, mover.id, {-3.0f, 0})); // world 1: free
+    CHECK(!Collision2D::collidesAtPosition(scene, mover.id, {5.0f, 0}));  // world 9: free (local 5 would hit)
 }
 
 int main() {

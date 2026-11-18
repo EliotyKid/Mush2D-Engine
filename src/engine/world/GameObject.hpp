@@ -3,6 +3,7 @@
 #include "Component.hpp"
 #include "ObjectData.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -21,6 +22,14 @@ struct Transform2D {
     glm::vec2 scale{1.0f, 1.0f};
     float rotation = 0.0f;
 };
+
+// A point in a parent's local space to world space (same math Scene2D uses for child transforms).
+// shortcut: approximate under negative or non-uniform parent scale combined with rotation; see Scene2D::computeWorld.
+inline glm::vec2 localToWorld(const Transform2D& parentWorld, const glm::vec2& local) {
+    float c = std::cos(parentWorld.rotation), s = std::sin(parentWorld.rotation);
+    glm::vec2 scaled = parentWorld.scale * local;
+    return parentWorld.position + glm::vec2{c * scaled.x - s * scaled.y, s * scaled.x + c * scaled.y};
+}
 
 // Slot-map handle: a stale id (slot freed or reused) has a mismatched generation.
 struct GameObjectId {
@@ -80,6 +89,8 @@ public:
     }
 
     // Attaches a component (onAttach runs now). The object must belong to a scene (call from onCreate or later).
+    // On an object being destroyed: from onDetach the new component is detached too; from onDestroy it never
+    // gets onDetach (components were already detached and cleared). Avoid it there.
     template<typename T, typename... Args>
     T& addComponent(Args&&... args) {
         static_assert(std::is_base_of_v<Component, T>, "T precisa herdar de Component.");
