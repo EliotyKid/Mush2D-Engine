@@ -22,7 +22,7 @@ SpatialGrid::Range SpatialGrid::cellsOf(const Collision2D::AABB& box) const {
         static bool warned = false;
         if (!warned) {
             warned = true;
-            std::fprintf(stderr, "SpatialGrid: a box spans more than %d cells on an axis; indexing only its first %d\n", kMaxCells, kMaxCells);
+            std::fprintf(stderr, "SpatialGrid: a box spans more than %d cells on an axis; indexing only its first %d and testing it on every query\n", kMaxCells, kMaxCells);
         }
     }
     return r;
@@ -55,6 +55,7 @@ void SpatialGrid::update(GameObjectId id, const Collision2D::AABB& box, bool isT
         Range a = cellsOf(it->second.box), b = cellsOf(box);
         if (a.x0 == b.x0 && a.y0 == b.y0 && a.x1 == b.x1 && a.y1 == b.y1) { // same cells: nothing to relink
             it->second = {box, isTrigger};
+            if (b.clamped) wideEntries_.insert(id); else wideEntries_.erase(id);
             return;
         }
         unlink(id, it->second.box);
@@ -63,6 +64,7 @@ void SpatialGrid::update(GameObjectId id, const Collision2D::AABB& box, bool isT
         entries_.emplace(id, Entry{box, isTrigger});
     }
     Range r = cellsOf(box);
+    if (r.clamped) wideEntries_.insert(id); else wideEntries_.erase(id);
     for (int y = r.y0; y <= r.y1; ++y) {
         for (int x = r.x0; x <= r.x1; ++x) cells_[key(x, y)].push_back(id);
     }
@@ -72,11 +74,13 @@ void SpatialGrid::remove(GameObjectId id) {
     auto it = entries_.find(id);
     if (it == entries_.end()) return;
     unlink(id, it->second.box);
+    wideEntries_.erase(id);
     entries_.erase(it);
 }
 
 void SpatialGrid::clear() {
     entries_.clear();
+    wideEntries_.clear();
     cells_.clear();
 }
 
@@ -99,8 +103,10 @@ void SpatialGrid::query(const Collision2D::AABB& box, std::vector<GameObjectId>&
                 for (GameObjectId id : cell->second) consider(id, entries_.at(id));
             }
         }
+        // clamped entries are indexed only in their first kMaxCells cells, so always test them directly
+        for (GameObjectId id : wideEntries_) consider(id, entries_.at(id));
     }
-    // an object spanning several visited cells is listed once per cell
+    // an object spanning several visited cells (or a wide entry also found via a cell) is listed more than once
     std::sort(out.begin(), out.end(), [](GameObjectId a, GameObjectId b) {
         return a.index != b.index ? a.index < b.index : a.generation < b.generation;
     });

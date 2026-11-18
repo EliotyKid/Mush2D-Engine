@@ -103,7 +103,7 @@ public:
     // rewriting the local one. Returns false on a cycle, a stale handle or a pending-destroy object; nothing changes then.
     bool setParent(GameObjectId child, GameObjectId parent, bool keepWorld = true);
 
-    const Transform2D& worldTransform(GameObjectId id) const;
+    Transform2D worldTransform(GameObjectId id) const;
 
     // Recomputes the cached world transform of every child, parents first. Runs at the end of each flush.
     void updateTransforms();

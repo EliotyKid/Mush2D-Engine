@@ -722,6 +722,18 @@ TEST(grid_ignores_nonfinite_and_survives_huge_boxes) {
     CHECK(Collision2D::queryAABB(scene, AABB{{-1, -1}, {1, 1}}).empty());
 }
 
+TEST(spatial_grid_wide_entry_found_by_narrow_query) {
+    SpatialGrid grid;
+    GameObjectId wide{7, 1};
+    grid.insert(wide, AABB{{0, 0}, {2000, 1}}); // beyond kMaxCells cells: only partly indexed
+    std::vector<GameObjectId> got;
+    grid.query(AABB{{1000, 0.2f}, {1001, 0.4f}}, got);
+    CHECK((got == std::vector<GameObjectId>{wide}));
+    grid.remove(wide);
+    grid.query(AABB{{1000, 0.2f}, {1001, 0.4f}}, got);
+    CHECK(got.empty());
+}
+
 TEST(dispatch_handler_can_destroy_create_and_reparent) {
     Scene2D scene;
     GameObjectId trigger = scene.createObject<Counted>().id, victim = scene.createObject<Counted>().id;

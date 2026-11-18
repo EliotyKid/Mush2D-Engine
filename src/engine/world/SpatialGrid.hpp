@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Uniform-grid broadphase. Stores one AABB per id (and whether it is a trigger) and answers
@@ -16,7 +17,8 @@ public:
     void insert(GameObjectId id, const Collision2D::AABB& box, bool isTrigger = false) { update(id, box, isTrigger); }
     // Inserts when the id is not stored yet. A box with a NaN or infinite coordinate is not stored (any
     // entry for the id is removed), so it never shows up in queries. A box spanning more than kMaxCells
-    // cells on an axis is indexed only in its first kMaxCells cells; a query that wide scans every entry.
+    // cells on an axis is indexed only in its first kMaxCells cells and also kept in a "wide" set that every
+    // query tests directly; a query that wide scans every entry.
     void update(GameObjectId id, const Collision2D::AABB& box, bool isTrigger = false);
     void remove(GameObjectId id);
     void clear();
@@ -43,5 +45,6 @@ private:
 
     float cell_;
     std::unordered_map<GameObjectId, Entry> entries_;
+    std::unordered_set<GameObjectId> wideEntries_; // ids whose box was clamped on insert/update
     std::unordered_map<std::int64_t, std::vector<GameObjectId>> cells_;
 };

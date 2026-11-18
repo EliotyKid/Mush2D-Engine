@@ -115,10 +115,9 @@ void Scene2D::updateTransforms() {
     }
 }
 
-const Transform2D& Scene2D::worldTransform(GameObjectId id) const {
-    static const Transform2D identity{};
+Transform2D Scene2D::worldTransform(GameObjectId id) const {
     const GameObject* object = find(id);
-    if (!object) return identity;
+    if (!object) return Transform2D{};
     return object->parent_ ? object->world_ : object->transform;
 }
 
