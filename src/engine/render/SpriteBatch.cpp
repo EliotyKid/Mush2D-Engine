@@ -29,12 +29,13 @@ const std::vector<SpriteInstance>& SpriteBatch::sorted() {
 }
 
 void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLookup& lookup) {
-    for (const auto& object : scene.getObjects()) {
-        if (!object || !object->active || !object->visible || !object->sprite) continue;
+    scene.forEach([&](const GameObject& obj) {
+        const GameObject* object = &obj;
+        if (!object->active || !object->visible || !object->sprite) return;
         const SpriteData& sprite = *object->sprite;
 
         auto [material, uvRect] = lookup(sprite.atlasTextureIndex, sprite.frameName);
-        if (uvRect.z <= 0.0f) continue;
+        if (uvRect.z <= 0.0f) return;
 
         SpriteInstance inst{};
         inst.position = object->transform.position + sprite.offset;
@@ -53,5 +54,5 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
         // Legacy `layer` only orders sprites that sit on the default depth.
         int order = sprite.depth == 0.0f ? sprite.layer * 1000 + sprite.orderInLayer : sprite.orderInLayer;
         batch.add(inst, order);
-    }
+    });
 }

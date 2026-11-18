@@ -5,6 +5,7 @@
 #include "engine/render/SceneRenderer.hpp"
 #include "engine/tools/LookFile.hpp"
 #include "engine/world/Ldtk.hpp"
+#include "engine/world/Scene2D.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -179,6 +180,148 @@ TEST(look_apply_skips_stale_ids) {
     CHECK(lights.size() == 1 && lights[0].value.radius == 5 && layers[0].value.depth == 0);
     LookFile out; captureLook(out, lights, layers);
     CHECK(out.lights.size() == 1 && out.layers.at("Far").parallax.x == 1);
+}
+
+// --- Entity model (Scene2D) ---
+namespace {
+int g_frame = 0;
+
+struct Counted : GameObject {
+    int steps = 0, destroys = 0, firstStepFrame = -1, createdFrame = -1;
+    std::vector<int>* log = nullptr; int tag = 0;
+    void onCreate(Scene2D&) override { createdFrame = g_frame; }
+    void onStep(Scene2D&, float) override {
+        if (firstStepFrame < 0) firstStepFrame = g_frame;
+        ++steps;
+        if (log) log->push_back(tag);
+    }
+    void onDestroy(Scene2D&) override { ++destroys; }
+};
+struct Spawner : GameObject {
+    std::vector<GameObjectId> spawned;
+    void onStep(Scene2D& scene, float) override { spawned.push_back(scene.createObject<Counted>().id); }
+};
+struct ChainDestroy : Counted {
+    GameObjectId other; GameObjectId* spawnedOut = nullptr;
+    void onDestroy(Scene2D& scene) override {
+        Counted::onDestroy(scene);
+        scene.destroy(other); scene.destroy(id);
+        if (spawnedOut) *spawnedOut = scene.createObject<Counted>().id;
+    }
+};
+}
+
+TEST(spawn_during_step_is_safe) {
+    Scene2D scene; g_frame = 0;
+    auto& spawner = scene.createObject<Spawner>();
+    for (g_frame = 0; g_frame < 100; ++g_frame) { scene.step(0.016f); scene.lateStep(0.016f); }
+    CHECK(spawner.spawned.size() == 100);
+    CHECK(scene.aliveCount() == 101);
+    bool ok = true;
+    for (GameObjectId id : spawner.spawned) {
+        auto* c = scene.findObjectAs<Counted>(id);
+        if (!c) { ok = false; continue; }
+        if (c->createdFrame < 99 && c->firstStepFrame != c->createdFrame + 1) ok = false;
+        if (c->createdFrame == 99 && c->steps != 0) ok = false;
+    }
+    CHECK(ok);
+}
+
+TEST(destroy_during_step_is_deferred) {
+    Scene2D scene;
+    static int killerDestroys = 0, victimDestroys = 0, victimSteps = 0;
+    killerDestroys = victimDestroys = victimSteps = 0;
+    struct K : GameObject { GameObjectId other;
+        void onStep(Scene2D& s, float) override { s.destroy(id); s.destroy(other); s.destroy(id); } // double destroy: no-op
+        void onDestroy(Scene2D&) override { ++killerDestroys; } };
+    struct V : GameObject {
+        void onStep(Scene2D&, float) override { ++victimSteps; }
+        void onDestroy(Scene2D& s) override { ++victimDestroys; s.destroy(id); } };
+    struct Probe : GameObject { // runs last: both still resolve, flagged pending
+        GameObjectId k, v; bool sawPending = false;
+        void onStep(Scene2D& s, float) override {
+            sawPending = s.find(k) && s.find(k)->pendingDestroy() && s.find(v) && s.find(v)->pendingDestroy();
+        } };
+    auto& killer = scene.createObject<K>();
+    GameObjectId k = killer.id, v = scene.createObject<V>().id;
+    killer.other = v;
+    auto& probe = scene.createObject<Probe>(); probe.updateOrder = 10; probe.k = k; probe.v = v;
+    scene.step(0.016f);
+    CHECK(probe.sawPending);
+    CHECK(scene.find(k) == nullptr);
+    CHECK(scene.find(v) == nullptr);
+    for (int i = 0; i < 3; ++i) { scene.step(0.016f); scene.lateStep(0.016f); }
+    CHECK(killerDestroys == 1);
+    CHECK(victimDestroys == 1);
+    CHECK(victimSteps == 0); // marked earlier in the same frame, so no callback
+    CHECK(scene.aliveCount() == 1);
+}
+
+TEST(stale_handle_returns_null) {
+    Scene2D scene;
+    GameObjectId a = scene.createObject<Counted>().id;
+    CHECK(a && scene.find(a));
+    scene.destroy(a); scene.flush();
+    GameObjectId b = scene.createObject<Counted>().id;
+    CHECK(b.index == a.index); // slot reused
+    CHECK(!(a == b));
+    CHECK(scene.find(a) == nullptr);
+    CHECK(scene.find(b) != nullptr);
+    CHECK(scene.find(InvalidGameObjectId) == nullptr);
+    CHECK(!InvalidGameObjectId);
+    CHECK(std::hash<GameObjectId>{}(a) != std::hash<GameObjectId>{}(b));
+}
+
+TEST(clear_invalidates_old_handles) {
+    Scene2D scene;
+    GameObjectId a = scene.createObject<Counted>().id;
+    scene.createObject<Counted>();
+    scene.step(0.016f);
+    scene.clear();
+    CHECK(scene.aliveCount() == 0);
+    GameObjectId b = scene.createObject<Counted>().id;
+    CHECK(scene.find(a) == nullptr);
+    CHECK(scene.find(b) != nullptr);
+    CHECK(!(a == b));
+}
+
+TEST(update_order_respected) {
+    Scene2D scene;
+    std::vector<int> log;
+    int orders[] = {5, -1, 0, 0};
+    std::vector<Counted*> objs;
+    for (int i = 0; i < 4; ++i) {
+        auto& c = scene.createObject<Counted>(); c.updateOrder = orders[i]; c.tag = i; c.log = &log; objs.push_back(&c);
+    }
+    scene.step(0.016f);
+    CHECK((log == std::vector<int>{1, 2, 3, 0}));
+    std::vector<int> visited;
+    scene.forEach([&](GameObject& o) { visited.push_back(static_cast<Counted&>(o).tag); });
+    CHECK((visited == std::vector<int>{1, 2, 3, 0}));
+    log.clear();
+    objs[0]->updateOrder = -5; // takes effect at the next flush (start of step)
+    scene.step(0.016f);
+    CHECK((log == std::vector<int>{0, 1, 2, 3}));
+}
+
+TEST(destroy_inside_onDestroy_is_safe) {
+    Scene2D scene;
+    auto& a = scene.createObject<ChainDestroy>();
+    auto& b = scene.createObject<ChainDestroy>();
+    GameObjectId spawned;
+    a.other = b.id; b.other = a.id; a.spawnedOut = &spawned;
+    GameObjectId ia = a.id, ib = b.id;
+    scene.destroy(ia);
+    scene.flush();
+    CHECK(scene.find(ia) == nullptr);
+    CHECK(scene.find(ib) == nullptr);
+    CHECK(spawned && scene.find(spawned) != nullptr);
+    CHECK(scene.aliveCount() == 1);
+    // clear() with chained destroys must not crash either
+    auto& c = scene.createObject<ChainDestroy>(); auto& d = scene.createObject<ChainDestroy>();
+    c.other = d.id; d.other = c.id;
+    scene.clear();
+    CHECK(scene.aliveCount() == 0);
 }
 
 int main() {

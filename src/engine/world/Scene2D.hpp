@@ -2,79 +2,64 @@
 
 #include "GameObject.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <type_traits>
 #include <vector>
 
+// Owns GameObjects in a slot map. Create/destroy are deferred: they take effect at flush points
+// (start and end of step, end of lateStep, or an explicit flush()), so they are safe inside callbacks.
 class Scene2D {
 public:
     void* userData = nullptr; // opaque, owned by the game
 
 public:
+    // The object resolves with find() at once and gets onCreate now; it joins the update list at the next flush.
     template<typename TObject, typename... Args>
     TObject& createObject(Args&&... args) {
         static_assert(std::is_base_of_v<GameObject, TObject>,
                       "TObject precisa herdar de GameObject.");
 
         auto object = std::make_unique<TObject>(std::forward<Args>(args)...);
-        object->id = nextId++;
-
         TObject& ref = *object;
-        objects.push_back(std::move(object));
+        insert(std::move(object));
         ref.onCreate(*this);
         return ref;
     }
 
-    void clear() {
-        for (auto& object : objects) {
-            if (object) {
-                object->onDestroy(*this);
-            }
-        }
+    // Marks for destruction; onDestroy runs and the slot is freed at the next flush. Repeated calls do nothing.
+    void destroy(GameObjectId id);
 
-        objects.clear();
-        nextId = 1;
-    }
+    // Applies pending destroys and rebuilds the update list. No-op while the scene is iterating.
+    void flush();
 
-    GameObject* findObject(GameObjectId id) {
-        for (auto& object : objects) {
-            if (object && object->id == id) {
-                return object.get();
-            }
-        }
-        return nullptr;
-    }
+    // Destroys everything (onDestroy is called). Generations are kept, so old handles stay invalid.
+    void clear();
 
-    const GameObject* findObject(GameObjectId id) const {
-        for (const auto& object : objects) {
-            if (object && object->id == id) {
-                return object.get();
-            }
-        }
-        return nullptr;
-    }
+    GameObject* find(GameObjectId id);
+    const GameObject* find(GameObjectId id) const;
+
+    GameObject* findObject(GameObjectId id) { return find(id); }
+    const GameObject* findObject(GameObjectId id) const { return find(id); }
 
     template<typename TObject>
     TObject* findObjectAs(GameObjectId id) {
-        GameObject* object = findObject(id);
+        GameObject* object = find(id);
         return object ? dynamic_cast<TObject*>(object) : nullptr;
     }
 
     template<typename TObject>
     const TObject* findObjectAs(GameObjectId id) const {
-        const GameObject* object = findObject(id);
+        const GameObject* object = find(id);
         return object ? dynamic_cast<const TObject*>(object) : nullptr;
     }
 
     template<typename TObject>
     TObject* findFirstObjectOfType() {
-        for (auto& object : objects) {
-            if (!object) {
-                continue;
-            }
-
-            if (auto* casted = dynamic_cast<TObject*>(object.get())) {
+        for (auto& slot : slots_) {
+            if (auto* casted = dynamic_cast<TObject*>(slot.object.get())) {
                 return casted;
             }
         }
@@ -83,12 +68,8 @@ public:
 
     template<typename TObject>
     const TObject* findFirstObjectOfType() const {
-        for (const auto& object : objects) {
-            if (!object) {
-                continue;
-            }
-
-            if (auto* casted = dynamic_cast<const TObject*>(object.get())) {
+        for (const auto& slot : slots_) {
+            if (auto* casted = dynamic_cast<const TObject*>(slot.object.get())) {
                 return casted;
             }
         }
@@ -98,69 +79,57 @@ public:
     template<typename TObject>
     std::vector<TObject*> findAllObjectsOfType() {
         std::vector<TObject*> result;
-
-        for (auto& object : objects) {
-            if (!object) {
-                continue;
-            }
-
-            if (auto* casted = dynamic_cast<TObject*>(object.get())) {
+        for (auto& slot : slots_) {
+            if (auto* casted = dynamic_cast<TObject*>(slot.object.get())) {
                 result.push_back(casted);
             }
         }
-
         return result;
     }
 
-    std::vector<GameObject*> findObjectsByTag(const std::string& tag) {
-        std::vector<GameObject*> result;
+    std::vector<GameObject*> findObjectsByTag(const std::string& tag);
+    std::vector<const GameObject*> findObjectsByTag(const std::string& tag) const;
 
-        for (auto& object : objects) {
-            if (object && object->hasTag(tag)) {
-                result.push_back(object.get());
-            }
+    void step(float deltaTime);
+    void lateStep(float deltaTime);
+
+    // Visits live objects (flushed, not pending destroy) in update order. Safe to create/destroy inside.
+    template<typename F>
+    void forEach(F&& fn) {
+        ++iterating_;
+        for (std::size_t i = 0; i < live_.size(); ++i) {
+            if (!live_[i]->pendingDestroy_) fn(*live_[i]);
         }
-
-        return result;
+        --iterating_;
     }
 
-    std::vector<const GameObject*> findObjectsByTag(const std::string& tag) const {
-        std::vector<const GameObject*> result;
-
-        for (const auto& object : objects) {
-            if (object && object->hasTag(tag)) {
-                result.push_back(object.get());
-            }
+    template<typename F>
+    void forEach(F&& fn) const {
+        ++iterating_;
+        for (std::size_t i = 0; i < live_.size(); ++i) {
+            if (!live_[i]->pendingDestroy_) fn(static_cast<const GameObject&>(*live_[i]));
         }
-
-        return result;
+        --iterating_;
     }
 
-    void step(float deltaTime) {
-        for (auto& object : objects) {
-            if (object && object->active) {
-                object->onStep(*this, deltaTime);
-            }
-        }
-    }
-
-    void lateStep(float deltaTime) {
-        for (auto& object : objects) {
-            if (object && object->active) {
-                object->onLateStep(*this, deltaTime);
-            }
-        }
-    }
-
-    std::vector<std::unique_ptr<GameObject>>& getObjects() {
-        return objects;
-    }
-
-    const std::vector<std::unique_ptr<GameObject>>& getObjects() const {
-        return objects;
-    }
+    // Objects holding a slot, including created-but-unflushed and pending-destroy ones.
+    std::size_t aliveCount() const { return aliveCount_; }
 
 private:
-    GameObjectId nextId = 1;
-    std::vector<std::unique_ptr<GameObject>> objects;
+    struct Slot {
+        std::unique_ptr<GameObject> object;
+        std::uint32_t generation = 1;
+    };
+
+    void insert(std::unique_ptr<GameObject> object);
+    void processDestroys();
+
+    std::vector<Slot> slots_;
+    std::vector<std::uint32_t> freeSlots_;
+    std::vector<GameObject*> live_; // update order, rebuilt at flush
+    std::vector<GameObjectId> destroyQueue_;
+    std::uint64_t nextSeq_ = 0;
+    std::size_t aliveCount_ = 0;
+    bool liveDirty_ = false;
+    mutable int iterating_ = 0;
 };

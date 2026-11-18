@@ -63,30 +63,15 @@ bool collidesAtPosition(
     movingBox.min = movingCenter - movingHalfSize;
     movingBox.max = movingCenter + movingHalfSize;
 
-    for (const auto& otherPtr : scene.getObjects()) {
-        if (!otherPtr || !otherPtr->active) {
-            continue;
+    bool hit = false;
+    scene.forEach([&](const GameObject& other) {
+        if (hit || !other.active || other.id == movingObjectId || !hasCollider(other) || other.collider->isTrigger) {
+            return;
         }
+        hit = intersects(movingBox, buildAABB(other));
+    });
 
-        if (otherPtr->id == movingObjectId) {
-            continue;
-        }
-
-        if (!hasCollider(*otherPtr)) {
-            continue;
-        }
-
-        if (otherPtr->collider->isTrigger) {
-            continue;
-        }
-
-        AABB otherBox = buildAABB(*otherPtr);
-        if (intersects(movingBox, otherBox)) {
-            return true;
-        }
-    }
-
-    return false;
+    return hit;
 }
 
 }

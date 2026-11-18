@@ -309,34 +309,34 @@ void ShowcaseGame::processTriggerOverlaps(EngineServices& s) {
     Collision2D::AABB playerBox = Collision2D::buildAABB(*player);
     std::unordered_set<GameObjectId> currentOverlaps;
 
-    for (auto& objectPtr : scene.getObjects()) {
-        if (!objectPtr || !objectPtr->active) {
-            continue;
+    scene.forEach([&](GameObject& object) {
+        if (!object.active) {
+            return;
         }
 
-        if (objectPtr->id == playerObjectId) {
-            continue;
+        if (object.id == playerObjectId) {
+            return;
         }
 
-        if (!objectPtr->collider.has_value() || !objectPtr->collider->enabled) {
-            continue;
+        if (!object.collider.has_value() || !object.collider->enabled) {
+            return;
         }
 
-        if (!objectPtr->collider->isTrigger) {
-            continue;
+        if (!object.collider->isTrigger) {
+            return;
         }
 
-        Collision2D::AABB triggerBox = Collision2D::buildAABB(*objectPtr);
+        Collision2D::AABB triggerBox = Collision2D::buildAABB(object);
 
         if (Collision2D::intersects(playerBox, triggerBox)) {
-            currentOverlaps.insert(objectPtr->id);
+            currentOverlaps.insert(object.id);
 
-            if (activeTriggerOverlaps.find(objectPtr->id) == activeTriggerOverlaps.end()) {
-                objectPtr->onTriggerEnter(scene, *player);
-                player->onTriggerEnter(scene, *objectPtr);
+            if (activeTriggerOverlaps.find(object.id) == activeTriggerOverlaps.end()) {
+                object.onTriggerEnter(scene, *player);
+                player->onTriggerEnter(scene, object);
             }
         }
-    }
+    });
 
     for (GameObjectId previousId : activeTriggerOverlaps) {
         if (currentOverlaps.find(previousId) == currentOverlaps.end()) {
