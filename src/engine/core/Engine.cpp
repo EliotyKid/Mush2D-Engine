@@ -1,5 +1,7 @@
 #include "engine/core/Engine.hpp"
+#include "engine/core/Paths.hpp"
 #include "engine/gpu/Image.hpp"
+#include "engine/render/Materials.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -65,10 +67,17 @@ void Engine::run(IGame& game) {
     Camera2D camera{};
     Scene2D scene{};
     EngineServices services{gpu, input, camera, scene};
+    // Task 5 moves these into the renderer; for now a smoke test against the real device.
+    Bindless bindless;
+    MaterialLibrary materials;
+    auto destroyMaterials = [&] { materials.shutdown(); bindless.shutdown(); };
 
     try {
         input.attachWindow(window);
         gpu.init(window);
+        bindless.init(gpu);
+        materials.init(gpu, bindless);
+        materials.load(assetPath("assets/atlases/characters.png"));
         game.init(services);
 
         float lastTime = static_cast<float>(glfwGetTime());
@@ -92,6 +101,7 @@ void Engine::run(IGame& game) {
         game.shutdown(services);
     } catch (...) {
         scene.clear();
+        destroyMaterials();
         gpu.shutdown();
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -99,6 +109,7 @@ void Engine::run(IGame& game) {
     }
 
     scene.clear();
+    destroyMaterials();
     gpu.shutdown();
     glfwDestroyWindow(window);
     glfwTerminate();

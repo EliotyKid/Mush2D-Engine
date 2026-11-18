@@ -1,4 +1,8 @@
 #include "engine/core/Paths.hpp"
+#include "engine/render/Materials.hpp"
+
+#include <filesystem>
+#include <fstream>
 
 #include <cstdio>
 #include <functional>
@@ -23,6 +27,20 @@ TEST(asset_path_is_next_to_executable) {
     auto p = assetPath("assets/levels/x.ldtk");
     CHECK(p.is_absolute());
     CHECK(p.filename() == "x.ldtk");
+}
+
+TEST(material_paths_found_when_present) {
+    auto dir = std::filesystem::temp_directory_path() / "mush2d_mat";
+    std::filesystem::create_directories(dir);
+    for (auto n : {"a.png", "a_n.png", "a_e.png"}) std::ofstream(dir / n) << "x";
+    auto m = resolveMaterialPaths(dir / "a.png");
+    CHECK(m.normal && m.normal->filename() == "a_n.png");
+    CHECK(m.emissive && m.emissive->filename() == "a_e.png");
+    CHECK(!m.mask);
+}
+TEST(material_mismatched_size_falls_back) {
+    CHECK(mapMatchesAlbedo(256, 128, 256, 128));
+    CHECK(!mapMatchesAlbedo(256, 128, 128, 128));
 }
 
 int main() {
