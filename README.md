@@ -4,7 +4,7 @@ C++20 / Vulkan 2D engine. Needs Vulkan 1.3 (`vulkaninfo --summary`, `apiVersion`
 
 ## Prerequisites
 
-- Arch Linux: `sudo pacman -S vulkan-devel cmake ninja gcc libxrandr libxinerama libxcursor libxi libxkbcommon wayland wayland-protocols`
+- Arch Linux: `sudo pacman -S vulkan-devel cmake ninja gcc libxrandr libxinerama libxcursor libxi libxkbcommon wayland wayland-protocols shaderc`
 - Windows: Vulkan SDK, Visual Studio 2022 or MSVC Build Tools, CMake, Ninja
 
 Other dependencies (GLFW, glm, nlohmann_json, vk-bootstrap, VMA, Dear ImGui) are fetched by CMake on first configure.
@@ -26,10 +26,12 @@ Se o configure do Release travar baixando o imgui, passe `-DFETCHCONTENT_SOURCE_
 - Setas: mover. `Z` ou seta para cima: pular.
 - `TAB`: próxima cena.
 - `F5`: recarregar a cena atual.
-- `Espaço`: dash. `H`: golpe. `R`: voltar ao checkpoint.
-- `F`: liga/desliga a câmera que segue o player. Com ela desligada, `W` `A` `S` `D` movem a câmera.
+- `Espaço`: dash. `H`: golpe. Só nas cenas Sandbox e Test, não na sala vitrine.
+- `R`: voltar ao checkpoint.
+- `F`: liga/desliga a câmera que segue o player. Com ela desligada, `W` `A` `S` `D` movem a câmera. Botão do meio do mouse arrastando também move a câmera.
 - `Q` `E` (e a roda do mouse): zoom da câmera. Sem efeito no modo pixel art, que usa escala inteira fixa.
 - `F1`: painel de visual e desempenho (ImGui).
+- No Release, "Salvar" grava `showcase.look.json` ao lado do executável, e a cópia de assets do próximo build sobrescreve esse arquivo. Para persistir, use o Debug (grava no código-fonte).
 
 ## Variáveis de ambiente
 
