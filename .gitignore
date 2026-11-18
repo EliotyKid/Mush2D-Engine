@@ -1,0 +1,7 @@
+build/
+out/
+*.spv
+.vs/
+.vscode/
+.idea/
+.superpowers/

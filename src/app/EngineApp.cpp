@@ -1,4 +1,5 @@
 #include "EngineApp.hpp"
+#include "../engine/core/Paths.hpp"
 #include "../engine/scenes/SceneRegistry.hpp"
 
 #include <algorithm>
@@ -1388,9 +1389,9 @@ EngineApp::TextureResource EngineApp::createTextureResource(const char* path) {
 void EngineApp::loadTextures() {
     textures.clear();
 
-    textures.push_back(createTextureResource("assets/atlases/characters.png"));   // 0
-    textures.push_back(createTextureResource("assets/atlases/enemies.png"));      // 1
-    textures.push_back(createTextureResource("assets/atlases/environment.png"));  // 2
+    textures.push_back(createTextureResource(assetPath("assets/atlases/characters.png").string().c_str()));   // 0
+    textures.push_back(createTextureResource(assetPath("assets/atlases/enemies.png").string().c_str()));      // 1
+    textures.push_back(createTextureResource(assetPath("assets/atlases/environment.png").string().c_str()));  // 2
 }
 
 std::vector<VkCommandBuffer> EngineApp::createCommandBuffers() {

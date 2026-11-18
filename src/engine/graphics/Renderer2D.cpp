@@ -1,4 +1,5 @@
 #include "Renderer2D.hpp"
+#include "../core/Paths.hpp"
 
 #include "../../game/assets/GameAssets.hpp"
 
@@ -111,8 +112,8 @@ glm::mat4 Renderer2D::buildModelMatrix(const Transform2D& transform) const {
 }
 
 void Renderer2D::createGraphicsPipeline() {
-    const auto vertShaderCode = readFile("shaders/triangle.vert.spv");
-    const auto fragShaderCode = readFile("shaders/triangle.frag.spv");
+    const auto vertShaderCode = readFile(assetPath("shaders/triangle.vert.spv").string());
+    const auto fragShaderCode = readFile(assetPath("shaders/triangle.frag.spv").string());
 
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);

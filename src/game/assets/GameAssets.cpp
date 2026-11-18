@@ -1,5 +1,6 @@
 #include "GameAssets.hpp"
 
+#include "../../engine/core/Paths.hpp"
 #include "../../engine/assets/AtlasLoader.hpp"
 
 #include <stdexcept>
@@ -13,22 +14,22 @@ void GameAssets::registerDefaults() {
     registerAtlas(
         GameAtlasId::Characters,
         "characters",
-        "assets/atlases/characters.json",
-        "assets/atlases/characters.png"
+        assetPath("assets/atlases/characters.json").string(),
+        assetPath("assets/atlases/characters.png").string()
     );
 
     registerAtlas(
         GameAtlasId::Enemies,
         "enemies",
-        "assets/atlases/enemies.json",
-        "assets/atlases/enemies.png"
+        assetPath("assets/atlases/enemies.json").string(),
+        assetPath("assets/atlases/enemies.png").string()
     );
 
     registerAtlas(
         GameAtlasId::Environment,
         "environment",
-        "assets/atlases/environment.json",
-        "assets/atlases/environment.png"
+        assetPath("assets/atlases/environment.json").string(),
+        assetPath("assets/atlases/environment.png").string()
     );
 
     registerSprite(GameSpriteId::PlayerIdle, GameAtlasId::Characters, "Sprite-0001 0.");

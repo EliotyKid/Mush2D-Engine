@@ -5,45 +5,26 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Vulkan REQUIRED)
-find_package(glfw3 REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
+find_package(Vulkan REQUIRED COMPONENTS glslc)
+include(cmake/Dependencies.cmake)
+include(cmake/Shaders.cmake)
 
-add_executable(Mush2DEngine
-    src/main.cpp
-    src/app/EngineApp.cpp
+file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS src/engine/*.cpp)
+file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS src/game/*.cpp)
 
-    src/engine/graphics/Renderer2D.cpp
-    src/engine/graphics/Camera2D.cpp
-    src/engine/platform/GlfwInput.cpp
-    src/engine/world/Collision.cpp
-    src/engine/scenes/SceneRegistry.cpp
-    src/engine/assets/TextureAtlas.cpp
-    src/engine/assets/AtlasLoader.cpp
+add_library(mush2d_engine STATIC ${ENGINE_SOURCES})
+# external/ only holds stb_image.h
+target_include_directories(mush2d_engine PUBLIC src external)
+target_compile_definitions(mush2d_engine PUBLIC $<$<CONFIG:Debug>:MUSH2D_SOURCE_DIR="${CMAKE_SOURCE_DIR}">)
+target_link_libraries(mush2d_engine PUBLIC glfw glm::glm Vulkan::Vulkan nlohmann_json::nlohmann_json imgui)
 
-    src/game/spawners/Spawn.cpp
-    src/game/scenes/SandboxScene.cpp
-    src/game/scenes/TestScene.cpp
-    src/game/assets/GameAssets.cpp
-)
+# src/app is the old EngineApp (replaced in a later task).
+add_executable(Mush2DEngine src/main.cpp src/app/EngineApp.cpp ${GAME_SOURCES})
+target_link_libraries(Mush2DEngine PRIVATE mush2d_engine)
+mush2d_compile_shaders(Mush2DEngine)
+mush2d_copy_assets(Mush2DEngine)
 
-target_include_directories(Mush2DEngine PRIVATE
-    external
-    src
-    src/app
-    src/engine
-    src/engine/platform
-    src/engine/graphics
-    src/engine/world
-    src/game
-    src/game/scenes
-    src/game/objects
-    src/game/spawners
-)
-
-target_link_libraries(Mush2DEngine
-    PRIVATE
-    glfw
-    Vulkan::Vulkan
-    nlohmann_json::nlohmann_json
-)
+enable_testing()
+add_executable(mush2d_tests tests/tests.cpp)
+target_link_libraries(mush2d_tests PRIVATE mush2d_engine)
+add_test(NAME mush2d_tests COMMAND mush2d_tests)
