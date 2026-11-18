@@ -1,0 +1,62 @@
+#include "engine/world/LevelLoader.hpp"
+
+#include <cstdio>
+
+void LevelLoader::load(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials) {
+    constexpr float U = LdtkPixelsPerUnit;
+    const float H = float(level.pxSize.y);
+    const int n = int(level.layers.size());
+    auto toWorld = [&](glm::vec2 px) { return glm::vec2(px.x / U, (H - px.y) / U); };
+
+    for (int li = 0; li < n; ++li) {
+        const LdtkLayer& L = level.layers[li];
+        const int order = n - li; // higher order draws later, so the front layer wins ties
+
+        if (!L.tilesetPath.empty() && !L.tiles.empty()) {
+            Material mat = materials.load(level.baseDir / L.tilesetPath);
+            const float g = float(L.gridSize);
+            for (const LdtkTile& t : L.tiles) {
+                SpriteInstance s{};
+                s.position = toWorld(glm::vec2(t.px) + g * 0.5f); // centre-based
+                s.size = {g / U, g / U};
+                float u = t.src.x / float(L.tilesetPx.x), v = t.src.y / float(L.tilesetPx.y);
+                float w = g / L.tilesetPx.x, h = g / L.tilesetPx.y;
+                if (t.flip & 1) s.size.x = -s.size.x;
+                if (t.flip & 2) { v += h; h = -h; }
+                s.uvRect = {u, v, w, h};
+                s.color = {1, 1, 1, 1};
+                s.depth = L.depth;
+                s.parallax = {L.parallaxX, L.parallaxY};
+                s.albedo = mat.albedo; s.normal = mat.normal; s.emissive = mat.emissive; s.mask = mat.mask;
+                s.flags = SpriteFlagNearest;
+                sprites_.push_back({s, order});
+            }
+        }
+
+        if (L.identifier == "Collision" && L.type == "IntGrid") {
+            for (const IntRect& r : mergeIntGrid(L.intGrid, L.cells.x, L.cells.y, 1)) {
+                GameObject& o = services.scene.createObject<GameObject>();
+                o.name = "Collision";
+                o.addTag("solid");
+                const float g = float(L.gridSize);
+                o.transform.position = toWorld({(r.x + r.w * 0.5f) * g, (r.y + r.h * 0.5f) * g});
+                ColliderData c;
+                c.size = {r.w * g / U, r.h * g / U};
+                o.collider = c;
+            }
+        }
+
+        for (const LdtkEntity& e : L.entities) {
+            auto f = factories_.find(e.identifier);
+            if (f == factories_.end()) {
+                std::fprintf(stderr, "LDtk: no factory for entity '%s', ignored\n", e.identifier.c_str());
+                continue;
+            }
+            f->second(e, toWorld(e.px + e.size * 0.5f), services);
+        }
+    }
+}
+
+void LevelLoader::appendStatic(SpriteBatch& batch) const {
+    for (const StaticSprite& s : sprites_) batch.add(s.instance, s.order);
+}

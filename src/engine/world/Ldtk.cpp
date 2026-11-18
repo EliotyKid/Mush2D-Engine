@@ -1,0 +1,130 @@
+#include "engine/world/Ldtk.hpp"
+
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <map>
+#include <stdexcept>
+
+using nlohmann::json;
+
+std::vector<IntRect> mergeIntGrid(const std::vector<int>& csv, int cw, int ch, int solidValue) {
+    std::vector<IntRect> out;
+    std::vector<char> used(csv.size(), 0);
+    auto avail = [&](int x, int y) { size_t i = size_t(y) * cw + x; return csv[i] == solidValue && !used[i]; };
+    for (int y = 0; y < ch; ++y)
+        for (int x = 0; x < cw; ++x) {
+            if (!avail(x, y)) continue;
+            int w = 1;
+            while (x + w < cw && avail(x + w, y)) ++w;
+            int h = 1;
+            for (; y + h < ch; ++h) {
+                bool full = true;
+                for (int i = 0; i < w && full; ++i) full = avail(x + i, y + h);
+                if (!full) break;
+            }
+            for (int j = 0; j < h; ++j)
+                for (int i = 0; i < w; ++i) used[size_t(y + j) * cw + x + i] = 1;
+            out.push_back({x, y, w, h});
+        }
+    return out;
+}
+
+float parseLayerDepth(const std::string& id, int orderFromFront, int frontIndexOfGameplay) {
+    size_t p = id.rfind("_d");
+    if (p != std::string::npos && p + 2 < id.size()) {
+        char* end = nullptr;
+        float v = std::strtof(id.c_str() + p + 2, &end);
+        if (end && *end == '\0') return v;
+    }
+    return float(orderFromFront - frontIndexOfGameplay);
+}
+
+float ldtkParallaxToScroll(float f) { return 1.0f - f; }
+
+namespace {
+std::string str(const json& j, const char* k) {
+    auto it = j.find(k);
+    return it != j.end() && it->is_string() ? it->get<std::string>() : std::string();
+}
+glm::ivec2 pair2i(const json& a) { return {a[0].get<int>(), a[1].get<int>()}; }
+}
+
+LdtkLevel loadLdtkLevel(const std::filesystem::path& file, const std::string& levelId) {
+    std::ifstream in(file);
+    if (!in) throw std::runtime_error("LDtk: cannot open " + file.string());
+    json root = json::parse(in, nullptr, false);
+    if (root.is_discarded()) throw std::runtime_error("LDtk: invalid JSON in " + file.string());
+
+    std::map<std::string, glm::vec2> parallax; // layer def identifier -> LDtk factors
+    std::map<int, glm::ivec2> tilesetSize;     // tileset uid -> pixel size
+    if (root.contains("defs")) {
+        for (auto& d : root["defs"].value("layers", json::array()))
+            parallax[str(d, "identifier")] = {d.value("parallaxFactorX", 0.0f), d.value("parallaxFactorY", 0.0f)};
+        for (auto& t : root["defs"].value("tilesets", json::array()))
+            tilesetSize[t.value("uid", -1)] = {t.value("pxWid", 0), t.value("pxHei", 0)};
+    }
+
+    for (auto& lv : root.value("levels", json::array())) {
+        if (str(lv, "identifier") != levelId) continue;
+        LdtkLevel out;
+        out.identifier = levelId;
+        out.pxSize = {lv.value("pxWid", 0), lv.value("pxHei", 0)};
+        out.baseDir = file.parent_path();
+
+        for (auto& li : lv.value("layerInstances", json::array())) {
+            LdtkLayer L;
+            L.identifier = str(li, "__identifier");
+            L.type = str(li, "__type");
+            L.gridSize = li.value("__gridSize", 16);
+            L.cells = {li.value("__cWid", 0), li.value("__cHei", 0)};
+            L.tilesetPath = str(li, "__tilesetRelPath");
+            if (li.contains("__tilesetDefUid") && li["__tilesetDefUid"].is_number_integer()) {
+                auto it = tilesetSize.find(li["__tilesetDefUid"].get<int>());
+                if (it != tilesetSize.end()) L.tilesetPx = it->second;
+            }
+            const bool tiled = L.type == "Tiles" || L.type == "AutoLayer";
+            if (tiled && (L.tilesetPath.empty() || L.tilesetPx.x <= 0 || L.tilesetPx.y <= 0)) {
+                std::fprintf(stderr, "LDtk: layer '%s' has no tileset, skipped\n", L.identifier.c_str());
+                continue;
+            }
+            auto pit = parallax.find(L.identifier);
+            glm::vec2 pf = pit != parallax.end() ? pit->second : glm::vec2(0.0f);
+            L.parallaxX = ldtkParallaxToScroll(pf.x);
+            L.parallaxY = ldtkParallaxToScroll(pf.y);
+            // shortcut: parallaxScaling ignored; add per-layer scaling if a layer needs it.
+            const glm::ivec2 off{li.value("__pxTotalOffsetX", 0), li.value("__pxTotalOffsetY", 0)};
+
+            if (li.contains("intGridCsv")) L.intGrid = li["intGridCsv"].get<std::vector<int>>();
+            for (const char* key : {"gridTiles", "autoLayerTiles"})
+                for (auto& t : li.value(key, json::array()))
+                    L.tiles.push_back({pair2i(t["px"]) + off, pair2i(t["src"]), t.value("f", 0)});
+            for (auto& e : li.value("entityInstances", json::array())) {
+                LdtkEntity E;
+                E.identifier = str(e, "__identifier");
+                E.iid = str(e, "iid");
+                E.size = {e.value("width", 0.0f), e.value("height", 0.0f)};
+                glm::vec2 pivot{0.0f};
+                if (e.contains("__pivot")) pivot = {e["__pivot"][0].get<float>(), e["__pivot"][1].get<float>()};
+                E.px = glm::vec2(pair2i(e["px"]) + off) - pivot * E.size;
+                E.fields = json::object();
+                for (auto& f : e.value("fieldInstances", json::array()))
+                    E.fields[str(f, "__identifier")] = f.value("__value", json());
+                L.entities.push_back(std::move(E));
+            }
+            out.layers.push_back(std::move(L));
+        }
+
+        // gameplay layer = "Collision", else the first layer with a tileset
+        int gameplay = -1, firstTiled = -1;
+        for (int i = 0; i < int(out.layers.size()); ++i) {
+            if (out.layers[i].identifier == "Collision" && gameplay < 0) gameplay = i;
+            if (!out.layers[i].tilesetPath.empty() && firstTiled < 0) firstTiled = i;
+        }
+        if (gameplay < 0) gameplay = firstTiled < 0 ? 0 : firstTiled;
+        for (int i = 0; i < int(out.layers.size()); ++i)
+            out.layers[i].depth = parseLayerDepth(out.layers[i].identifier, i, gameplay);
+        return out;
+    }
+    throw std::runtime_error("LDtk: level not found: " + levelId);
+}
