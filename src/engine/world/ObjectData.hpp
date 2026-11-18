@@ -16,6 +16,8 @@ struct SpriteData {
     int layer = 0;
     int orderInLayer = 0;
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    float depth = 0.0f;           // 0 = gameplay layer, > 0 further back (fog), < 0 foreground
+    glm::vec2 parallax{1.0f, 1.0f};
 };
 
 struct ColliderData {

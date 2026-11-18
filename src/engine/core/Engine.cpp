@@ -1,47 +1,65 @@
 #include "engine/core/Engine.hpp"
-#include "engine/core/Paths.hpp"
+#include "engine/gpu/Buffer.hpp"
 #include "engine/gpu/Image.hpp"
-#include "engine/render/Materials.hpp"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <iostream>
 #include <stdexcept>
+#include <string>
+#include <utility>
 
 namespace {
 constexpr int WIDTH = 1280;
 constexpr int HEIGHT = 720;
 constexpr float MAX_DELTA_TIME = 0.1f; // avoids a huge step after restoring a minimized window
+constexpr uint32_t SCREENSHOT_FRAME = 60;
 
-void drawFrame(GpuContext& gpu) {
-    FrameContext* frame = gpu.beginFrame();
-    if (!frame) {
-        return;
+// Dev tool (MUSH2D_SCREENSHOT=<file.png>): copies the presented image into a host buffer.
+// Call after the renderer, before endFrame; the image is back in PRESENT_SRC_KHR afterwards.
+GpuBuffer recordScreenshot(GpuContext& gpu, FrameContext& frame) {
+    VkExtent2D e = gpu.swapchain().extent();
+    GpuBuffer buf = createHostBuffer(gpu, VkDeviceSize{e.width} * e.height * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                     VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
+    VkImage image = gpu.swapchain().image(frame.imageIndex);
+    transition(frame.cmd, image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VkBufferImageCopy region{};
+    region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.imageExtent = {e.width, e.height, 1};
+    vkCmdCopyImageToBuffer(frame.cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buf.buffer, 1, &region);
+    transition(frame.cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    VkMemoryBarrier2 toHost{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+    toHost.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+    toHost.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    toHost.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    toHost.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+    VkDependencyInfo di{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    di.memoryBarrierCount = 1;
+    di.pMemoryBarriers = &toHost;
+    vkCmdPipelineBarrier2(frame.cmd, &di);
+    return buf;
+}
+
+// Waits for the GPU, converts BGRA -> RGBA and writes the PNG.
+void saveScreenshot(GpuContext& gpu, GpuBuffer& buf, VkExtent2D e, const std::string& path) {
+    vkDeviceWaitIdle(gpu.device());
+    vmaInvalidateAllocation(gpu.allocator(), buf.alloc, 0, VK_WHOLE_SIZE);
+    auto* px = static_cast<uint8_t*>(buf.mapped);
+    for (VkDeviceSize i = 0; i < buf.size; i += 4) {
+        std::swap(px[i], px[i + 2]);
+        px[i + 3] = 255;
     }
-
-    Swapchain& sc = gpu.swapchain();
-    VkImage image = sc.image(frame->imageIndex);
-
-    transition(frame->cmd, image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-    VkRenderingAttachmentInfo color{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-    color.imageView = sc.view(frame->imageIndex);
-    color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color.clearValue.color = {{0.05f, 0.05f, 0.08f, 1.0f}};
-
-    VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
-    rendering.renderArea = {{0, 0}, sc.extent()};
-    rendering.layerCount = 1;
-    rendering.colorAttachmentCount = 1;
-    rendering.pColorAttachments = &color;
-
-    vkCmdBeginRendering(frame->cmd, &rendering);
-    // Sprites are not drawn until Task 5 (new renderer).
-    vkCmdEndRendering(frame->cmd);
-
-    transition(frame->cmd, image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-    gpu.endFrame();
+    int w = static_cast<int>(e.width), h = static_cast<int>(e.height);
+    if (!stbi_write_png(path.c_str(), w, h, 4, px, w * 4)) {
+        std::cerr << "Screenshot: falha ao gravar " << path << '\n';
+    } else {
+        std::cerr << "Screenshot: " << path << '\n';
+    }
+    destroyBuffer(gpu, buf);
 }
 }
 
@@ -66,18 +84,31 @@ void Engine::run(IGame& game) {
     GlfwInput input;
     Camera2D camera{};
     Scene2D scene{};
-    EngineServices services{gpu, input, camera, scene};
-    // Task 5 moves these into the renderer; for now a smoke test against the real device.
     Bindless bindless;
     MaterialLibrary materials;
-    auto destroyMaterials = [&] { materials.shutdown(); bindless.shutdown(); };
+    SceneRenderer renderer;
+    EngineServices services{gpu, renderer, materials, input, camera, scene};
+    auto teardown = [&] {
+        scene.clear();
+        renderer.shutdown();
+        materials.shutdown();
+        bindless.shutdown();
+        gpu.shutdown();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+    };
+
+    const char* screenshotEnv = std::getenv("MUSH2D_SCREENSHOT");
+    std::string screenshotPath = screenshotEnv ? screenshotEnv : "";
+    uint32_t framesRendered = 0;
 
     try {
         input.attachWindow(window);
         gpu.init(window);
         bindless.init(gpu);
         materials.init(gpu, bindless);
-        materials.load(assetPath("assets/atlases/characters.png"));
+        renderer.init(gpu, bindless);
+        gpu.onResize = [&](VkExtent2D extent) { renderer.resize(extent); };
         game.init(services);
 
         float lastTime = static_cast<float>(glfwGetTime());
@@ -92,25 +123,32 @@ void Engine::run(IGame& game) {
 
             game.update(services, deltaTime);
 
+            camera.pixelArt = renderer.settings().pixelArt;
             camera.updateFollow(scene, deltaTime);
             camera.clampToBounds(gpu.swapchain().extent());
 
-            drawFrame(gpu);
+            FrameContext* frame = gpu.beginFrame();
+            if (!frame) {
+                continue;
+            }
+            renderer.render(*frame, camera, currentTime);
+
+            bool shoot = !screenshotPath.empty() && ++framesRendered == SCREENSHOT_FRAME;
+            GpuBuffer shot;
+            VkExtent2D shotExtent = gpu.swapchain().extent();
+            if (shoot) shot = recordScreenshot(gpu, *frame);
+            gpu.endFrame();
+            if (shoot) {
+                saveScreenshot(gpu, shot, shotExtent, screenshotPath);
+                glfwSetWindowShouldClose(window, GLFW_TRUE);
+            }
         }
 
         game.shutdown(services);
     } catch (...) {
-        scene.clear();
-        destroyMaterials();
-        gpu.shutdown();
-        glfwDestroyWindow(window);
-        glfwTerminate();
+        teardown();
         throw;
     }
 
-    scene.clear();
-    destroyMaterials();
-    gpu.shutdown();
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    teardown();
 }

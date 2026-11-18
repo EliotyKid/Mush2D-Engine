@@ -5,8 +5,12 @@
 #include "game/assets/GameAssets.hpp"
 #include "game/scenes/SceneId.hpp"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 class ShowcaseGame : public IGame {
 public:
@@ -16,6 +20,7 @@ public:
 
 private:
     GameAssets gameAssets;
+    std::vector<Material> atlasMaterials; // by atlas texture index
     GameObjectId playerObjectId = InvalidGameObjectId;
 
     float mouseZoomSensitivity = 0.15f;
@@ -32,6 +37,8 @@ private:
     SceneTransitionData currentSceneTransitionData{};
 
 private:
+    std::pair<Material, glm::vec4> lookupAtlasFrame(std::uint32_t atlasIndex, const std::string& frameName) const;
+    void submitRenderData(EngineServices& s);
     void handleGlobalInput(EngineServices& s, float deltaTime);
     void processTriggerOverlaps(EngineServices& s);
     void setupInitialScene(EngineServices& s);

@@ -1,5 +1,6 @@
 #include "Camera2D.hpp"
 
+#include "engine/render/PixelScale.hpp"
 #include "engine/world/Scene2D.hpp"
 
 #include <algorithm>
@@ -32,12 +33,9 @@ void Camera2D::clampToBounds(VkExtent2D viewportExtent) {
         return;
     }
 
-    float aspect =
-        static_cast<float>(viewportExtent.width) /
-        static_cast<float>(viewportExtent.height);
-
-    float halfHeight = size * 0.5f;
-    float halfWidth = halfHeight * aspect;
+    glm::vec2 half = halfExtent(viewportExtent);
+    float halfWidth = half.x;
+    float halfHeight = half.y;
 
     float minX = bounds.left + halfWidth;
     float maxX = bounds.right - halfWidth;
@@ -57,23 +55,21 @@ void Camera2D::clampToBounds(VkExtent2D viewportExtent) {
     }
 }
 
-glm::mat4 Camera2D::buildViewMatrix() const {
-    glm::mat4 view(1.0f);
-    view = glm::translate(view, glm::vec3(-position, 0.0f));
-    return view;
+glm::vec2 Camera2D::halfExtent(VkExtent2D viewportExtent) const {
+    float w = static_cast<float>(viewportExtent.width);
+    float h = static_cast<float>(viewportExtent.height);
+    float halfHeight = pixelArt
+        ? h / (2.0f * static_cast<float>(computePixelScale(static_cast<int>(viewportExtent.width))) * pixelsPerUnit)
+        : size * 0.5f;
+    return {halfHeight * w / h, halfHeight};
 }
 
 glm::mat4 Camera2D::buildProjectionMatrix(VkExtent2D viewportExtent) const {
-    float aspect =
-        static_cast<float>(viewportExtent.width) /
-        static_cast<float>(viewportExtent.height);
-
-    float halfHeight = size * 0.5f;
-    float halfWidth = halfHeight * aspect;
+    glm::vec2 half = halfExtent(viewportExtent);
 
     glm::mat4 proj = glm::ortho(
-        -halfWidth, halfWidth,
-        -halfHeight, halfHeight,
+        -half.x, half.x,
+        -half.y, half.y,
         -1.0f, 1.0f
     );
 

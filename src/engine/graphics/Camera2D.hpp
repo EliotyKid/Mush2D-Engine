@@ -18,7 +18,11 @@ public:
 
 public:
     glm::vec2 position{0.0f, 0.0f};
-    float size = 2.0f;
+    float size = 2.0f; // visible world height; HD mode only
+
+    // Pixel art: half height = viewportHeight / (2 * computePixelScale(w) * pixelsPerUnit); `size` is ignored.
+    bool pixelArt = true;
+    float pixelsPerUnit = 32.0f;
 
     bool followEnabled = true;
     GameObjectId targetId = InvalidGameObjectId;
@@ -34,6 +38,8 @@ public:
     void updateFollow(const Scene2D& scene, float deltaTime);
     void clampToBounds(VkExtent2D viewportExtent);
 
-    glm::mat4 buildViewMatrix() const;
+    // Half of the visible world area (x, y), in world units.
+    glm::vec2 halfExtent(VkExtent2D viewportExtent) const;
+    // Orthographic, Y up, no camera translation (the sprite shader subtracts position * parallax).
     glm::mat4 buildProjectionMatrix(VkExtent2D viewportExtent) const;
 };

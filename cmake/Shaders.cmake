@@ -1,6 +1,7 @@
 # Compiles shaders/*.{vert,frag} to ${CMAKE_BINARY_DIR}/shaders/<file>.spv.
 function(mush2d_compile_shaders target)
     file(GLOB sources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/shaders/*.vert ${CMAKE_SOURCE_DIR}/shaders/*.frag)
+    file(GLOB includes CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/shaders/*.glsl)
     set(spvs)
     foreach(src ${sources})
         get_filename_component(name ${src} NAME)
@@ -8,7 +9,7 @@ function(mush2d_compile_shaders target)
         add_custom_command(OUTPUT ${out}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders
             COMMAND Vulkan::glslc --target-env=vulkan1.3 ${src} -o ${out}
-            DEPENDS ${src} VERBATIM)
+            DEPENDS ${src} ${includes} VERBATIM)
         list(APPEND spvs ${out})
     endforeach()
     add_custom_target(${target}_shaders DEPENDS ${spvs})

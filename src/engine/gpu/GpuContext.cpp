@@ -39,6 +39,7 @@ void GpuContext::init(GLFWwindow* window) {
     VkPhysicalDeviceVulkan13Features f13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     f13.dynamicRendering = VK_TRUE;
     f13.synchronization2 = VK_TRUE;
+    f13.shaderDemoteToHelperInvocation = VK_TRUE; // glslc (vulkan1.3) lowers `discard` to demote
     VkPhysicalDeviceVulkan12Features f12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     f12.descriptorIndexing = VK_TRUE;
     f12.descriptorBindingPartiallyBound = VK_TRUE;

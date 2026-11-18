@@ -13,7 +13,7 @@ file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS src/engine/*.cpp)
 file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS src/game/*.cpp)
 
 add_library(mush2d_engine STATIC ${ENGINE_SOURCES})
-# external/ only holds stb_image.h
+# external/ only holds stb_image.h and stb_image_write.h
 target_include_directories(mush2d_engine PUBLIC src external)
 target_compile_definitions(mush2d_engine PUBLIC $<$<CONFIG:Debug>:MUSH2D_SOURCE_DIR="${CMAKE_SOURCE_DIR}">)
 target_link_libraries(mush2d_engine PUBLIC glfw glm::glm Vulkan::Vulkan nlohmann_json::nlohmann_json imgui vk-bootstrap::vk-bootstrap GPUOpen::VulkanMemoryAllocator)

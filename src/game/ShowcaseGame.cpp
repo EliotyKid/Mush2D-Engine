@@ -1,5 +1,6 @@
 #include "game/ShowcaseGame.hpp"
 
+#include "engine/core/Paths.hpp"
 #include "engine/world/Collision.hpp"
 #include "game/objects/PlayerObject.hpp"
 #include "game/scenes/SceneRegistry.hpp"
@@ -14,6 +15,12 @@
 void ShowcaseGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
     s.scene.userData = &gameAssets;
+
+    // Index order = GameAtlasId (Characters, Enemies, Environment).
+    atlasMaterials.clear();
+    for (const char* name : {"characters", "enemies", "environment"}) {
+        atlasMaterials.push_back(s.materials.load(assetPath(std::string("assets/atlases/") + name + ".png")));
+    }
 
     loadScene(s, SceneId::Sandbox);
 
@@ -62,6 +69,41 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
 
     processTriggerOverlaps(s);
     scene.lateStep(deltaTime);
+
+    submitRenderData(s);
+}
+
+std::pair<Material, glm::vec4> ShowcaseGame::lookupAtlasFrame(std::uint32_t atlasIndex, const std::string& frameName) const {
+    if (atlasIndex >= atlasMaterials.size()) {
+        return {};
+    }
+    const TextureAtlas& atlas = gameAssets.getAtlasByTextureIndex(atlasIndex);
+    const AtlasMeta& meta = atlas.getMeta();
+    if (!atlas.hasFrame(frameName) || meta.imageWidth <= 0 || meta.imageHeight <= 0) {
+        return {};
+    }
+    const AtlasFrame& frame = atlas.getFrame(frameName);
+    float w = static_cast<float>(meta.imageWidth);
+    float h = static_cast<float>(meta.imageHeight);
+    return {atlasMaterials[atlasIndex],
+            glm::vec4(static_cast<float>(frame.x) / w, static_cast<float>(frame.y) / h,
+                      static_cast<float>(frame.w) / w, static_cast<float>(frame.h) / h)};
+}
+
+void ShowcaseGame::submitRenderData(EngineServices& s) {
+    SpriteBatch& batch = s.renderer.sprites();
+    batch.clear();
+    appendSceneSprites(s.scene, batch, [this](std::uint32_t atlasIndex, const std::string& frameName) {
+        return lookupAtlasFrame(atlasIndex, frameName);
+    });
+
+    // Test light: warm, slightly flickering, above and in front of the player.
+    LightList& lights = s.renderer.lights();
+    lights.clear();
+    if (const GameObject* player = s.scene.findObject(playerObjectId)) {
+        glm::vec2 p = player->transform.position + glm::vec2(0.6f, 0.8f);
+        lights.add(GpuLight{{p.x, p.y, 1.0f, 5.0f}, {1.0f, 0.8f, 0.55f, 2.5f}, {0.0f, 0.08f, 7.0f, 0.0f}});
+    }
 }
 
 void ShowcaseGame::shutdown(EngineServices& s) {
@@ -220,9 +262,9 @@ void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
     }
 
     if (state.dragCamera.down) {
-        float worldHeight = camera.size;
-        float worldWidth = camera.size *
-            (static_cast<float>(s.gpu.swapchain().extent().width) / static_cast<float>(s.gpu.swapchain().extent().height));
+        glm::vec2 half = camera.halfExtent(s.gpu.swapchain().extent());
+        float worldHeight = half.y * 2.0f;
+        float worldWidth = half.x * 2.0f;
 
         float unitsPerPixelX = worldWidth / static_cast<float>(s.gpu.swapchain().extent().width);
         float unitsPerPixelY = worldHeight / static_cast<float>(s.gpu.swapchain().extent().height);
