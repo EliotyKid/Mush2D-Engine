@@ -8,7 +8,7 @@ Outputs:
   assets/kaa/tilesets/grass_m.png
       mask for grass.png: R = rim on top edges, G = AO (darker towards inner corners).
   assets/levels/showcase.ldtk
-      LDtk 1.5 project, one 96x32 level (16 px grid): Collision IntGrid, Ground tiles
+      LDtk 1.5 project, one 96x30 level (16 px grid): Collision IntGrid, Ground tiles
       auto-picked from the IntGrid, kaa parallax layers, props, critters, lights, crystals.
 Never touches the kaa images or their _n maps (tools/import_kaa.py owns those).
 """
@@ -91,7 +91,7 @@ def gen_crystals():
     frames_json = {
         name: {"frame": {"x": x, "y": y, "w": 32, "h": 32}, "rotated": False, "trimmed": False,
                "spriteSourceSize": {"x": 0, "y": 0, "w": 32, "h": 32}, "sourceSize": {"w": 32, "h": 32},
-               "duration": 100, "pivot": {"x": 16, "y": 31 if name.startswith("crystal") else 16}}
+               "duration": 100, "pivot": {"x": 16, "y": 32 if name.startswith("crystal") else 16}}
         for name, (x, y) in frames.items()
     }
     meta = {"app": "tools/gen_showcase.py", "image": "crystals.png", "format": "RGBA8888",
@@ -134,7 +134,7 @@ def gen_grass_mask():
 GRID = 16
 CW, CH = 96, 30
 PXW, PXH = CW * GRID, CH * GRID
-WW, WH = PXW / U, PXH / U  # world size 48 x 16
+WW, WH = PXW / U, PXH / U  # world size 48 x 15
 CENTRE = (WW / 2, WH / 2)
 HALF_VIEW = (1280 / 3 / U / 2, 720 / 3 / U / 2)  # 1280x720 at pixel scale 3
 CAM_LOW_Y = HALF_VIEW[1]
@@ -280,7 +280,7 @@ def main():
     entity_def("Prop", "#6BBF59", 16, 16, (0.5, 1), [("frame", "String", "bush 0"), ("depth", "Float", 0.0), ("flipX", "Bool", False)])
     entity_def("Critter", "#E0A060", 16, 16, (0.5, 1), [("anim", "String", "fox_idle"), ("flipX", "Bool", False)])
 
-    def ent(name, x, y, layer_ident, **vals):
+    def ent(name, x, y, **vals):
         """Entity whose pivot sits at world (x, y)."""
         d = ent_defs[name]
         px = world_to_px(x, y)
@@ -306,34 +306,34 @@ def main():
     under_b_y = (PXH - 23 * GRID) / U       # 3.5
 
     entities = [
-        ent("PlayerStart", 4.5, floor_y, "Entities"),
+        ent("PlayerStart", 4.5, floor_y),
         # Lights: warm sun shafts, fireflies, one on the far tree layer.
-        ent("Light", 7.0, floor_y + 4.7, "Entities", color="#FFD59A", intensity=1.6, radius=6.5, height=2.5, depth=0.0, flicker=0.0),
-        ent("Light", 11.8, floor_y + 0.9, "Entities", color="#FFE27A", intensity=1.8, radius=3.0, height=0.6, depth=0.0, flicker=0.3),
-        ent("Light", 12.0, floor_y + 4.5, "Entities", color="#FFB070", intensity=1.0, radius=10.0, height=1.0, depth=11.0, flicker=0.0),
-        ent("Light", 24.0, floor_y + 6.0, "Entities", color="#FFCF8A", intensity=2.2, radius=7.0, height=2.0, depth=0.0, flicker=0.05),
-        ent("Light", 42.0, floor_y + 4.0, "Entities", color="#FF9E5E", intensity=2.2, radius=6.5, height=1.5, depth=0.0, flicker=0.12),
+        ent("Light", 7.0, floor_y + 4.7, color="#FFD59A", intensity=1.6, radius=6.5, height=2.5, depth=0.0, flicker=0.0),
+        ent("Light", 11.8, floor_y + 0.9, color="#FFE27A", intensity=1.8, radius=3.0, height=0.6, depth=0.0, flicker=0.3),
+        ent("Light", 12.0, floor_y + 4.5, color="#FFB070", intensity=1.0, radius=10.0, height=1.0, depth=11.0, flicker=0.0),
+        ent("Light", 24.0, floor_y + 6.0, color="#FFCF8A", intensity=2.2, radius=7.0, height=2.0, depth=0.0, flicker=0.05),
+        ent("Light", 42.0, floor_y + 4.0, color="#FF9E5E", intensity=2.2, radius=6.5, height=1.5, depth=0.0, flicker=0.12),
         # Crystals
-        ent("Crystal", 10.5, floor_y, "Entities", variant=0),
-        ent("Crystal", 26.5, platC_y, "Entities", variant=1),
-        ent("Crystal", 33.0, hollow_y, "Entities", variant=2),
-        ent("Crystal", 45.0, ledge_y, "Entities", variant=3),
+        ent("Crystal", 10.5, floor_y, variant=0),
+        ent("Crystal", 26.5, platC_y, variant=1),
+        ent("Crystal", 33.0, hollow_y, variant=2),
+        ent("Crystal", 45.0, ledge_y, variant=3),
         # Props on the gameplay plane (depth > 0 = behind the player, fogged a little)
-        ent("Prop", 8.6, floor_y, "Entities", frame="tree 0", depth=1.2, flipX=False),
-        ent("Prop", 14.3, mound_y, "Entities", frame="tree_dead 0", depth=2.5, flipX=True),
-        ent("Prop", 27.5, floor_y, "Entities", frame="tree 0", depth=1.6, flipX=True),
-        ent("Prop", 43.5, ledge_y, "Entities", frame="tree_dead 0", depth=0.8, flipX=False),
-        ent("Prop", 2.6, floor_y, "Entities", frame="bush 0", depth=0.4, flipX=False),
-        ent("Prop", 11.2, floor_y, "Entities", frame="bush 0", depth=0.3, flipX=True),
-        ent("Prop", 21.5, floor_y, "Entities", frame="bush 0", depth=0.4, flipX=False),
-        ent("Prop", 35.5, floor_y, "Entities", frame="bush 0", depth=0.3, flipX=True),
-        ent("Prop", 40.5, ledge_y, "Entities", frame="bush 0", depth=0.4, flipX=False),
+        ent("Prop", 8.6, floor_y, frame="tree 0", depth=1.2, flipX=False),
+        ent("Prop", 14.3, mound_y, frame="tree_dead 0", depth=2.5, flipX=True),
+        ent("Prop", 27.5, floor_y, frame="tree 0", depth=1.6, flipX=True),
+        ent("Prop", 43.5, ledge_y, frame="tree_dead 0", depth=0.8, flipX=False),
+        ent("Prop", 2.6, floor_y, frame="bush 0", depth=0.4, flipX=False),
+        ent("Prop", 11.2, floor_y, frame="bush 0", depth=0.3, flipX=True),
+        ent("Prop", 21.5, floor_y, frame="bush 0", depth=0.4, flipX=False),
+        ent("Prop", 35.5, floor_y, frame="bush 0", depth=0.3, flipX=True),
+        ent("Prop", 40.5, ledge_y, frame="bush 0", depth=0.4, flipX=False),
         # vines hang from platform B's underside (their pivot is near the top-left)
-        ent("Prop", 20.5, under_b_y, "Entities", frame="vine 0", depth=0.2, flipX=False),
-        ent("Prop", 22.8, under_b_y, "Entities", frame="vine 0", depth=0.2, flipX=True),
+        ent("Prop", 20.5, under_b_y, frame="vine 0", depth=0.2, flipX=False),
+        ent("Prop", 22.8, under_b_y, frame="vine 0", depth=0.2, flipX=True),
         # Critters
-        ent("Critter", 7.4, floor_y, "Entities", anim="fox_idle", flipX=True),
-        ent("Critter", 15.9, mound_y, "Entities", anim="bunny_idle", flipX=False),
+        ent("Critter", 7.4, floor_y, anim="fox_idle", flipX=True),
+        ent("Critter", 15.9, mound_y, anim="bunny_idle", flipX=False),
     ]
     # Foreground props: authored so they show at the intended place for the camera near them.
     FG = (-0.3, -0.15)
@@ -344,7 +344,7 @@ def main():
         ("tree_leaves 0", 34.5, 8.2, True), ("tree_canopy 0", 46.5, -0.2, False),
     ]:
         ax, ay = displayed_to_authored(dx, dy, FG[0], FG[1], cam_for(dx))
-        fg_entities.append(ent("Prop", ax, ay, "Foreground_d-2", frame=frame, depth=-2.0, flipX=flip))
+        fg_entities.append(ent("Prop", ax, ay, frame=frame, depth=-2.0, flipX=flip))
 
     # ---- layer defs (front -> back)
     def layer_def(ident, typ, grid, fx=0.0, fy=0.0, tileset_uid=None, int_values=None):

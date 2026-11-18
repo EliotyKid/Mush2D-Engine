@@ -114,6 +114,7 @@ uint32_t MaterialLibrary::loadMap(const std::optional<std::filesystem::path>& p,
 }
 
 Material MaterialLibrary::load(const std::filesystem::path& albedoPng) {
+    // shortcut: MaterialLibrary cache never invalidates; edited PNGs need a restart - upgrade with hot reload (roadmap Fase 9)
     const std::string key = std::filesystem::absolute(albedoPng).lexically_normal().string();
     if (auto it = cache_.find(key); it != cache_.end()) return it->second;
     MaterialPaths paths = resolveMaterialPaths(albedoPng);

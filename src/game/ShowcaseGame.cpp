@@ -31,7 +31,6 @@ void ShowcaseGame::init(EngineServices& s) {
     Camera2D& camera = s.camera;
     camera.size = 2.0f;
     camera.followEnabled = true;
-    camera.followOffset = {0.0f, 0.6f};
     camera.followSmoothness = 6.0f;
     camera.snapDistance = 0.001f;
     camera.boundsEnabled = true;
@@ -358,6 +357,7 @@ void ShowcaseGame::setupInitialScene(EngineServices& s) {
     crystals.clear();
     s.renderer.settings() = FrameSettings{};
     s.camera.bounds = Camera2D::WorldBounds{-5.0f, 5.0f, -3.0f, 3.0f};
+    s.camera.followOffset = {0.0f, 0.0f};
 
     if (currentSceneId == SceneId::Showcase) {
         loadShowcaseLevel(s);
@@ -465,6 +465,7 @@ void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
 
     glm::vec2 size = glm::vec2(level.pxSize) / LdtkPixelsPerUnit;
     s.camera.bounds = Camera2D::WorldBounds{0.0f, size.x, 0.0f, size.y};
+    s.camera.followOffset = {0.0f, 0.6f};
 
     FrameSettings& fs = s.renderer.settings();
     fs.ambientColor = {0.4f, 0.5f, 0.66f};
@@ -483,11 +484,14 @@ void ShowcaseGame::submitShowcaseExtras(EngineServices& s) {
     for (const GpuLight& light : levelLights) lights.add(light);
 
     const glm::vec4 haloUv = lookupAtlasFrame(GameAtlasId::Crystals, "halo 0").second; // black in crystals_e
+    const TextureAtlas& crystalAtlas = gameAssets.getAtlasByTextureIndex(GameAtlasId::Crystals);
     for (const Crystal& c : crystals) {
-        auto [material, uv] = lookupAtlasFrame(GameAtlasId::Crystals, "crystal " + std::to_string(c.variant));
+        const std::string frameName = "crystal " + std::to_string(c.variant);
+        auto [material, uv] = lookupAtlasFrame(GameAtlasId::Crystals, frameName);
         if (uv.z <= 0.0f) continue;
         const glm::vec3 glow = CrystalGlow[c.variant];
-        const glm::vec2 centre = c.anchor + glm::vec2(0.0f, 15.0f / ArtPixelsPerUnit); // pivot (16, 31) of a 32 px cell
+        const AtlasFrame& f = crystalAtlas.getFrame(frameName); // pivot = base centre
+        const glm::vec2 centre = c.anchor + glm::vec2(0.0f, float(f.pivotY) - 0.5f * float(f.h)) / ArtPixelsPerUnit;
 
         SpriteInstance inst{};
         inst.position = centre;

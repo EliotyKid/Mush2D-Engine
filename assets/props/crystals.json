@@ -22,7 +22,7 @@
    "duration": 100,
    "pivot": {
     "x": 16,
-    "y": 31
+    "y": 32
    }
   },
   "crystal 1": {
@@ -47,7 +47,7 @@
    "duration": 100,
    "pivot": {
     "x": 16,
-    "y": 31
+    "y": 32
    }
   },
   "crystal 2": {
@@ -72,7 +72,7 @@
    "duration": 100,
    "pivot": {
     "x": 16,
-    "y": 31
+    "y": 32
    }
   },
   "crystal 3": {
@@ -97,7 +97,7 @@
    "duration": 100,
    "pivot": {
     "x": 16,
-    "y": 31
+    "y": 32
    }
   },
   "halo 0": {

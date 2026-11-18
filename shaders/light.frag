@@ -22,7 +22,9 @@ void main() {
         float flick = 1 + L.depthFlicker.y * sin(u.time * L.depthFlicker.z + float(i) * 1.7);
         vec3 Ldir = normalize(toL);
         float diff = max(dot(N, Ldir), 0);
-        float rim = max(dot(N, vec3(-Ldir.xy, 0)), 0) * nm.b;           // light from behind
+        // Back-light rim: only when the light is behind the pixel, on edges facing the light.
+        float rim = nm.b * (1.0 - N.z) * max(dot(normalize(N.xy + 1e-5), normalize(toL.xy + 1e-5)), 0)
+                  * step(depth, L.depthFlicker.x);
         lit += L.colorIntensity.rgb * L.colorIntensity.a * att * flick * (diff + rim);
     }
     outColor = vec4(lit, 1);
