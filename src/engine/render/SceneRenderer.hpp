@@ -31,7 +31,7 @@ struct FrameSettings {
     float exposure = 1.0f;
     float bloomThreshold = 1.0f, bloomKnee = 0.5f, bloomIntensity = 0.6f;
     glm::vec3 lift{0}, gamma{1}, gain{1}; float saturation = 1, temperature = 0;
-    int pixelMode = 0; /* PixelMode */ bool pixelateLight = false; int pixelateFactor = 2;
+    int pixelMode = 1; /* PixelMode: smooth by default */ bool pixelateLight = false; int pixelateFactor = 2;
     bool lightHalfRes = false;
 };
 

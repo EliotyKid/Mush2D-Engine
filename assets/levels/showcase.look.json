@@ -4,7 +4,7 @@
   "bloom": { "threshold": 0.9, "knee": 0.5, "intensity": 0.7 },
   "exposure": 1.1,
   "grading": { "lift": [0, 0, 0], "gamma": [1, 1, 1], "gain": [1, 1, 1], "saturation": 1.3, "temperature": 0 },
-  "pixelArt": { "mode": "sharp", "pixelateLight": false, "pixelateFactor": 2 },
+  "pixelArt": { "mode": "smooth", "pixelateLight": false, "pixelateFactor": 2 },
   "lightHalfRes": false,
   "layers": {},
   "lights": {}

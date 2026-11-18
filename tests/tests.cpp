@@ -174,11 +174,11 @@ TEST(look_roundtrip) {
 }
 TEST(look_pixel_mode) {
     auto mode = [](const char* text) { auto l = parseLook(text, FrameSettings{}); return l ? l->settings.pixelMode : -1; };
-    CHECK(mode(R"({})") == PixelSharp);
+    CHECK(mode(R"({})") == PixelSmooth); // FrameSettings default
     CHECK(mode(R"({"pixelArt":{"enabled":true}})") == PixelSharp);
     CHECK(mode(R"({"pixelArt":{"enabled":false}})") == PixelHD);
     CHECK(mode(R"({"pixelArt":{"enabled":true,"mode":"smooth"}})") == PixelSmooth);
-    CHECK(mode(R"({"pixelArt":{"mode":"bogus"}})") == PixelSharp);
+    CHECK(mode(R"({"pixelArt":{"mode":"bogus"}})") == PixelSmooth); // unknown string keeps the default
     for (int m : {PixelSharp, PixelSmooth, PixelHD}) {
         LookFile a; a.settings.pixelMode = m;
         auto b = parseLook(serializeLook(a), FrameSettings{});
