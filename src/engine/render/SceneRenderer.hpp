@@ -22,6 +22,8 @@ struct GpuLight {                             // std430, 48 bytes
 };
 static_assert(sizeof(GpuLight) == 48);
 
+enum PixelMode : int { PixelSharp = 0, PixelSmooth = 1, PixelHD = 2 };
+
 struct FrameSettings {
     glm::vec3 ambientColor{0.25f, 0.3f, 0.45f}; float ambientIntensity = 1.0f;
     glm::vec3 fogColor{0.55f, 0.65f, 0.8f};     float fogDensity = 0.08f;
@@ -29,7 +31,7 @@ struct FrameSettings {
     float exposure = 1.0f;
     float bloomThreshold = 1.0f, bloomKnee = 0.5f, bloomIntensity = 0.6f;
     glm::vec3 lift{0}, gamma{1}, gain{1}; float saturation = 1, temperature = 0;
-    bool pixelArt = true; bool pixelateLight = false; int pixelateFactor = 2;
+    int pixelMode = 0; /* PixelMode */ bool pixelateLight = false; int pixelateFactor = 2;
     bool lightHalfRes = false;
 };
 

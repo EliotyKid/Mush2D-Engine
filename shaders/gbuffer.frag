@@ -1,5 +1,6 @@
 #version 450
 #include "common.glsl"
+#include "sprite_sample.glsl"
 
 layout(location = 0) in vec2 vUV;
 layout(location = 1) flat in uint vInstance;
@@ -15,12 +16,11 @@ vec4 tex(uint index, uint s) {
 
 void main() {
     SpriteInstance inst = instances[vInstance];
-    uint s = ((inst.flags & 1u) != 0u && u.pixelArt != 0u) ? 0u : 1u; // NEAREST only in pixel-art mode
     // Sample everything before discard (implicit derivatives).
-    vec4 albedo = tex(inst.albedo, s) * inst.color;
-    vec4 normalTex = tex(inst.normal, s);
-    vec4 mask = tex(inst.mask, s);
-    vec4 emissive = tex(inst.emissive, s);
+    vec4 albedo = sampleSprite(inst.albedo, inst, vUV) * inst.color;
+    vec4 normalTex = sampleSprite(inst.normal, inst, vUV);
+    vec4 mask = sampleSprite(inst.mask, inst, vUV);
+    vec4 emissive = sampleSprite(inst.emissive, inst, vUV);
     if (albedo.a < 0.5) discard;
 
     vec3 n = normalTex.xyz * 2 - 1;

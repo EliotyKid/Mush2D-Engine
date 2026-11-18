@@ -167,6 +167,7 @@ void Engine::run(IGame& game) {
         bool f1Held = false;
         ImGuiIO& io = ImGui::GetIO();
 
+        int prevMode = -1;
         double lastTime = glfwGetTime();
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
@@ -189,7 +190,12 @@ void Engine::run(IGame& game) {
 
             game.update(services, deltaTime);
 
-            camera.pixelArt = renderer.settings().pixelArt;
+            const int mode = renderer.settings().pixelMode;
+            camera.pixelArt = mode == PixelSharp;
+            camera.pixelSmooth = mode == PixelSmooth;
+            // Leaving sharp (or starting in smooth): keep the on-screen scale.
+            if (mode != PixelSharp && (prevMode == PixelSharp || (prevMode < 0 && mode == PixelSmooth))) camera.fitPixelScale(gpu.swapchain().extent());
+            prevMode = mode;
             camera.updateFollow(scene, deltaTime);
             camera.clampToBounds(gpu.swapchain().extent());
 

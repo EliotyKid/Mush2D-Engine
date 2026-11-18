@@ -172,6 +172,19 @@ TEST(look_roundtrip) {
     CHECK(b && b->settings.fogDensity == 0.2f && b->lights.at("abc").radius == 6);
     CHECK(b && b->lights.at("abc").color.y == 0.5f && b->layers.at("Far").parallax.y == 0.5f && b->layers.at("Far").depth == 3.0f);
 }
+TEST(look_pixel_mode) {
+    auto mode = [](const char* text) { auto l = parseLook(text, FrameSettings{}); return l ? l->settings.pixelMode : -1; };
+    CHECK(mode(R"({})") == PixelSharp);
+    CHECK(mode(R"({"pixelArt":{"enabled":true}})") == PixelSharp);
+    CHECK(mode(R"({"pixelArt":{"enabled":false}})") == PixelHD);
+    CHECK(mode(R"({"pixelArt":{"enabled":true,"mode":"smooth"}})") == PixelSmooth);
+    CHECK(mode(R"({"pixelArt":{"mode":"bogus"}})") == PixelSharp);
+    for (int m : {PixelSharp, PixelSmooth, PixelHD}) {
+        LookFile a; a.settings.pixelMode = m;
+        auto b = parseLook(serializeLook(a), FrameSettings{});
+        CHECK(b && b->settings.pixelMode == m);
+    }
+}
 TEST(look_ignores_unknown_and_corrupt) {
     CHECK(!parseLook("{ not json", FrameSettings{}));
     CHECK(!parseLook("[1,2]", FrameSettings{}));

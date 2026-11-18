@@ -20,7 +20,10 @@ public:
     glm::vec2 position{0.0f, 0.0f};
     float size = 2.0f; // visible world height; HD mode only
 
-    // Pixel art: half height = viewportHeight / (2 * computePixelScale(w) * pixelsPerUnit); `size` is ignored.
+    // Smooth pixel art: free zoom (like HD) but clamped to 1x-8x pixel scale; Engine sets it from the render mode.
+    bool pixelSmooth = false;
+
+    // Sharp pixel art: half height = viewportHeight / (2 * computePixelScale(w) * pixelsPerUnit); `size` is ignored.
     bool pixelArt = true;
     float pixelsPerUnit = 32.0f;
 
@@ -37,6 +40,11 @@ public:
 public:
     void updateFollow(const Scene2D& scene, float deltaTime);
     void clampToBounds(VkExtent2D viewportExtent);
+
+    // Sets `size` so the view equals the sharp integer scale (switching modes does not jump).
+    void fitPixelScale(VkExtent2D viewportExtent);
+    // Zoom limits: 1x-8x pixel scale in smooth mode, 0.2-20 world units otherwise.
+    void clampSize(VkExtent2D viewportExtent);
 
     // Half of the visible world area (x, y), in world units.
     glm::vec2 halfExtent(VkExtent2D viewportExtent) const;

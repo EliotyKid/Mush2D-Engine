@@ -65,7 +65,13 @@ std::optional<LookFile> parseLook(const std::string& text, const FrameSettings& 
         get(*g, "saturation", s.saturation); get(*g, "temperature", s.temperature);
     }
     if (auto* p = section(j, "pixelArt")) {
-        get(*p, "enabled", s.pixelArt); get(*p, "pixelateLight", s.pixelateLight); get(*p, "pixelateFactor", s.pixelateFactor);
+        // legacy key: true -> sharp, false -> HD; "mode" wins when both exist
+        if (auto it = p->find("enabled"); it != p->end() && it->is_boolean()) s.pixelMode = it->get<bool>() ? PixelSharp : PixelHD;
+        if (auto it = p->find("mode"); it != p->end() && it->is_string()) {
+            const std::string m = it->get<std::string>();
+            if (m == "sharp") s.pixelMode = PixelSharp; else if (m == "smooth") s.pixelMode = PixelSmooth; else if (m == "hd") s.pixelMode = PixelHD;
+        }
+        get(*p, "pixelateLight", s.pixelateLight); get(*p, "pixelateFactor", s.pixelateFactor);
     }
     get(j, "lightHalfRes", s.lightHalfRes);
 
@@ -99,7 +105,7 @@ std::string serializeLook(const LookFile& look) {
     j["exposure"] = r6(s.exposure);
     j["grading"] = {{"lift", vec(s.lift)}, {"gamma", vec(s.gamma)}, {"gain", vec(s.gain)},
                     {"saturation", r6(s.saturation)}, {"temperature", r6(s.temperature)}};
-    j["pixelArt"] = {{"enabled", s.pixelArt}, {"pixelateLight", s.pixelateLight}, {"pixelateFactor", s.pixelateFactor}};
+    j["pixelArt"] = {{"mode", s.pixelMode == PixelSmooth ? "smooth" : s.pixelMode == PixelHD ? "hd" : "sharp"}, {"pixelateLight", s.pixelateLight}, {"pixelateFactor", s.pixelateFactor}};
     j["lightHalfRes"] = s.lightHalfRes;
     j["layers"] = json::object();
     for (auto& [id, o] : look.layers) j["layers"][id] = {{"parallax", vec(o.parallax)}, {"depth", r6(o.depth)}};

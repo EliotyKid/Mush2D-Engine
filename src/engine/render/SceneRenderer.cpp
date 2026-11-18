@@ -24,7 +24,7 @@ struct FrameUniforms {
     float pixelsPerUnit;
     float time;
     uint32_t lightCount;
-    uint32_t pixelArt;
+    uint32_t pixelMode;
     float fogDensity;
     float ambientIntensity;
     glm::vec3 ambientColor; float exposure;
@@ -320,7 +320,7 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     u.pixelsPerUnit = camera.pixelsPerUnit;
     u.time = time;
     u.lightCount = static_cast<uint32_t>(lights_.size());
-    u.pixelArt = settings_.pixelArt ? 1u : 0u;
+    u.pixelMode = static_cast<uint32_t>(settings_.pixelMode);
     u.fogDensity = settings_.fogDensity;
     u.ambientIntensity = settings_.ambientIntensity;
     u.ambientColor = settings_.ambientColor;

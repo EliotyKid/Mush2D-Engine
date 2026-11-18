@@ -55,6 +55,16 @@ void Camera2D::clampToBounds(VkExtent2D viewportExtent) {
     }
 }
 
+void Camera2D::fitPixelScale(VkExtent2D e) {
+    size = static_cast<float>(e.height) / (static_cast<float>(computePixelScale(static_cast<int>(e.width))) * pixelsPerUnit);
+}
+
+void Camera2D::clampSize(VkExtent2D e) {
+    if (!pixelSmooth) { size = std::clamp(size, 0.2f, 20.0f); return; }
+    float h = static_cast<float>(e.height);
+    size = std::clamp(size, h / (8.0f * pixelsPerUnit), h / pixelsPerUnit);
+}
+
 glm::vec2 Camera2D::halfExtent(VkExtent2D viewportExtent) const {
     float w = static_cast<float>(viewportExtent.width);
     float h = static_cast<float>(viewportExtent.height);

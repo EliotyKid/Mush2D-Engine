@@ -1,5 +1,6 @@
 #version 450
 #include "common.glsl"
+#include "sprite_sample.glsl"
 
 layout(location = 0) in vec2 vUV;
 layout(location = 1) flat in uint vInstance;
@@ -13,9 +14,8 @@ vec4 tex(uint index, uint s) {
 // Unlit, HDR: blended ONE, ONE over the lit scene. color may exceed 1 to feed bloom.
 void main() {
     SpriteInstance inst = instances[vInstance];
-    uint s = ((inst.flags & 1u) != 0u && u.pixelArt != 0u) ? 0u : 1u; // NEAREST only in pixel-art mode
-    vec4 albedo = tex(inst.albedo, s);
-    vec3 emissive = tex(inst.emissive, s).rgb;
+    vec4 albedo = sampleSprite(inst.albedo, inst, vUV);
+    vec3 emissive = sampleSprite(inst.emissive, inst, vUV).rgb;
     vec3 rgb = albedo.rgb * inst.color.rgb * inst.color.a + emissive;
     outColor = vec4(rgb * albedo.a, 1); // texture alpha masks the quad
 }

@@ -27,7 +27,7 @@ layout(std140, set = 1, binding = 0) uniform FrameUniforms {
     float pixelsPerUnit;
     float time;
     uint lightCount;
-    uint pixelArt;
+    uint pixelMode;      // 0 sharp (nearest + snap), 1 smooth (linear + uv remap), 2 HD
     float fogDensity;
     float ambientIntensity;
     vec3 ambientColor; float exposure;

@@ -260,7 +260,7 @@ void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
             camera.size -= cameraZoomSpeed * deltaTime;
         }
 
-        camera.size = std::clamp(camera.size, 0.2f, 20.0f);
+        camera.clampSize(s.gpu.swapchain().extent());
         return;
     }
 
@@ -299,7 +299,7 @@ void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
         camera.position.y += static_cast<float>(state.mouseDeltaY) * unitsPerPixelY;
     }
 
-    camera.size = std::clamp(camera.size, 0.2f, 20.0f);
+    camera.clampSize(s.gpu.swapchain().extent());
 }
 
 void ShowcaseGame::processTriggerOverlaps(EngineServices& s) {

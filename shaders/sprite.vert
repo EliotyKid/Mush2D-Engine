@@ -16,7 +16,7 @@ void main() {
     vec2 local = (corner - 0.5) * abs(inst.size);
     local = rot(inst.rotation) * local;
     vec2 rel = inst.position - u.cameraPos * inst.parallax;  // parallax: camera offset per layer
-    if (u.pixelArt != 0) {
+    if (u.pixelMode == 0u) {
         // Unrotated: snap the min corner, so odd-sized sprites keep whole-pixel edges. floor(x+0.5): no .5 ambiguity.
         vec2 h = inst.rotation == 0.0 ? 0.5 * abs(inst.size) : vec2(0.0);
         rel = floor((rel - h) * u.pixelsPerUnit + 0.5) / u.pixelsPerUnit + h;
