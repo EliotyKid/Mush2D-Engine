@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstdio>
 #include <functional>
 #include <memory>
 #include <typeindex>
@@ -23,18 +22,25 @@ class EventBus {
             bool active = true;
             std::function<void(const E&)> fn;
         };
-        std::vector<std::shared_ptr<Handler>> handlers;
+        using List = std::vector<std::shared_ptr<Handler>>;
+        std::shared_ptr<List> handlers = std::make_shared<List>();
+
+        // Copy-on-write: a running deliver() holds the list, so it is copied only if it changes mid-delivery.
+        List& edit() {
+            if (handlers.use_count() > 1) handlers = std::make_shared<List>(*handlers);
+            return *handlers;
+        }
 
         void unsubscribe(std::uint64_t id) override {
-            for (auto& h : handlers) {
-                if (h->id == id) h->active = false; // a running dispatch holds its own copy and skips this one
+            for (auto& h : *handlers) {
+                if (h->id == id) h->active = false; // a running dispatch keeps its list and skips this one
             }
-            std::erase_if(handlers, [](const auto& h) { return !h->active; });
+            std::erase_if(edit(), [](const auto& h) { return !h->active; });
         }
 
         void deliver(const E& e) {
-            auto snapshot = handlers; // handlers may (un)subscribe while we iterate
-            for (auto& h : snapshot) {
+            auto list = handlers; // handlers may (un)subscribe while we iterate
+            for (auto& h : *list) {
                 if (h->active) h->fn(e);
             }
         }
@@ -75,26 +81,18 @@ public:
     template<typename E>
     [[nodiscard]] Subscription subscribe(std::function<void(const E&)> fn) {
         auto& ch = channel<E>();
-        ch.handlers.push_back(std::make_shared<typename Channel<E>::Handler>(typename Channel<E>::Handler{nextId_, true, std::move(fn)}));
+        ch.edit().push_back(std::make_shared<typename Channel<E>::Handler>(typename Channel<E>::Handler{nextId_, true, std::move(fn)}));
         return Subscription{channels_[typeid(E)], nextId_++};
     }
 
+    // E must be copy-constructible: the queued event is copied into every handler call.
     template<typename E>
     void emit(E event) {
         queue_.push_back([event = std::move(event)](EventBus& bus) { bus.channel<E>().deliver(event); });
     }
 
     // Events emitted by handlers go to the next round; MaxRounds per call, the rest waits for the next dispatch().
-    void dispatch() {
-        for (int round = 0; round < MaxRounds && !queue_.empty(); ++round) {
-            std::vector<std::function<void(EventBus&)>> batch;
-            batch.swap(queue_);
-            for (auto& deliver : batch) deliver(*this);
-        }
-        if (!queue_.empty()) {
-            std::fprintf(stderr, "EventBus: %zu events still queued after %d rounds, deferred to the next dispatch\n", queue_.size(), MaxRounds);
-        }
-    }
+    void dispatch();
 
 private:
     template<typename E>

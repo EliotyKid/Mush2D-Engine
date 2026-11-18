@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Scene2D.hpp"
-#include "SpatialGrid.hpp" // AABB, QueryKind
+#include "CollisionTypes.hpp"
 
 #include <vector>
 
@@ -15,7 +15,8 @@ const ColliderData* getCollider(const GameObject& object);
 AABB buildAABB(const GameObject& object);
 bool intersects(const AABB& a, const AABB& b);
 
-// Live objects whose grid box overlaps `box`. The grid is refreshed at the start of each step, so
+// Objects not pending destroy whose grid box overlaps `box`, including inactive ones (active == false);
+// callers filter on `active` themselves. The grid is refreshed at the start of each step, so
 // an object moved during the current step shows its previous position here.
 std::vector<GameObjectId> queryAABB(const Scene2D& scene, const AABB& box, QueryKind kind = QueryKind::Any);
 

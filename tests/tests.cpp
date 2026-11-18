@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <glm/gtc/constants.hpp>
 #include <fstream>
+#include <limits>
 
 #include <cstdio>
 #include <exception>
@@ -421,6 +422,7 @@ TEST(find_helpers_skip_pending_destroy) {
     CHECK(scene.findAllObjectsOfType<Counted>().empty());
     CHECK(scene.findObjectsByTag("x").empty());
     CHECK(scene.findObjectAs<Counted>(ia) == nullptr);
+    CHECK(scene.findObject(ia) == nullptr && std::as_const(scene).findObject(ia) == nullptr);
 }
 
 TEST(iteration_guard_survives_throw) {
@@ -646,6 +648,126 @@ TEST(parented_mover_collides_in_world_space) {
     CHECK(Collision2D::collidesAtPosition(scene, mover.id, {1.5f, 0}));   // local 1.5 = world 5.5, inside the wall
     CHECK(!Collision2D::collidesAtPosition(scene, mover.id, {-3.0f, 0})); // world 1: free
     CHECK(!Collision2D::collidesAtPosition(scene, mover.id, {5.0f, 0}));  // world 9: free (local 5 would hit)
+}
+
+TEST(clear_with_destroying_handler_is_safe) {
+    Scene2D scene;
+    scene.createObject<Counted>(); scene.createObject<Counted>();
+    scene.flush();
+    bool fired = false;
+    auto sub = scene.events().subscribe<ObjectDestroyed>([&](const ObjectDestroyed&) {
+        if (fired) return;
+        fired = true;
+        GameObjectId late = scene.createObject<Counted>().id; // reuses a freed slot
+        scene.destroy(late);                                  // queued while clear() dispatches
+        scene.destroy(late);
+    });
+    scene.clear();
+    CHECK(fired && scene.aliveCount() == 0);
+    Counted::destroyLog.clear();
+    GameObjectId fresh = scene.createObject<Counted>().id; // may land in the slot the stale destroy named
+    scene.flush();
+    scene.step(0.016f);
+    CHECK(scene.find(fresh) != nullptr && !scene.find(fresh)->pendingDestroy());
+    CHECK(Counted::destroyLog[fresh] == 0);
+    CHECK(scene.aliveCount() == 1);
+}
+
+TEST(setParent_refreshes_only_what_it_needs) {
+    Scene2D scene;
+    auto& root = scene.createObject<GameObject>();
+    auto& mid = scene.createObject<GameObject>();
+    auto& leaf = scene.createObject<GameObject>();
+    root.transform.position = {10, 0};
+    mid.transform.position = {1, 0}; leaf.transform.position = {1, 0};
+    CHECK(scene.setParent(mid.id, root.id, false) && scene.setParent(leaf.id, mid.id, false));
+    scene.flush();
+    root.transform.position = {20, 0}; // moved after the last flush: the leaf's cache is stale
+    CHECK(scene.setParent(leaf.id, InvalidGameObjectId, true));
+    CHECK(std::abs(leaf.transform.position.x - 22) < 1e-4f);
+    // keepWorld into another tree whose root also moved since the flush
+    auto& other = scene.createObject<GameObject>();
+    other.transform.position = {0, 0}; scene.flush();
+    other.transform.position = {0, 5};
+    CHECK(scene.setParent(leaf.id, other.id, true));
+    CHECK(std::abs(leaf.transform.position.x - 22) < 1e-4f && std::abs(leaf.transform.position.y + 5) < 1e-4f);
+    CHECK(std::abs(leaf.world().position.x - 22) < 1e-4f && std::abs(leaf.world().position.y) < 1e-4f);
+}
+
+TEST(grid_ignores_nonfinite_and_survives_huge_boxes) {
+    const float inf = std::numeric_limits<float>::infinity(), nan = std::numeric_limits<float>::quiet_NaN();
+    SpatialGrid grid;
+    auto id = [](std::uint32_t i) { return GameObjectId{i, 1}; };
+    grid.insert(id(1), AABB{{0, 0}, {1, 1}});
+    grid.insert(id(2), AABB{{0, 0}, {inf, 1}});
+    grid.insert(id(3), AABB{{nan, 0}, {1, 1}});
+    grid.insert(id(4), AABB{{-1e30f, -1e30f}, {1e30f, 1e30f}});
+    grid.insert(id(5), AABB{{0, 0}, {2000, 1}}); // wider than kMaxCells cells
+    std::vector<GameObjectId> got;
+    grid.query(AABB{{0.2f, 0.2f}, {0.4f, 0.4f}}, got);
+    CHECK(std::find(got.begin(), got.end(), id(1)) != got.end());
+    CHECK(std::find(got.begin(), got.end(), id(2)) == got.end() && std::find(got.begin(), got.end(), id(3)) == got.end());
+    grid.query(AABB{{-1e30f, -1e30f}, {1e30f, 1e30f}}, got); // too wide to index: scans entries
+    CHECK((got == std::vector<GameObjectId>{id(1), id(4), id(5)}));
+    grid.query(AABB{{0, 0}, {inf, 1}}, got);
+    CHECK(got.empty());
+    grid.update(id(1), AABB{{0, 0}, {nan, 1}}); // a stored box that turns non-finite is dropped
+    grid.query(AABB{{-1e30f, -1e30f}, {1e30f, 1e30f}}, got);
+    CHECK((got == std::vector<GameObjectId>{id(4), id(5)}));
+
+    Scene2D scene;
+    auto& bad = scene.createObject<GameObject>();
+    bad.collider = ColliderData{}; bad.collider->size = {inf, 1};
+    scene.step(0.016f);
+    CHECK(Collision2D::queryAABB(scene, AABB{{-1, -1}, {1, 1}}).empty());
+}
+
+TEST(dispatch_handler_can_destroy_create_and_reparent) {
+    Scene2D scene;
+    GameObjectId trigger = scene.createObject<Counted>().id, victim = scene.createObject<Counted>().id;
+    GameObjectId parent = scene.createObject<Counted>().id, kid = scene.createObject<Counted>().id;
+    GameObjectId made;
+    bool reparented = false;
+    auto sub = scene.events().subscribe<ObjectDestroyed>([&](const ObjectDestroyed& e) {
+        if (e.id != trigger) return;
+        scene.destroy(victim);
+        made = scene.createObject<Counted>().id;
+        reparented = scene.setParent(kid, parent);
+    });
+    scene.destroy(trigger);
+    scene.flush(); // the handler runs inside this flush's dispatch
+    CHECK(reparented && scene.find(kid)->parent() == parent && scene.find(parent)->children().size() == 1);
+    CHECK(scene.find(victim) && scene.find(victim)->pendingDestroy());
+    CHECK(scene.find(made) != nullptr);
+    scene.flush();
+    CHECK(!scene.find(victim) && !scene.find(trigger));
+    CHECK(scene.find(made) != nullptr && scene.aliveCount() == 3);
+}
+
+namespace {
+int reparentOk = 0, reparentIntoSelf = 1;
+struct Reparenter : GameObject {
+    GameObjectId mover, newParent;
+    void onDestroy(Scene2D& s) override {
+        reparentOk = s.setParent(mover, newParent);   // allowed: both survive
+        reparentIntoSelf = s.setParent(mover, id);    // refused: this object is pending destroy
+    }
+};
+}
+
+TEST(setParent_inside_onDestroy) {
+    Scene2D scene;
+    GameObjectId oldParent = scene.createObject<GameObject>().id, mover = scene.createObject<GameObject>().id;
+    GameObjectId newParent = scene.createObject<GameObject>().id;
+    scene.setParent(mover, oldParent);
+    auto& r = scene.createObject<Reparenter>();
+    r.mover = mover; r.newParent = newParent;
+    scene.destroy(r.id);
+    scene.flush();
+    CHECK(reparentOk == 1 && reparentIntoSelf == 0);
+    CHECK(scene.find(mover)->parent() == newParent);
+    CHECK(scene.find(oldParent)->children().empty() && scene.find(newParent)->children().size() == 1);
+    CHECK(scene.aliveCount() == 3);
 }
 
 int main() {

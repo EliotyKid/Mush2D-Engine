@@ -1,23 +1,11 @@
 #pragma once
 
+#include "CollisionTypes.hpp"
 #include "GameObject.hpp"
 
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
-
-#include <glm/glm.hpp>
-
-namespace Collision2D {
-
-struct AABB {
-    glm::vec2 min{0.0f, 0.0f};
-    glm::vec2 max{0.0f, 0.0f};
-};
-
-enum class QueryKind { Any, Solid, Trigger };
-
-}
 
 // Uniform-grid broadphase. Stores one AABB per id (and whether it is a trigger) and answers
 // "which stored boxes overlap this box" without scanning everything.
@@ -26,10 +14,14 @@ public:
     explicit SpatialGrid(float cell = 2.0f) : cell_(cell) {}
 
     void insert(GameObjectId id, const Collision2D::AABB& box, bool isTrigger = false) { update(id, box, isTrigger); }
-    // Inserts when the id is not stored yet.
+    // Inserts when the id is not stored yet. A box with a NaN or infinite coordinate is not stored (any
+    // entry for the id is removed), so it never shows up in queries. A box spanning more than kMaxCells
+    // cells on an axis is indexed only in its first kMaxCells cells; a query that wide scans every entry.
     void update(GameObjectId id, const Collision2D::AABB& box, bool isTrigger = false);
     void remove(GameObjectId id);
     void clear();
+
+    static constexpr int kMaxCells = 256;
 
     // Replaces `out` with the ids whose stored box overlaps `box` (strict, like Collision2D::intersects).
     // No duplicates; sorted by (index, generation).
@@ -43,6 +35,7 @@ private:
     };
     struct Range {
         int x0, y0, x1, y1;
+        bool clamped = false; // the box spans more than kMaxCells on some axis
     };
     Range cellsOf(const Collision2D::AABB& box) const;
     static std::int64_t key(int x, int y) { return (std::int64_t(x) << 32) ^ std::int64_t(std::uint32_t(y)); }

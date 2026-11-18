@@ -45,11 +45,13 @@ public:
     // Destroys everything (onDestroy is called). Generations are kept, so old handles stay invalid.
     void clear();
 
+    // Engine-level lookup: resolves any handle that is still valid, including an object pending destroy.
     GameObject* find(GameObjectId id);
     const GameObject* find(GameObjectId id) const;
 
-    GameObject* findObject(GameObjectId id) { return find(id); }
-    const GameObject* findObject(GameObjectId id) const { return find(id); }
+    // Game-facing lookup, like the other find* helpers: null for stale handles and objects pending destroy.
+    GameObject* findObject(GameObjectId id) { return findLive(*this, id); }
+    const GameObject* findObject(GameObjectId id) const { return findLive(*this, id); }
 
     template<typename TObject>
     TObject* findObjectAs(GameObjectId id) {
@@ -153,6 +155,12 @@ private:
         IterGuard& operator=(const IterGuard&) = delete;
     };
 
+    template<typename TScene>
+    static auto findLive(TScene& scene, GameObjectId id) {
+        auto* object = scene.find(id);
+        return object && !object->pendingDestroy_ ? object : nullptr;
+    }
+
     // Cast for the find* scans: skips empty slots and objects pending destroy.
     template<typename TObject, typename TBase>
     static TObject* liveOf(TBase* object) {
@@ -175,6 +183,7 @@ private:
     std::size_t aliveCount_ = 0;
     bool liveDirty_ = false;
     bool componentsDirty_ = false; // some component awaits removal
+    bool gridFresh_ = false;       // the last flush synced the grid, so step() can skip its own sync
     EventBus events_;
     mutable int iterating_ = 0;
 };

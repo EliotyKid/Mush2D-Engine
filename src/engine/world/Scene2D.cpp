@@ -58,7 +58,17 @@ bool Scene2D::setParent(GameObjectId childId, GameObjectId parentId, bool keepWo
         return true;
     }
 
-    updateTransforms(); // child and new parent need current world transforms
+    // Child and new parent need current world transforms: refresh just their two chains, not the scene.
+    auto rootOf = [&](GameObject* o) {
+        while (GameObject* up = find(o->parent_)) o = up;
+        return o;
+    };
+    GameObject* childRoot = rootOf(child);
+    computeWorld(*childRoot);
+    if (parent) {
+        GameObject* parentRoot = rootOf(parent);
+        if (parentRoot != childRoot) computeWorld(*parentRoot);
+    }
     Transform2D world = child->world();
 
     if (GameObject* old = find(child->parent_)) {
@@ -129,6 +139,8 @@ void Scene2D::processDestroys() {
     while (!destroyQueue_.empty()) {
         std::vector<GameObjectId> batch;
         batch.swap(destroyQueue_);
+        // A queued id can be stale (its slot was freed or reused): resolve each one and drop the dead ones.
+        std::erase_if(batch, [&](GameObjectId id) { return find(id) == nullptr; });
         // Whole batch gets onDestroy before any is freed, so they can still see each other.
         for (GameObjectId id : batch) {
             // Order: components detach first, then the object's onDestroy, so onDestroy never sees live components.
@@ -209,6 +221,7 @@ void Scene2D::flush() {
     }
     updateTransforms();
     if (rebuilt) syncGrid(); // objects that joined live_ enter the grid with their world box
+    gridFresh_ = rebuilt;
     dispatchEvents();
 }
 
@@ -251,6 +264,8 @@ void Scene2D::clear() {
     }
     aliveCount_ = 0;
     liveDirty_ = false;
+    componentsDirty_ = false;
+    destroyQueue_.clear(); // handlers may have queued destroys for objects just dropped; they must not hit reused slots
 }
 
 std::vector<GameObject*> Scene2D::findObjectsByTag(const std::string& tag) {
@@ -271,7 +286,8 @@ std::vector<const GameObject*> Scene2D::findObjectsByTag(const std::string& tag)
 
 void Scene2D::step(float deltaTime) {
     flush();
-    syncGrid(); // objects moved or edited since the last step; within a step, boxes may lag one frame
+    if (!gridFresh_) syncGrid(); // objects moved or edited since the last step; within a step, boxes may lag one frame
+    gridFresh_ = false;
     {
         IterGuard guard(iterating_);
         for (std::size_t i = 0; i < live_.size(); ++i) {

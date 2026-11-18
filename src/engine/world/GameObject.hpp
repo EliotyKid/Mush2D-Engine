@@ -128,7 +128,8 @@ public:
     const std::vector<GameObjectId>& children() const { return children_; }
 
     // Roots: the live local transform. Children: cached, refreshed by Scene2D::updateTransforms() at every
-    // flush, so a child moved by game code shows its new world transform after the next flush.
+    // flush, so a child moved by game code shows its new world transform after the next flush. For children
+    // the value is the one cached at the last flush; call scene.updateTransforms() for a fresh one mid-step.
     Transform2D world() const { return parent_ ? world_ : transform; }
 
 private:
