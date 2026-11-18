@@ -11,8 +11,10 @@ vec4 sampleSprite(uint index, SpriteInstance inst, vec2 uv) {
         vec2 fw = max(fwidth(p), vec2(1e-5));
         vec2 c  = floor(p + 0.5);
         p = c + clamp((p - c) / fw, -0.5, 0.5);
-        vec2 lo = inst.uvRect.xy + 0.5 / ts;
-        vec2 hi = max(inst.uvRect.xy + inst.uvRect.zw - 0.5 / ts, lo);
+        // uvRect.zw can be negative (LDtk flipped tiles), so take the rect's real min/max corners
+        vec2 a  = inst.uvRect.xy, b = inst.uvRect.xy + inst.uvRect.zw;
+        vec2 lo = min(a, b) + 0.5 / ts;
+        vec2 hi = max(max(a, b) - 0.5 / ts, lo);
         uv = clamp(p / ts, lo, hi);
     }
     return texture(sampler2D(textures[nonuniformEXT(index)], samplers[nonuniformEXT(s)]), uv);
