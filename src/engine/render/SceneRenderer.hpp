@@ -50,7 +50,7 @@ private:
     size_t count_ = 0;
 };
 
-// G-buffer -> deferred 2D light + fog (HDR) -> additive sprites -> bloom -> composite (bloom, exposure,
+// G-buffer -> irradiance (light, maybe reduced) -> native resolve (albedo, emissive, fog) -> additive sprites -> bloom -> composite (bloom, exposure,
 // temperature, AgX, lift/gamma/gain, saturation, sRGB) into the swapchain.
 class SceneRenderer {
 public:
@@ -89,6 +89,7 @@ private:
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline gbufferPipeline_ = VK_NULL_HANDLE;
     VkPipeline lightPipeline_ = VK_NULL_HANDLE;
+    VkPipeline resolvePipeline_ = VK_NULL_HANDLE;
     VkPipeline additivePipeline_ = VK_NULL_HANDLE;
     VkPipeline bloomDownPipeline_ = VK_NULL_HANDLE;
     VkPipeline bloomUpPipeline_ = VK_NULL_HANDLE;

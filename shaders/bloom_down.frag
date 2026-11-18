@@ -4,11 +4,10 @@
 layout(location = 0) in vec2 vUV;
 layout(location = 0) out vec4 outColor;
 
-// pc.t0 = source texture, pc.t1 = 1 on the first level (adds pc.t2 = additive target, soft threshold), else 0.
+// pc.t0 = source texture, pc.t1 = 1 on the first level (soft threshold), else 0.
 vec3 fetch(vec2 uv) {
     vec3 c = texture(sampler2D(textures[pc.t0], samplers[1]), uv).rgb;
     if (pc.t1 != 0u) {
-        c += texture(sampler2D(textures[pc.t2], samplers[1]), uv).rgb;
         float br = max(c.r, max(c.g, c.b));
         float rq = clamp(br - u.bloomThreshold + u.bloomKnee, 0.0, 2.0 * u.bloomKnee);
         rq = rq * rq / (4.0 * u.bloomKnee + 1e-4);
