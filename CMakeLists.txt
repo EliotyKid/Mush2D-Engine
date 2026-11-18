@@ -16,7 +16,7 @@ add_library(mush2d_engine STATIC ${ENGINE_SOURCES})
 # external/ only holds stb_image.h
 target_include_directories(mush2d_engine PUBLIC src external)
 target_compile_definitions(mush2d_engine PUBLIC $<$<CONFIG:Debug>:MUSH2D_SOURCE_DIR="${CMAKE_SOURCE_DIR}">)
-target_link_libraries(mush2d_engine PUBLIC glfw glm::glm Vulkan::Vulkan nlohmann_json::nlohmann_json imgui)
+target_link_libraries(mush2d_engine PUBLIC glfw glm::glm Vulkan::Vulkan nlohmann_json::nlohmann_json imgui vk-bootstrap::vk-bootstrap GPUOpen::VulkanMemoryAllocator)
 
 # src/app is the old EngineApp (replaced in a later task).
 add_executable(Mush2DEngine src/main.cpp src/app/EngineApp.cpp ${GAME_SOURCES})
