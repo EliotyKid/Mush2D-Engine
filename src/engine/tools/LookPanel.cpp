@@ -40,7 +40,7 @@ void LookPanel::draw(LookFile& look, std::vector<EditableLight>& lights, std::ve
         ImGui::SliderFloat("temperatura", &s.temperature, -1.0f, 1.0f);
     }
     if (ImGui::CollapsingHeader("Pixel art")) {
-        ImGui::Checkbox("snap (pixel art)", &s.pixelArt);
+        ImGui::Checkbox("pixel art (snap + nearest)", &s.pixelArt);
         ImGui::Checkbox("pixelar luz", &s.pixelateLight);
         ImGui::SliderInt("fator", &s.pixelateFactor, 1, 8);
         ImGui::Checkbox("luz em meia resolucao", &s.lightHalfRes);

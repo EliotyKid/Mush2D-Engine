@@ -15,7 +15,7 @@ vec4 tex(uint index, uint s) {
 
 void main() {
     SpriteInstance inst = instances[vInstance];
-    uint s = (inst.flags & 1u) != 0u ? 0u : 1u;
+    uint s = ((inst.flags & 1u) != 0u && u.pixelArt != 0u) ? 0u : 1u; // NEAREST only in pixel-art mode
     // Sample everything before discard (implicit derivatives).
     vec4 albedo = tex(inst.albedo, s) * inst.color;
     vec4 normalTex = tex(inst.normal, s);
