@@ -19,6 +19,6 @@ void main() {
     vec3 color = a.rgb * irradiance + gtex(pc.t1).rgb;
     float fd = max(depth, 0);
     float fog = 1 - exp(-u.fogDensity * fd);
-    fog = clamp(fog + u.fogGradientStrength * smoothstep(u.fogGradientEnd, u.fogGradientStart, worldPos.y), 0, 1);
+    fog = clamp(fog + u.fogGradientStrength * (1.0 - smoothstep(u.fogGradientStart, max(u.fogGradientEnd, u.fogGradientStart + 1e-4), worldPos.y)), 0, 1);
     outColor = vec4(mix(color, u.fogColor, fog), 1);
 }

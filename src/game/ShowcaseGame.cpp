@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -133,7 +134,19 @@ void ShowcaseGame::shutdown(EngineServices& s) {
     s.scene.userData = nullptr;
 }
 
+void ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
+    try {
+        loadScene(s, sceneId, transitionData);
+    } catch (const std::exception& e) { // bad level file: nothing was torn down yet, keep the current scene
+        std::fprintf(stderr, "Scene load failed, keeping current scene: %s\n", e.what());
+    }
+}
+
 void ShowcaseGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
+    // Parse before touching any state, so a malformed level throws with the old scene intact.
+    if (sceneId == SceneId::Showcase) {
+        preparedLevel = loadLdtkLevel(sourceAssetPath("assets/levels/showcase.ldtk"), "Showcase");
+    }
     Camera2D& camera = s.camera;
     Scene2D& scene = s.scene;
     std::string previousSceneName;
@@ -176,7 +189,7 @@ void ShowcaseGame::reloadCurrentScene(EngineServices& s) {
     if (activeSceneDefinition) {
         activeSceneDefinition->onReload(scene);
     }
-    loadScene(s, currentSceneId, currentSceneTransitionData);
+    tryLoadScene(s, currentSceneId, currentSceneTransitionData);
 }
 
 void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
@@ -193,18 +206,7 @@ void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
             SceneTransitionData transitionData{};
             transitionData.reason = "TabSceneSwitch";
 
-            // auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
-            // if (!player) {
-            //     player = scene.findFirstObjectOfType<PlayerObject>();
-            // }
-
-            // if (player) {
-            //     transitionData.playerSpawnPosition = player->transform.position;
-            //     transitionData.overridePlayerSpawn = true;
-            //     transitionData.preferredPlayerObjectId = player->id;
-            // }
-
-            loadScene(s, nextScene, transitionData);
+            tryLoadScene(s, nextScene, transitionData);
             nextScenePressed = true;
         }
     } else {
@@ -460,7 +462,8 @@ void ShowcaseGame::registerLevelEntities() {
 
 void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
     s.scene.clear();
-    LdtkLevel level = loadLdtkLevel(sourceAssetPath("assets/levels/showcase.ldtk"), "Showcase");
+    LdtkLevel level = std::move(*preparedLevel);
+    preparedLevel.reset();
     levelLoader.load(level, s, s.materials);
 
     glm::vec2 size = glm::vec2(level.pxSize) / LdtkPixelsPerUnit;

@@ -10,6 +10,7 @@
 #include <fstream>
 
 #include <cstdio>
+#include <exception>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -119,6 +120,15 @@ TEST(ldtk_tolerates_unknowns) {
     CHECK(lv.layers.size() == 2);                        // layer without tileset skipped
     CHECK(lv.layers[1].tiles.size() == 2);               // AutoLayer
     CHECK(lv.layers[0].entities[0].identifier == "Mystery");
+}
+
+TEST(ldtk_malformed_throws) {
+    bool threw = false;
+    try { loadLdtkLevel(MUSH2D_TEST_DATA "/bad.ldtk", "Level_0"); } catch (const std::exception&) { threw = true; }
+    CHECK(threw);
+    threw = false;
+    try { loadLdtkLevel(MUSH2D_TEST_DATA "/bad_types.ldtk", "Level_0"); } catch (const std::exception&) { threw = true; }
+    CHECK(threw); // valid JSON, wrong types: nlohmann type_error
 }
 
 TEST(intgrid_short_csv_is_ignored) {

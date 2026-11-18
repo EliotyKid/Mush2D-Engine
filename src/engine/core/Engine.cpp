@@ -3,6 +3,7 @@
 #include "engine/gpu/Image.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <cmath>
 #include <stb_image_write.h>
 
 #include <imgui.h>
@@ -119,7 +120,7 @@ void Engine::run(IGame& game) {
     // Dev tool (MUSH2D_PERF_LOG=<seconds>): logs fps and average per-pass GPU ms each second, exits after N s.
     const char* perfEnv = std::getenv("MUSH2D_PERF_LOG");
     const float perfSeconds = perfEnv ? static_cast<float>(std::atof(perfEnv)) : 0.0f;
-    float perfStart = -1.0f, perfTick = 0.0f;
+    double perfStart = -1.0, perfTick = 0.0;
     uint32_t perfFrames = 0;
     std::map<std::string, float> perfSum;
 
@@ -166,7 +167,7 @@ void Engine::run(IGame& game) {
         bool f1Held = false;
         ImGuiIO& io = ImGui::GetIO();
 
-        float lastTime = static_cast<float>(glfwGetTime());
+        double lastTime = glfwGetTime();
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             bool f1 = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
@@ -182,8 +183,8 @@ void Engine::run(IGame& game) {
             input.beginFrame();
             input.poll();
 
-            float currentTime = static_cast<float>(glfwGetTime());
-            float deltaTime = std::min(currentTime - lastTime, MAX_DELTA_TIME);
+            double currentTime = glfwGetTime();
+            float deltaTime = std::min(static_cast<float>(currentTime - lastTime), MAX_DELTA_TIME);
             lastTime = currentTime;
 
             game.update(services, deltaTime);
@@ -204,14 +205,14 @@ void Engine::run(IGame& game) {
             renderer.overlay = showPanel ? std::function<void(VkCommandBuffer)>{[](VkCommandBuffer cmd) {
                 ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
             }} : nullptr;
-            renderer.render(*frame, camera, currentTime);
+            renderer.render(*frame, camera, static_cast<float>(std::fmod(currentTime, 3600.0))); // wrapped: float precision
 
             if (perfSeconds > 0.0f) {
-                if (perfStart < 0.0f) perfStart = perfTick = currentTime;
+                if (perfStart < 0.0) perfStart = perfTick = currentTime;
                 ++perfFrames;
                 for (const auto& [name, ms] : renderer.timers().lastFrameMs()) perfSum[name] += ms;
-                if (currentTime - perfTick >= 1.0f) {
-                    float dt = currentTime - perfTick, total = 0.0f;
+                if (currentTime - perfTick >= 1.0) {
+                    double dt = currentTime - perfTick; float total = 0.0f;
                     std::cout << "perf fps=" << perfFrames / dt << " frame_ms=" << 1000.0f * dt / perfFrames;
                     for (const auto& [name, sum] : perfSum) {
                         std::cout << " " << name << "=" << sum / perfFrames;

@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -56,6 +57,8 @@ private:
     void setupInitialScene(EngineServices& s);
     void registerLevelEntities();
     void loadShowcaseLevel(EngineServices& s);
+    void tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData);
+    std::optional<LdtkLevel> preparedLevel; // parsed by loadScene before any teardown
     void submitShowcaseExtras(EngineServices& s);
     void reloadCurrentScene(EngineServices& s);
     void loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData = {});

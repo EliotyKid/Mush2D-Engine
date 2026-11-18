@@ -17,7 +17,7 @@ void main() {
     vec3 lit = u.ambientColor * u.ambientIntensity * nm.a;              // AO
     for (uint i = 0; i < u.lightCount; ++i) {
         GpuLight L = lights[i];
-        vec3 toL = vec3(L.posHeightRadius.xy - worldPos, L.posHeightRadius.z + abs(L.depthFlicker.x - depth));
+        vec3 toL = vec3(L.posHeightRadius.xy - worldPos, max(L.posHeightRadius.z + abs(L.depthFlicker.x - depth), 1e-3)); // z>0: normalize stays finite
         float d = length(toL.xy); float att = clamp(1 - d / L.posHeightRadius.w, 0, 1); att *= att;
         float flick = 1 + L.depthFlicker.y * sin(u.time * L.depthFlicker.z + float(i) * 1.7);
         vec3 Ldir = normalize(toL);

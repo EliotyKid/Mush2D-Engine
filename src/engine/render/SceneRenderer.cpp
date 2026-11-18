@@ -159,11 +159,11 @@ void SceneRenderer::init(GpuContext& gpu, Bindless& bindless) {
     lightPipeline_ = createPipeline("fullscreen.vert", "light.frag", f + RenderTargets::Light, 1);
     VkFormat swapFormat = gpu.swapchain().format();
     compositePipeline_ = createPipeline("fullscreen.vert", "composite.frag", &swapFormat, 1);
-    const VkFormat* hdr = f + RenderTargets::Light;
+    const VkFormat* lightFormat = f + RenderTargets::Light;
     resolvePipeline_ = createPipeline("fullscreen.vert", "resolve.frag", f + RenderTargets::Hdr, 1);
     additivePipeline_ = createPipeline("sprite.vert", "additive.frag", f + RenderTargets::Hdr, 1, true);
-    bloomDownPipeline_ = createPipeline("fullscreen.vert", "bloom_down.frag", hdr, 1);
-    bloomUpPipeline_ = createPipeline("fullscreen.vert", "bloom_up.frag", hdr, 1, true);
+    bloomDownPipeline_ = createPipeline("fullscreen.vert", "bloom_down.frag", lightFormat, 1);
+    bloomUpPipeline_ = createPipeline("fullscreen.vert", "bloom_up.frag", lightFormat, 1, true);
     timers_.init(gpu);
 
     VkExtent2D extent = gpu.swapchain().extent();
@@ -454,7 +454,7 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     timers_.end(cmd);
 
     // 6. Composite into the swapchain (sampler 0 = NEAREST keeps pixelated light blocky).
-    timers_.begin(cmd, "composite");
+    timers_.begin(cmd, "composite+ui");
     VkImage swapImage = gpu.swapchain().image(frame.imageIndex);
     transition(cmd, swapImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo c = attachment(gpu.swapchain().view(frame.imageIndex), {{0.0f, 0.0f, 0.0f, 1.0f}});
