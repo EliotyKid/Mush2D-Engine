@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../world/Scene2D.hpp"
+#include "engine/world/Scene2D.hpp"
 
 #include <array>
 #include <cstddef>

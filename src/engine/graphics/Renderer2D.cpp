@@ -1,7 +1,7 @@
 #include "Renderer2D.hpp"
-#include "../core/Paths.hpp"
+#include "engine/core/Paths.hpp"
 
-#include "../../game/assets/GameAssets.hpp"
+#include "game/assets/GameAssets.hpp"
 
 #include <algorithm>
 #include <cstring>

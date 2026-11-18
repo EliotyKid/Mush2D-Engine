@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../world/GameObject.hpp"
+#include "engine/world/GameObject.hpp"
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>

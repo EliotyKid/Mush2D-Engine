@@ -1,6 +1,6 @@
 #include "EngineApp.hpp"
-#include "../engine/core/Paths.hpp"
-#include "../engine/scenes/SceneRegistry.hpp"
+#include "engine/core/Paths.hpp"
+#include "engine/scenes/SceneRegistry.hpp"
 
 #include <algorithm>
 #include <array>

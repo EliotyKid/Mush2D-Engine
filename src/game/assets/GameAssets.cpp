@@ -1,7 +1,7 @@
 #include "GameAssets.hpp"
 
-#include "../../engine/core/Paths.hpp"
-#include "../../engine/assets/AtlasLoader.hpp"
+#include "engine/core/Paths.hpp"
+#include "engine/assets/AtlasLoader.hpp"
 
 #include <stdexcept>
 

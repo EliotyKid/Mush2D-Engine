@@ -1,6 +1,6 @@
 #include "Camera2D.hpp"
 
-#include "../world/Scene2D.hpp"
+#include "engine/world/Scene2D.hpp"
 
 #include <algorithm>
 #include <cmath>

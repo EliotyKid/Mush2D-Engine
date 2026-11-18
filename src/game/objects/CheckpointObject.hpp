@@ -1,12 +1,12 @@
 #pragma once
 
-#include "../assets/GameAssets.hpp"
-#include "../assets/GameSpriteId.hpp"
+#include "game/assets/GameAssets.hpp"
+#include "game/assets/GameSpriteId.hpp"
 
 #include "PlayerObject.hpp"
 
-#include "../../engine/world/GameObject.hpp"
-#include "../../engine/world/Scene2D.hpp"
+#include "engine/world/GameObject.hpp"
+#include "engine/world/Scene2D.hpp"
 
 class CheckpointObject : public GameObject {
 public:

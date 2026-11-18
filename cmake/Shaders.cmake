@@ -17,8 +17,11 @@ endfunction()
 
 # Makes assets/ and compiled shaders/ reachable next to the exe.
 function(mush2d_copy_assets target)
-    add_custom_command(TARGET ${target} POST_BUILD
+    # No outputs: runs on every build, so edits to assets/shaders always land.
+    add_custom_target(${target}_assets ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:${target}>/assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/shaders $<TARGET_FILE_DIR:${target}>/shaders
         VERBATIM)
+    add_dependencies(${target}_assets ${target}_shaders)
+    add_dependencies(${target} ${target}_assets)
 endfunction()

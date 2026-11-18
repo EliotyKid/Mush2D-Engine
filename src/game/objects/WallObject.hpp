@@ -1,10 +1,10 @@
 #pragma once
 
-#include "../assets/GameAssets.hpp"
-#include "../assets/GameSpriteId.hpp"
+#include "game/assets/GameAssets.hpp"
+#include "game/assets/GameSpriteId.hpp"
 
-#include "../../engine/world/GameObject.hpp"
-#include "../../engine/world/Scene2D.hpp"
+#include "engine/world/GameObject.hpp"
+#include "engine/world/Scene2D.hpp"
 
 class WallObject : public GameObject {
 public:

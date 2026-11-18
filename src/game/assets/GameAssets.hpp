@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../engine/assets/TextureAtlas.hpp"
-#include "../../engine/graphics/AnimationCatalog.hpp"
-#include "../../engine/graphics/SpriteCatalog.hpp"
+#include "engine/assets/TextureAtlas.hpp"
+#include "engine/graphics/AnimationCatalog.hpp"
+#include "engine/graphics/SpriteCatalog.hpp"
 #include "GameAnimationId.hpp"
 #include "GameSpriteId.hpp"
 
