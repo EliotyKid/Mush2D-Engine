@@ -9,6 +9,7 @@
 // Bindless; the indices stay fixed across resizes (re-registered with Bindless::set).
 class RenderTargets {
 public:
+    static constexpr int BloomLevels = 5; // 1/2 .. 1/32 of the swapchain extent
     enum Target { Albedo, Normal, Emissive, Depth, Light, Count };
     static constexpr std::array<VkFormat, Count> Formats = {
         VK_FORMAT_R8G8B8A8_SRGB,       // albedo
@@ -26,9 +27,13 @@ public:
     uint32_t index(Target t) const { return indices_[t]; }
     VkExtent2D extent() const { return images_[Albedo].extent; }
     VkExtent2D lightExtent() const { return images_[Light].extent; }
+    const GpuImage& bloom(int level) const { return bloom_[level]; }
+    uint32_t bloomIndex(int level) const { return bloomIndices_[level]; }
 
 private:
     std::array<GpuImage, Count> images_{};
     std::array<uint32_t, Count> indices_{};
+    std::array<GpuImage, BloomLevels> bloom_{};
+    std::array<uint32_t, BloomLevels> bloomIndices_{};
     bool registered_ = false;
 };

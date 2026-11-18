@@ -3,6 +3,7 @@
 #include "engine/gpu/Buffer.hpp"
 #include "engine/gpu/GpuContext.hpp"
 #include "engine/render/Bindless.hpp"
+#include "engine/render/GpuTimers.hpp"
 #include "engine/render/RenderTargets.hpp"
 #include "engine/render/SpriteBatch.hpp"
 
@@ -49,7 +50,8 @@ private:
     size_t count_ = 0;
 };
 
-// G-buffer -> deferred 2D light + fog (HDR) -> composite (exposure, AgX, sRGB) into the swapchain.
+// G-buffer -> deferred 2D light + fog (HDR) -> additive sprites -> bloom -> composite (bloom, exposure,
+// temperature, AgX, lift/gamma/gain, saturation, sRGB) into the swapchain.
 class SceneRenderer {
 public:
     void init(GpuContext& gpu, Bindless& bindless);
@@ -59,6 +61,7 @@ public:
     SpriteBatch& sprites() { return sprites_; }
     LightList& lights() { return lights_; }
     FrameSettings& settings() { return settings_; }
+    const GpuTimers& timers() const { return timers_; }
 
     // Leaves the swapchain image in PRESENT_SRC_KHR.
     void render(FrameContext& frame, const Camera2D& camera, float time);
@@ -71,7 +74,8 @@ private:
 
     VkExtent2D lightExtent(VkExtent2D extent) const;
     void writeFrameSet(FrameResources& fr);
-    VkPipeline createPipeline(const char* vert, const char* frag, const VkFormat* formats, uint32_t count);
+    VkPipeline createPipeline(const char* vert, const char* frag, const VkFormat* formats, uint32_t count,
+                             bool additiveBlend = false);
 
     GpuContext* gpu_ = nullptr;
     Bindless* bindless_ = nullptr;
@@ -85,6 +89,11 @@ private:
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline gbufferPipeline_ = VK_NULL_HANDLE;
     VkPipeline lightPipeline_ = VK_NULL_HANDLE;
+    VkPipeline additivePipeline_ = VK_NULL_HANDLE;
+    VkPipeline bloomDownPipeline_ = VK_NULL_HANDLE;
+    VkPipeline bloomUpPipeline_ = VK_NULL_HANDLE;
     VkPipeline compositePipeline_ = VK_NULL_HANDLE;
+    GpuTimers timers_;
+    float logTimer_ = 0;
     std::array<FrameResources, GpuContext::FramesInFlight> frames_{};
 };

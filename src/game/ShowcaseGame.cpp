@@ -8,6 +8,7 @@
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -96,6 +97,26 @@ void ShowcaseGame::submitRenderData(EngineServices& s) {
     appendSceneSprites(s.scene, batch, [this](std::uint32_t atlasIndex, const std::string& frameName) {
         return lookupAtlasFrame(atlasIndex, frameName);
     });
+
+    // Debug (MUSH2D_DEBUG_ADDITIVE=1): bright additive sprite next to the player, to check additive + bloom.
+    static const bool debugAdditive = std::getenv("MUSH2D_DEBUG_ADDITIVE") != nullptr;
+    if (debugAdditive) {
+        if (const GameObject* player = s.scene.findObject(playerObjectId)) {
+            auto [material, uvRect] = lookupAtlasFrame(2, "teleport_0"); // environment atlas
+            if (uvRect.z > 0.0f) {
+                SpriteInstance inst{};
+                inst.position = player->transform.position + glm::vec2(1.0f, 0.3f);
+                inst.size = {0.6f, 0.6f};
+                inst.uvRect = uvRect;
+                inst.color = {4.0f, 2.5f, 1.0f, 1.0f};
+                inst.parallax = {1.0f, 1.0f};
+                inst.albedo = material.albedo; inst.normal = material.normal;
+                inst.emissive = material.emissive; inst.mask = material.mask;
+                inst.flags = SpriteFlagNearest | SpriteFlagAdditive;
+                batch.add(inst);
+            }
+        }
+    }
 
     // Test light: warm, slightly flickering, above and in front of the player.
     LightList& lights = s.renderer.lights();

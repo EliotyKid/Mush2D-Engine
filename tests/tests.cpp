@@ -56,6 +56,15 @@ TEST(light_list_clamps_to_64) {
     CHECK(!l.add({})); CHECK(l.size() == 64);
 }
 TEST(sprite_instance_layout) { CHECK(sizeof(SpriteInstance) == 96); CHECK(sizeof(GpuLight) == 48); }
+TEST(sprite_batch_additive_after_opaque) {
+    SpriteBatch b;
+    SpriteInstance a{}, o{};
+    a.flags = SpriteFlagAdditive; a.rotation = 1; a.depth = 5; // far, but additive
+    o.rotation = 2; o.depth = 0;
+    b.add(a); b.add(o);
+    const auto& s = b.sorted();
+    CHECK(b.opaqueCount() == 1 && s[0].rotation == 2 && s[1].rotation == 1);
+}
 TEST(sprite_batch_sorts_back_to_front) {
     SpriteBatch b;
     auto inst = [](float depth, float tag) { SpriteInstance s{}; s.depth = depth; s.rotation = tag; return s; };

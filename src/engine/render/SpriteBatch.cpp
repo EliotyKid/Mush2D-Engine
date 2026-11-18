@@ -14,11 +14,17 @@ void SpriteBatch::add(const SpriteInstance& instance, int order) {
 
 const std::vector<SpriteInstance>& SpriteBatch::sorted() {
     std::stable_sort(entries_.begin(), entries_.end(), [](const Entry& a, const Entry& b) {
+        bool addA = (a.instance.flags & SpriteFlagAdditive) != 0, addB = (b.instance.flags & SpriteFlagAdditive) != 0;
+        if (addA != addB) return addB; // opaque before additive
         if (a.instance.depth != b.instance.depth) return a.instance.depth > b.instance.depth;
         return a.order < b.order;
     });
     sorted_.clear();
-    for (const Entry& e : entries_) sorted_.push_back(e.instance);
+    opaqueCount_ = 0;
+    for (const Entry& e : entries_) {
+        sorted_.push_back(e.instance);
+        if (!(e.instance.flags & SpriteFlagAdditive)) ++opaqueCount_;
+    }
     return sorted_;
 }
 

@@ -31,7 +31,15 @@ vec3 linearToSrgb(vec3 c) {
 }
 
 void main() {
-    // pc.t0 = light target, pc.t1 = sampler (0 NEAREST when pixelating light, else 1 LINEAR).
-    vec3 hdr = texture(sampler2D(textures[pc.t0], samplers[pc.t1]), vUV).rgb * u.exposure;
-    outColor = vec4(linearToSrgb(clamp(agx(hdr), 0, 1)), 1); // swapchain is UNORM
+    // pc.t0 = HDR (light + additive), pc.t1 = sampler (0 NEAREST when pixelating light, else 1 LINEAR),
+    // pc.t2 = bloom level 0 (always LINEAR).
+    vec3 c = texture(sampler2D(textures[pc.t0], samplers[pc.t1]), vUV).rgb;
+    c += texture(sampler2D(textures[pc.t2], samplers[1]), vUV).rgb * u.bloomIntensity;
+    c *= u.exposure;
+    c *= vec3(1.0 + 0.3 * u.temperature, 1.0, 1.0 - 0.3 * u.temperature); // temperature: +warm / -cool
+    c = clamp(agx(c), 0, 1);
+    c = pow(max(c * u.gain + u.lift * (1.0 - c), vec3(0)), 1.0 / max(u.gamma, vec3(1e-3)));
+    float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c = mix(vec3(luma), c, u.saturation);
+    outColor = vec4(linearToSrgb(clamp(c, 0, 1)), 1); // swapchain is UNORM
 }

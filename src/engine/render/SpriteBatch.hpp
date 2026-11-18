@@ -30,8 +30,10 @@ public:
     void clear();
     void add(const SpriteInstance& instance, int order = 0);
 
-    // Back to front: depth descending, then order ascending; ties keep insertion order.
+    // Opaque sprites first, then additive ones; each range back to front: depth descending,
+    // then order ascending; ties keep insertion order.
     const std::vector<SpriteInstance>& sorted();
+    size_t opaqueCount() const { return opaqueCount_; } // valid after sorted()
     size_t size() const { return entries_.size(); }
 
 private:
@@ -41,6 +43,7 @@ private:
     };
     std::vector<Entry> entries_;
     std::vector<SpriteInstance> sorted_;
+    size_t opaqueCount_ = 0;
 };
 
 // Returns the atlas material and the frame's uvRect (x, y, w, h in 0..1). A uvRect with w <= 0 = frame missing.

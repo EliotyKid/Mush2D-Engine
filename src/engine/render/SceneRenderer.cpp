@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -30,13 +31,23 @@ struct FrameUniforms {
     glm::vec3 fogColor;     float fogGradientStart;
     float fogGradientEnd;
     float fogGradientStrength;
-    float _pad[2];
+    float bloomThreshold; float bloomKnee;
+    glm::vec3 lift;  float bloomIntensity;
+    glm::vec3 gamma; float saturation;
+    glm::vec3 gain;  float temperature;
 };
 static_assert(offsetof(FrameUniforms, lightCount) == 96);
 static_assert(offsetof(FrameUniforms, ambientColor) == 112);
 static_assert(offsetof(FrameUniforms, fogColor) == 128);
 static_assert(offsetof(FrameUniforms, fogGradientEnd) == 144);
-static_assert(sizeof(FrameUniforms) == 160);
+static_assert(offsetof(FrameUniforms, bloomThreshold) == 152);
+static_assert(offsetof(FrameUniforms, lift) == 160);
+static_assert(offsetof(FrameUniforms, bloomIntensity) == 172);
+static_assert(offsetof(FrameUniforms, gamma) == 176);
+static_assert(offsetof(FrameUniforms, saturation) == 188);
+static_assert(offsetof(FrameUniforms, gain) == 192);
+static_assert(offsetof(FrameUniforms, temperature) == 204);
+static_assert(sizeof(FrameUniforms) == 208);
 
 // Shared by every pipeline: firstInstance for sprites, t0..t3 = bindless indices / sampler choice.
 struct PushConstants {
@@ -148,6 +159,11 @@ void SceneRenderer::init(GpuContext& gpu, Bindless& bindless) {
     lightPipeline_ = createPipeline("fullscreen.vert", "light.frag", f + RenderTargets::Light, 1);
     VkFormat swapFormat = gpu.swapchain().format();
     compositePipeline_ = createPipeline("fullscreen.vert", "composite.frag", &swapFormat, 1);
+    const VkFormat* hdr = f + RenderTargets::Light;
+    additivePipeline_ = createPipeline("sprite.vert", "additive.frag", hdr, 1, true);
+    bloomDownPipeline_ = createPipeline("fullscreen.vert", "bloom_down.frag", hdr, 1);
+    bloomUpPipeline_ = createPipeline("fullscreen.vert", "bloom_up.frag", hdr, 1, true);
+    timers_.init(gpu);
 
     VkExtent2D extent = gpu.swapchain().extent();
     targets_.create(gpu, bindless, extent, lightExtent(extent));
@@ -157,6 +173,7 @@ void SceneRenderer::shutdown() {
     if (!gpu_) return;
     VkDevice device = gpu_->device();
     vkDeviceWaitIdle(device);
+    timers_.shutdown();
     targets_.destroy(*gpu_);
     for (FrameResources& fr : frames_) {
         destroyBuffer(*gpu_, fr.uniforms);
@@ -165,6 +182,9 @@ void SceneRenderer::shutdown() {
     }
     vkDestroyPipeline(device, gbufferPipeline_, nullptr);
     vkDestroyPipeline(device, lightPipeline_, nullptr);
+    vkDestroyPipeline(device, additivePipeline_, nullptr);
+    vkDestroyPipeline(device, bloomDownPipeline_, nullptr);
+    vkDestroyPipeline(device, bloomUpPipeline_, nullptr);
     vkDestroyPipeline(device, compositePipeline_, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout_, nullptr);
     vkDestroyDescriptorPool(device, pool_, nullptr); // frees the sets
@@ -199,7 +219,8 @@ void SceneRenderer::writeFrameSet(FrameResources& fr) {
     vkUpdateDescriptorSets(gpu_->device(), 3, w, 0, nullptr);
 }
 
-VkPipeline SceneRenderer::createPipeline(const char* vert, const char* frag, const VkFormat* formats, uint32_t count) {
+VkPipeline SceneRenderer::createPipeline(const char* vert, const char* frag, const VkFormat* formats, uint32_t count,
+                                     bool additiveBlend) {
     VkDevice device = gpu_->device();
     VkShaderModule vs = loadShader(device, vert);
     VkShaderModule fs = loadShader(device, frag);
@@ -222,7 +243,14 @@ VkPipeline SceneRenderer::createPipeline(const char* vert, const char* frag, con
     multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     VkPipelineColorBlendAttachmentState blend[4]{};
-    for (auto& b : blend) b.colorWriteMask = 0xF; // no blending
+    for (auto& b : blend) {
+        b.colorWriteMask = 0xF;
+        if (additiveBlend) {
+            b.blendEnable = VK_TRUE;
+            b.srcColorBlendFactor = b.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            b.dstColorBlendFactor = b.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        }
+    }
     VkPipelineColorBlendStateCreateInfo blendState{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     blendState.attachmentCount = count;
     blendState.pAttachments = blend;
@@ -299,6 +327,14 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     u.fogGradientStart = settings_.fogGradientStart;
     u.fogGradientEnd = settings_.fogGradientEnd;
     u.fogGradientStrength = settings_.fogGradientStrength;
+    u.bloomThreshold = settings_.bloomThreshold;
+    u.bloomKnee = settings_.bloomKnee;
+    u.bloomIntensity = settings_.bloomIntensity;
+    u.lift = settings_.lift;
+    u.gamma = settings_.gamma;
+    u.gain = settings_.gain;
+    u.saturation = settings_.saturation;
+    u.temperature = settings_.temperature;
     std::memcpy(fr.uniforms.mapped, &u, sizeof(u));
     flush(gpu, fr.uniforms);
 
@@ -310,7 +346,12 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
                            sizeof(pc), &pc);
     };
 
-    // 1. G-buffer. Albedo alpha 0 marks "no sprite" (sky) for the light pass.
+    timers_.beginFrame(cmd);
+    const uint32_t opaqueCount = static_cast<uint32_t>(sprites_.opaqueCount());
+    const uint32_t additiveCount = static_cast<uint32_t>(instances.size()) - opaqueCount;
+
+    // 1. G-buffer (opaque sprites). Albedo alpha 0 marks "no sprite" (sky) for the light pass.
+    timers_.begin(cmd, "gbuffer");
     VkRenderingAttachmentInfo g[4] = {
         attachment(targets_.image(RenderTargets::Albedo).view, {{0.0f, 0.0f, 0.0f, 0.0f}}),
         attachment(targets_.image(RenderTargets::Normal).view, {{0.5f, 0.5f, 0.0f, 1.0f}}),
@@ -322,18 +363,20 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     }
     beginRendering(cmd, extent, g, 4);
-    if (!instances.empty()) {
+    if (opaqueCount) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, gbufferPipeline_);
         push({});
-        vkCmdDraw(cmd, 6, static_cast<uint32_t>(instances.size()), 0, 0);
+        vkCmdDraw(cmd, 6, opaqueCount, 0, 0);
     }
     vkCmdEndRendering(cmd);
     for (int t = RenderTargets::Albedo; t <= RenderTargets::Depth; ++t) {
         transition(cmd, targets_.image(static_cast<RenderTargets::Target>(t)).image,
                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
+    timers_.end(cmd);
 
     // 2. Light + fog into HDR (possibly reduced resolution).
+    timers_.begin(cmd, "light");
     const GpuImage& light = targets_.image(RenderTargets::Light);
     transition(cmd, light.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo l = attachment(light.view, {{0.0f, 0.0f, 0.0f, 1.0f}});
@@ -344,17 +387,74 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
           targets_.index(RenderTargets::Emissive), targets_.index(RenderTargets::Depth)});
     vkCmdDraw(cmd, 3, 1, 0, 0);
     vkCmdEndRendering(cmd);
-    transition(cmd, light.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    timers_.end(cmd);
 
-    // 3. Composite into the swapchain (sampler 0 = NEAREST keeps pixelated light blocky).
+    // 3. Additive sprites over the lit HDR (unlit, blend ONE, ONE).
+    timers_.begin(cmd, "additive");
+    if (additiveCount) {
+        transition(cmd, light.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        l.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+        beginRendering(cmd, light.extent, &l, 1);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, additivePipeline_);
+        push({opaqueCount});
+        vkCmdDraw(cmd, 6, additiveCount, 0, 0);
+        vkCmdEndRendering(cmd);
+    }
+    transition(cmd, light.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    timers_.end(cmd);
+
+    // 4. Bloom: down chain (soft threshold on the first step), then tent up chain blended additively.
+    // Skipped when intensity is 0; composite then reads the (always valid) HDR image times 0.
+    timers_.begin(cmd, "bloom");
+    const bool bloomOn = settings_.bloomIntensity > 0.0f;
+    if (bloomOn) {
+        constexpr int N = RenderTargets::BloomLevels;
+        for (int i = 0; i < N; ++i) {
+            const GpuImage& dst = targets_.bloom(i);
+            transition(cmd, dst.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            VkRenderingAttachmentInfo a = attachment(dst.view, {{0.0f, 0.0f, 0.0f, 1.0f}});
+            a.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            beginRendering(cmd, dst.extent, &a, 1);
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bloomDownPipeline_);
+            push({0, i == 0 ? targets_.index(RenderTargets::Light) : targets_.bloomIndex(i - 1), i == 0 ? 1u : 0u, 0, 0});
+            vkCmdDraw(cmd, 3, 1, 0, 0);
+            vkCmdEndRendering(cmd);
+            transition(cmd, dst.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+        for (int i = N - 2; i >= 0; --i) {
+            const GpuImage& dst = targets_.bloom(i);
+            transition(cmd, dst.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            VkRenderingAttachmentInfo a = attachment(dst.view, {{0.0f, 0.0f, 0.0f, 1.0f}});
+            a.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            beginRendering(cmd, dst.extent, &a, 1);
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bloomUpPipeline_);
+            push({0, targets_.bloomIndex(i + 1), 0, 0, 0});
+            vkCmdDraw(cmd, 3, 1, 0, 0);
+            vkCmdEndRendering(cmd);
+            transition(cmd, dst.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+    }
+    timers_.end(cmd);
+
+    // 5. Composite into the swapchain (sampler 0 = NEAREST keeps pixelated light blocky).
+    timers_.begin(cmd, "composite");
     VkImage swapImage = gpu.swapchain().image(frame.imageIndex);
     transition(cmd, swapImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo c = attachment(gpu.swapchain().view(frame.imageIndex), {{0.0f, 0.0f, 0.0f, 1.0f}});
     c.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     beginRendering(cmd, extent, &c, 1);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, compositePipeline_);
-    push({0, targets_.index(RenderTargets::Light), settings_.pixelateLight ? 0u : 1u, 0, 0});
+    push({0, targets_.index(RenderTargets::Light), settings_.pixelateLight ? 0u : 1u,
+          bloomOn ? targets_.bloomIndex(0) : targets_.index(RenderTargets::Light), 0});
     vkCmdDraw(cmd, 3, 1, 0, 0);
     vkCmdEndRendering(cmd);
     transition(cmd, swapImage, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    timers_.end(cmd);
+
+#ifndef NDEBUG
+    if (time - logTimer_ >= 1.0f || time < logTimer_) {
+        logTimer_ = time;
+        for (const auto& [name, ms] : timers_.lastFrameMs()) std::cout << name << ": " << ms << " ms\n";
+    }
+#endif
 }

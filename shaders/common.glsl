@@ -34,6 +34,10 @@ layout(std140, set = 1, binding = 0) uniform FrameUniforms {
     vec3 fogColor; float fogGradientStart;
     float fogGradientEnd;
     float fogGradientStrength;
+    float bloomThreshold; float bloomKnee;
+    vec3 lift; float bloomIntensity;
+    vec3 gamma; float saturation;
+    vec3 gain; float temperature;
 } u;
 
 layout(std430, set = 1, binding = 1) readonly buffer Instances { SpriteInstance instances[]; };
