@@ -1,0 +1,376 @@
+{
+ "frames": {
+  "tree 0": {
+   "frame": {
+    "x": 1,
+    "y": 1,
+    "w": 300,
+    "h": 276
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 300,
+    "h": 276
+   },
+   "sourceSize": {
+    "w": 300,
+    "h": 276
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 150,
+    "y": 276
+   }
+  },
+  "tree_trunk 0": {
+   "frame": {
+    "x": 847,
+    "y": 1,
+    "w": 134,
+    "h": 130
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 134,
+    "h": 130
+   },
+   "sourceSize": {
+    "w": 134,
+    "h": 130
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 108,
+    "y": 130
+   }
+  },
+  "tree_leaves 0": {
+   "frame": {
+    "x": 523,
+    "y": 1,
+    "w": 199,
+    "h": 150
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 199,
+    "h": 150
+   },
+   "sourceSize": {
+    "w": 199,
+    "h": 150
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 99,
+    "y": 75
+   }
+  },
+  "tree_dead 0": {
+   "frame": {
+    "x": 723,
+    "y": 1,
+    "w": 123,
+    "h": 150
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 123,
+    "h": 150
+   },
+   "sourceSize": {
+    "w": 123,
+    "h": 150
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 61,
+    "y": 150
+   }
+  },
+  "tree_canopy 0": {
+   "frame": {
+    "x": 302,
+    "y": 1,
+    "w": 220,
+    "h": 170
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 220,
+    "h": 170
+   },
+   "sourceSize": {
+    "w": 220,
+    "h": 170
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 110,
+    "y": 85
+   }
+  },
+  "bush 0": {
+   "frame": {
+    "x": 371,
+    "y": 278,
+    "w": 61,
+    "h": 24
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 61,
+    "h": 24
+   },
+   "sourceSize": {
+    "w": 61,
+    "h": 24
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 30,
+    "y": 24
+   }
+  },
+  "vine 0": {
+   "frame": {
+    "x": 433,
+    "y": 278,
+    "w": 27,
+    "h": 10
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 27,
+    "h": 10
+   },
+   "sourceSize": {
+    "w": 27,
+    "h": 10
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 2,
+    "y": 5
+   }
+  },
+  "dust 0": {
+   "frame": {
+    "x": 320,
+    "y": 278,
+    "w": 50,
+    "h": 50
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 50,
+    "h": 50
+   },
+   "sourceSize": {
+    "w": 50,
+    "h": 50
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 25,
+    "y": 25
+   }
+  },
+  "sun 0": {
+   "frame": {
+    "x": 256,
+    "y": 278,
+    "w": 63,
+    "h": 63
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 63,
+    "h": 63
+   },
+   "sourceSize": {
+    "w": 63,
+    "h": 63
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 31,
+    "y": 31
+   }
+  },
+  "stars 0": {
+   "frame": {
+    "x": 1,
+    "y": 278,
+    "w": 84,
+    "h": 86
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 84,
+    "h": 86
+   },
+   "sourceSize": {
+    "w": 84,
+    "h": 86
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 42,
+    "y": 43
+   }
+  },
+  "stars 1": {
+   "frame": {
+    "x": 86,
+    "y": 278,
+    "w": 84,
+    "h": 86
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 84,
+    "h": 86
+   },
+   "sourceSize": {
+    "w": 84,
+    "h": 86
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 42,
+    "y": 43
+   }
+  },
+  "stars 2": {
+   "frame": {
+    "x": 171,
+    "y": 278,
+    "w": 84,
+    "h": 86
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 84,
+    "h": 86
+   },
+   "sourceSize": {
+    "w": 84,
+    "h": 86
+   },
+   "duration": 33,
+   "pivot": {
+    "x": 42,
+    "y": 43
+   }
+  }
+ },
+ "meta": {
+  "app": "tools/import_kaa.py",
+  "image": "kaa_props.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 982,
+   "h": 365
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "tree",
+    "from": 0,
+    "to": 0,
+    "direction": "forward"
+   },
+   {
+    "name": "tree_trunk",
+    "from": 1,
+    "to": 1,
+    "direction": "forward"
+   },
+   {
+    "name": "tree_leaves",
+    "from": 2,
+    "to": 2,
+    "direction": "forward"
+   },
+   {
+    "name": "tree_dead",
+    "from": 3,
+    "to": 3,
+    "direction": "forward"
+   },
+   {
+    "name": "tree_canopy",
+    "from": 4,
+    "to": 4,
+    "direction": "forward"
+   },
+   {
+    "name": "bush",
+    "from": 5,
+    "to": 5,
+    "direction": "forward"
+   },
+   {
+    "name": "vine",
+    "from": 6,
+    "to": 6,
+    "direction": "forward"
+   },
+   {
+    "name": "dust",
+    "from": 7,
+    "to": 7,
+    "direction": "forward"
+   },
+   {
+    "name": "sun",
+    "from": 8,
+    "to": 8,
+    "direction": "forward"
+   },
+   {
+    "name": "stars",
+    "from": 9,
+    "to": 11,
+    "direction": "forward"
+   }
+  ]
+ }
+}
