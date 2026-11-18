@@ -32,8 +32,9 @@ vec3 linearToSrgb(vec3 c) {
 
 void main() {
     // pc.t0 = HDR (light + additive), pc.t1 = sampler (0 NEAREST when pixelating light, else 1 LINEAR),
-    // pc.t2 = bloom level 0 (always LINEAR).
+    // pc.t2 = bloom level 0 (always LINEAR), pc.t3 = additive target (native resolution).
     vec3 c = texture(sampler2D(textures[pc.t0], samplers[pc.t1]), vUV).rgb;
+    c += texture(sampler2D(textures[pc.t3], samplers[1]), vUV).rgb;
     c += texture(sampler2D(textures[pc.t2], samplers[1]), vUV).rgb * u.bloomIntensity;
     c *= u.exposure;
     c *= vec3(1.0 + 0.3 * u.temperature, 1.0, 1.0 - 0.3 * u.temperature); // temperature: +warm / -cool

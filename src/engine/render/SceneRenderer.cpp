@@ -160,7 +160,7 @@ void SceneRenderer::init(GpuContext& gpu, Bindless& bindless) {
     VkFormat swapFormat = gpu.swapchain().format();
     compositePipeline_ = createPipeline("fullscreen.vert", "composite.frag", &swapFormat, 1);
     const VkFormat* hdr = f + RenderTargets::Light;
-    additivePipeline_ = createPipeline("sprite.vert", "additive.frag", hdr, 1, true);
+    additivePipeline_ = createPipeline("sprite.vert", "additive.frag", f + RenderTargets::Additive, 1, true);
     bloomDownPipeline_ = createPipeline("fullscreen.vert", "bloom_down.frag", hdr, 1);
     bloomUpPipeline_ = createPipeline("fullscreen.vert", "bloom_up.frag", hdr, 1, true);
     timers_.init(gpu);
@@ -329,7 +329,7 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     u.fogGradientStrength = settings_.fogGradientStrength;
     u.bloomThreshold = settings_.bloomThreshold;
     u.bloomKnee = settings_.bloomKnee;
-    u.bloomIntensity = settings_.bloomIntensity;
+    u.bloomIntensity = std::max(0.0f, settings_.bloomIntensity);
     u.lift = settings_.lift;
     u.gamma = settings_.gamma;
     u.gain = settings_.gain;
@@ -389,21 +389,25 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     vkCmdEndRendering(cmd);
     timers_.end(cmd);
 
-    // 3. Additive sprites over the lit HDR (unlit, blend ONE, ONE).
-    timers_.begin(cmd, "additive");
-    if (additiveCount) {
-        transition(cmd, light.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-        l.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-        beginRendering(cmd, light.extent, &l, 1);
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, additivePipeline_);
-        push({opaqueCount});
-        vkCmdDraw(cmd, 6, additiveCount, 0, 0);
-        vkCmdEndRendering(cmd);
-    }
     transition(cmd, light.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     timers_.end(cmd);
 
-    // 4. Bloom: down chain (soft threshold on the first step), then tent up chain blended additively.
+    // 3. Additive sprites (unlit, blend ONE, ONE) into their own native-resolution target, cleared to 0.
+    timers_.begin(cmd, "additive");
+    const GpuImage& add = targets_.image(RenderTargets::Additive);
+    transition(cmd, add.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo ad = attachment(add.view, {{0.0f, 0.0f, 0.0f, 0.0f}});
+    beginRendering(cmd, add.extent, &ad, 1);
+    if (additiveCount) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, additivePipeline_);
+        push({opaqueCount});
+        vkCmdDraw(cmd, 6, additiveCount, 0, 0);
+    }
+    vkCmdEndRendering(cmd);
+    transition(cmd, add.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    timers_.end(cmd);
+
+    // 4. Bloom: down chain (first step reads light + additive, soft threshold), then tent up chain blended additively.
     // Skipped when intensity is 0; composite then reads the (always valid) HDR image times 0.
     timers_.begin(cmd, "bloom");
     const bool bloomOn = settings_.bloomIntensity > 0.0f;
@@ -416,7 +420,8 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
             a.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             beginRendering(cmd, dst.extent, &a, 1);
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bloomDownPipeline_);
-            push({0, i == 0 ? targets_.index(RenderTargets::Light) : targets_.bloomIndex(i - 1), i == 0 ? 1u : 0u, 0, 0});
+            push({0, i == 0 ? targets_.index(RenderTargets::Light) : targets_.bloomIndex(i - 1), i == 0 ? 1u : 0u,
+                  targets_.index(RenderTargets::Additive), 0});
             vkCmdDraw(cmd, 3, 1, 0, 0);
             vkCmdEndRendering(cmd);
             transition(cmd, dst.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -445,7 +450,8 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     beginRendering(cmd, extent, &c, 1);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, compositePipeline_);
     push({0, targets_.index(RenderTargets::Light), settings_.pixelateLight ? 0u : 1u,
-          bloomOn ? targets_.bloomIndex(0) : targets_.index(RenderTargets::Light), 0});
+          bloomOn ? targets_.bloomIndex(0) : targets_.index(RenderTargets::Light),
+          targets_.index(RenderTargets::Additive)});
     vkCmdDraw(cmd, 3, 1, 0, 0);
     vkCmdEndRendering(cmd);
     transition(cmd, swapImage, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
