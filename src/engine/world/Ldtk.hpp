@@ -18,6 +18,8 @@ struct LdtkEntity {
     glm::vec2 px;    // top-left in level pixels (pivot already removed)
     glm::vec2 size;  // pixels
     nlohmann::json fields; // {identifier: value}
+    float depth = 0.0f;              // of the owning layer
+    glm::vec2 parallax{1.0f, 1.0f};  // of the owning layer, engine convention
 };
 struct LdtkLayer {
     std::string identifier, type;
@@ -40,3 +42,6 @@ LdtkLevel loadLdtkLevel(const std::filesystem::path& ldtk, const std::string& le
 float parseLayerDepth(const std::string& identifier, int orderFromFront, int frontIndexOfGameplay);
 // LDtk parallaxFactor: 0 = scrolls with the level, 1 = fixed on screen. Engine: 1 = scrolls with camera, 0 = fixed.
 float ldtkParallaxToScroll(float ldtkFactor);
+// LDtk (parallaxScaling off) shows a parallax layer at its authored place when the camera is at the level centre.
+// The engine shows it there when the camera is at 0, so shift by (1 - scroll) * levelCentre (world units).
+glm::vec2 ldtkParallaxAnchor(glm::vec2 worldPos, glm::vec2 scroll, glm::vec2 levelCentre);

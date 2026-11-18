@@ -1,3 +1,4 @@
+#include "engine/assets/AtlasLoader.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/render/Materials.hpp"
 #include "engine/render/PixelScale.hpp"
@@ -117,6 +118,32 @@ TEST(ldtk_tolerates_unknowns) {
     CHECK(lv.layers.size() == 2);                        // layer without tileset skipped
     CHECK(lv.layers[1].tiles.size() == 2);               // AutoLayer
     CHECK(lv.layers[0].entities[0].identifier == "Mystery");
+}
+
+TEST(intgrid_short_csv_is_ignored) {
+    CHECK(mergeIntGrid({1, 1, 1}, 2, 2, 1).empty()); // 3 cells for a 2x2 grid
+}
+TEST(ldtk_parallax_anchor_is_level_centre) {
+    const glm::vec2 centre{24.0f, 8.0f}, authored{10.0f, 3.0f}, scroll{0.25f, 0.5f};
+    glm::vec2 p = ldtkParallaxAnchor(authored, scroll, centre);
+    // Shader: screen = pos - camera * scroll. Camera at the level centre -> exactly where LDtk shows it.
+    CHECK(glm::all(glm::lessThan(glm::abs((p - centre * scroll) - (authored - centre)), glm::vec2(1e-5f))));
+    CHECK(ldtkParallaxAnchor(authored, {1.0f, 1.0f}, centre) == authored); // gameplay layer untouched
+}
+TEST(atlas_keeps_file_order_and_pivot) {
+    // nlohmann::json would sort keys ("idle 10" < "idle 2" < "run 0"); frameTags index the file order.
+    auto path = std::filesystem::temp_directory_path() / "mush2d_atlas.json";
+    std::ofstream(path) << R"({"frames": {
+        "run 0": {"frame": {"x": 0, "y": 0, "w": 4, "h": 6}, "pivot": {"x": 2, "y": 6}},
+        "idle 0": {"frame": {"x": 4, "y": 0, "w": 4, "h": 6}},
+        "idle 1": {"frame": {"x": 8, "y": 0, "w": 4, "h": 6}}},
+        "meta": {"size": {"w": 12, "h": 6}, "frameTags": [
+            {"name": "run", "from": 0, "to": 0}, {"name": "idle", "from": 1, "to": 2}]}})";
+    TextureAtlas atlas = AtlasLoader::loadFromAsepriteJsonHash(path.string(), "");
+    CHECK(atlas.getAnimation("run").frames.size() == 1 && atlas.getAnimation("run").frames[0].frameName == "run 0");
+    CHECK(atlas.getAnimation("idle").frames.size() == 2 && atlas.getAnimation("idle").frames[1].frameName == "idle 1");
+    CHECK(atlas.getFrame("run 0").pivotX == 2 && atlas.getFrame("run 0").pivotY == 6);
+    CHECK(atlas.getFrame("idle 0").pivotX == 2 && atlas.getFrame("idle 0").pivotY == 3); // default: centre
 }
 
 int main() {

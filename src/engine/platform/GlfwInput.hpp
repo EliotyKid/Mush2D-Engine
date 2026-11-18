@@ -31,6 +31,7 @@ private:
     bool previousZoomIn = false;
     bool previousZoomOut = false;
 
+    bool previousJump = false;
     bool previousDash = false;
     bool previousHit = false;
     bool previousToggleFollow = false;

@@ -10,6 +10,10 @@ using nlohmann::json;
 
 std::vector<IntRect> mergeIntGrid(const std::vector<int>& csv, int cw, int ch, int solidValue) {
     std::vector<IntRect> out;
+    if (cw <= 0 || ch <= 0 || csv.size() < size_t(cw) * size_t(ch)) {
+        std::fprintf(stderr, "LDtk: intGridCsv has %zu cells, expected %dx%d; ignored\n", csv.size(), cw, ch);
+        return out;
+    }
     std::vector<char> used(csv.size(), 0);
     auto avail = [&](int x, int y) { size_t i = size_t(y) * cw + x; return csv[i] == solidValue && !used[i]; };
     for (int y = 0; y < ch; ++y)
@@ -41,6 +45,8 @@ float parseLayerDepth(const std::string& id, int orderFromFront, int frontIndexO
 }
 
 float ldtkParallaxToScroll(float f) { return 1.0f - f; }
+
+glm::vec2 ldtkParallaxAnchor(glm::vec2 p, glm::vec2 scroll, glm::vec2 c) { return p - (1.0f - scroll) * c; }
 
 namespace {
 std::string str(const json& j, const char* k) {
@@ -122,8 +128,11 @@ LdtkLevel loadLdtkLevel(const std::filesystem::path& file, const std::string& le
             if (!out.layers[i].tilesetPath.empty() && firstTiled < 0) firstTiled = i;
         }
         if (gameplay < 0) gameplay = firstTiled < 0 ? 0 : firstTiled;
-        for (int i = 0; i < int(out.layers.size()); ++i)
-            out.layers[i].depth = parseLayerDepth(out.layers[i].identifier, i, gameplay);
+        for (int i = 0; i < int(out.layers.size()); ++i) {
+            LdtkLayer& L = out.layers[i];
+            L.depth = parseLayerDepth(L.identifier, i, gameplay);
+            for (LdtkEntity& e : L.entities) { e.depth = L.depth; e.parallax = {L.parallaxX, L.parallaxY}; }
+        }
         return out;
     }
     throw std::runtime_error("LDtk: level not found: " + levelId);

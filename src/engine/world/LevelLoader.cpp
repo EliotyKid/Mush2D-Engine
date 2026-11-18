@@ -7,6 +7,8 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
     const float H = float(level.pxSize.y);
     const int n = int(level.layers.size());
     auto toWorld = [&](glm::vec2 px) { return glm::vec2(px.x / U, (H - px.y) / U); };
+    const glm::vec2 centre = glm::vec2(level.pxSize) / (2.0f * U);
+    sprites_.clear(); // reload must not duplicate
 
     for (int li = 0; li < n; ++li) {
         const LdtkLayer& L = level.layers[li];
@@ -15,9 +17,10 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
         if (!L.tilesetPath.empty() && !L.tiles.empty()) {
             Material mat = materials.load(level.baseDir / L.tilesetPath);
             const float g = float(L.gridSize);
+            const glm::vec2 scroll{L.parallaxX, L.parallaxY};
             for (const LdtkTile& t : L.tiles) {
                 SpriteInstance s{};
-                s.position = toWorld(glm::vec2(t.px) + g * 0.5f); // centre-based
+                s.position = ldtkParallaxAnchor(toWorld(glm::vec2(t.px) + g * 0.5f), scroll, centre); // centre-based
                 s.size = {g / U, g / U};
                 float u = t.src.x / float(L.tilesetPx.x), v = t.src.y / float(L.tilesetPx.y);
                 float w = g / L.tilesetPx.x, h = g / L.tilesetPx.y;
@@ -52,7 +55,7 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
                 std::fprintf(stderr, "LDtk: no factory for entity '%s', ignored\n", e.identifier.c_str());
                 continue;
             }
-            f->second(e, toWorld(e.px + e.size * 0.5f), services);
+            f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, centre), services);
         }
     }
 }

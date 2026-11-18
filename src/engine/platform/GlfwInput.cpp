@@ -37,6 +37,8 @@ void GlfwInput::beginFrame() {
     state.zoomOut.pressed = false;
     state.zoomOut.released = false;
 
+    state.jump.pressed = false;
+    state.jump.released = false;
     state.dash.pressed = false;
     state.dash.released = false;
     state.hit.pressed = false;
@@ -75,6 +77,7 @@ void GlfwInput::poll() {
     updateButton(state.zoomIn, glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS, previousZoomIn);
     updateButton(state.zoomOut, glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS, previousZoomOut);
 
+    updateButton(state.jump, glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS, previousJump);
     updateButton(state.dash, glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS, previousDash);
     updateButton(state.hit, glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS, previousHit);
     updateButton(state.toggleFollow, glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS, previousToggleFollow);

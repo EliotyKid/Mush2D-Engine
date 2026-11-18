@@ -1,7 +1,5 @@
 #include "AtlasLoader.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -10,31 +8,8 @@
 
 #include <nlohmann/json.hpp>
 
-using json = nlohmann::json;
-
-namespace {
-int extractTrailingFrameIndex(const std::string& frameName) {
-    int end = static_cast<int>(frameName.size()) - 1;
-
-    while (end >= 0 && !std::isdigit(static_cast<unsigned char>(frameName[end]))) {
-        --end;
-    }
-
-    if (end < 0) {
-        return -1;
-    }
-
-    int start = end;
-    while (start >= 0 && std::isdigit(static_cast<unsigned char>(frameName[start]))) {
-        --start;
-    }
-
-    ++start;
-
-    return std::stoi(frameName.substr(static_cast<std::size_t>(start),
-                                      static_cast<std::size_t>(end - start + 1)));
-}
-}
+// ordered_json keeps the file's frame order, which is what frameTags from/to index.
+using json = nlohmann::ordered_json;
 
 TextureAtlas AtlasLoader::loadFromAsepriteJsonHash(
     const std::string& jsonPath,
@@ -78,7 +53,7 @@ TextureAtlas AtlasLoader::loadFromAsepriteJsonHash(
         throw std::runtime_error("Atlas json invalido: 'frames' deve ser objeto no formato JSON Hash.");
     }
 
-    std::vector<std::pair<int, std::string>> indexedFrameNames;
+    std::vector<std::string> orderedFrameNames; // file order
 
     for (auto it = framesJson.begin(); it != framesJson.end(); ++it) {
         const std::string frameName = it.key();
@@ -114,32 +89,17 @@ TextureAtlas AtlasLoader::loadFromAsepriteJsonHash(
             frame.spriteSourceY = spriteSourceSize.value("y", 0);
         }
 
-        atlas.addFrame(frame);
-
-        indexedFrameNames.push_back({
-            extractTrailingFrameIndex(frameName),
-            frameName
-        });
-    }
-
-    std::sort(
-        indexedFrameNames.begin(),
-        indexedFrameNames.end(),
-        [](const auto& a, const auto& b) {
-            if (a.first != b.first) {
-                return a.first < b.first;
-            }
-            return a.second < b.second;
+        // GameMaker origin exported by tools/import_kaa.py; default = frame centre.
+        frame.pivotX = frame.w / 2;
+        frame.pivotY = frame.h / 2;
+        if (frameJson.contains("pivot")) {
+            frame.pivotX = frameJson["pivot"].value("x", frame.pivotX);
+            frame.pivotY = frameJson["pivot"].value("y", frame.pivotY);
         }
-    );
 
-    std::vector<std::string> orderedFrameNames;
-    orderedFrameNames.reserve(indexedFrameNames.size());
-
-    for (const auto& [index, name] : indexedFrameNames) {
-        orderedFrameNames.push_back(name);
+        atlas.addFrame(frame);
+        orderedFrameNames.push_back(frameName);
     }
-
     if (j.contains("meta")) {
         const auto& metaJson = j["meta"];
 
@@ -178,4 +138,4 @@ TextureAtlas AtlasLoader::loadFromAsepriteJsonHash(
     }
 
     return atlas;
-}
+}

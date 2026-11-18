@@ -20,6 +20,7 @@ struct InputState {
     ButtonState zoomIn;
     ButtonState zoomOut;
 
+    ButtonState jump; // Z (platformer: the up arrow also jumps)
     ButtonState dash;
     ButtonState hit;
     ButtonState toggleFollow;

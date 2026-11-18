@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <string>
 #include <vector>
@@ -18,6 +18,9 @@ struct AtlasFrame {
     int spriteSourceY = 0;
 
     int durationMs = 0;
+
+    int pivotX = 0; // origin in px from the frame's top-left (default: frame centre)
+    int pivotY = 0;
 
     bool rotated = false;
     bool trimmed = false;

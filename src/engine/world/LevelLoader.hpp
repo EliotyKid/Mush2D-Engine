@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-// worldPos = entity box centre in world units (LDtk Y flipped, 32 px per unit).
+// worldPos = entity box centre in world units (LDtk Y flipped, 32 px per unit), parallax anchor applied.
 using EntityFactory = std::function<void(const LdtkEntity&, glm::vec2 worldPos, EngineServices&)>;
 
 constexpr float LdtkPixelsPerUnit = 32.0f;
@@ -21,6 +21,7 @@ public:
     // entities -> registered factories (unknown identifiers are warned about and ignored).
     void load(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials);
     void appendStatic(SpriteBatch& batch) const;
+    void clear() { sprites_.clear(); }
 
 private:
     struct StaticSprite { SpriteInstance instance; int order; };

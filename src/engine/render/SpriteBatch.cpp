@@ -37,7 +37,7 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
         if (uvRect.z <= 0.0f) continue;
 
         SpriteInstance inst{};
-        inst.position = object->transform.position;
+        inst.position = object->transform.position + sprite.offset;
         inst.size = object->transform.scale;
         inst.uvRect = uvRect;
         inst.color = sprite.color;

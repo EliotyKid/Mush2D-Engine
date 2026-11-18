@@ -39,6 +39,7 @@ void MaterialLibrary::shutdown() {
     vkDeviceWaitIdle(gpu_->device());
     for (GpuImage& img : images_) destroyImage(*gpu_, img);
     images_.clear();
+    cache_.clear();
     gpu_ = nullptr;
 }
 
@@ -113,6 +114,8 @@ uint32_t MaterialLibrary::loadMap(const std::optional<std::filesystem::path>& p,
 }
 
 Material MaterialLibrary::load(const std::filesystem::path& albedoPng) {
+    const std::string key = std::filesystem::absolute(albedoPng).lexically_normal().string();
+    if (auto it = cache_.find(key); it != cache_.end()) return it->second;
     MaterialPaths paths = resolveMaterialPaths(albedoPng);
     int aw = 0, ah = 0, n = 0;
     if (!stbi_info(albedoPng.string().c_str(), &aw, &ah, &n)) {
@@ -123,5 +126,6 @@ Material MaterialLibrary::load(const std::filesystem::path& albedoPng) {
     m.normal = loadMap(paths.normal, aw, ah, neutralNormal_);
     m.emissive = loadMap(paths.emissive, aw, ah, neutralEmissive_);
     m.mask = loadMap(paths.mask, aw, ah, neutralMask_);
+    cache_[key] = m;
     return m;
 }
