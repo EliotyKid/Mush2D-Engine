@@ -38,11 +38,12 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
         if (uvRect.z <= 0.0f) return;
 
         SpriteInstance inst{};
-        inst.position = object->transform.position + sprite.offset;
-        inst.size = object->transform.scale;
+        const Transform2D world = object->world();
+        inst.position = world.position + sprite.offset;
+        inst.size = world.scale;
         inst.uvRect = uvRect;
         inst.color = sprite.color;
-        inst.rotation = object->transform.rotation;
+        inst.rotation = world.rotation;
         inst.depth = sprite.depth;
         inst.parallax = sprite.parallax;
         inst.albedo = material.albedo;

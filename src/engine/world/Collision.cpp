@@ -20,7 +20,7 @@ AABB buildAABB(const GameObject& object) {
         return {};
     }
 
-    glm::vec2 center = object.transform.position + collider->offset;
+    glm::vec2 center = object.world().position + collider->offset;
     glm::vec2 halfSize = collider->size * 0.5f;
 
     AABB box{};

@@ -18,7 +18,7 @@ void Camera2D::updateFollow(const Scene2D& scene, float deltaTime) {
         return;
     }
 
-    glm::vec2 desiredPosition = target->transform.position + followOffset;
+    glm::vec2 desiredPosition = target->world().position + followOffset;
 
     float t = 1.0f - std::exp(-followSmoothness * deltaTime);
     position = glm::mix(position, desiredPosition, t);

@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -77,8 +78,18 @@ public:
 
     bool pendingDestroy() const { return pendingDestroy_; }
 
+    GameObjectId parent() const { return parent_; }
+    const std::vector<GameObjectId>& children() const { return children_; }
+
+    // Roots: the live local transform. Children: cached, refreshed by Scene2D::updateTransforms() at every
+    // flush, so a child moved by game code shows its new world transform after the next flush.
+    Transform2D world() const { return parent_ ? world_ : transform; }
+
 private:
     friend class Scene2D;
     bool pendingDestroy_ = false;
     std::uint64_t creationSeq_ = 0; // tie-break for updateOrder
+    GameObjectId parent_ = InvalidGameObjectId;
+    std::vector<GameObjectId> children_;
+    Transform2D world_{};
 };

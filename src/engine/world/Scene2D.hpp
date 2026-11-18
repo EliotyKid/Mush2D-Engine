@@ -47,19 +47,19 @@ public:
     template<typename TObject>
     TObject* findObjectAs(GameObjectId id) {
         GameObject* object = find(id);
-        return object ? dynamic_cast<TObject*>(object) : nullptr;
+        return object && !object->pendingDestroy_ ? dynamic_cast<TObject*>(object) : nullptr;
     }
 
     template<typename TObject>
     const TObject* findObjectAs(GameObjectId id) const {
         const GameObject* object = find(id);
-        return object ? dynamic_cast<const TObject*>(object) : nullptr;
+        return object && !object->pendingDestroy_ ? dynamic_cast<const TObject*>(object) : nullptr;
     }
 
     template<typename TObject>
     TObject* findFirstObjectOfType() {
         for (auto& slot : slots_) {
-            if (auto* casted = dynamic_cast<TObject*>(slot.object.get())) {
+            if (auto* casted = liveOf<TObject>(slot.object.get())) {
                 return casted;
             }
         }
@@ -69,7 +69,7 @@ public:
     template<typename TObject>
     const TObject* findFirstObjectOfType() const {
         for (const auto& slot : slots_) {
-            if (auto* casted = dynamic_cast<const TObject*>(slot.object.get())) {
+            if (auto* casted = liveOf<const TObject>(slot.object.get())) {
                 return casted;
             }
         }
@@ -80,7 +80,7 @@ public:
     std::vector<TObject*> findAllObjectsOfType() {
         std::vector<TObject*> result;
         for (auto& slot : slots_) {
-            if (auto* casted = dynamic_cast<TObject*>(slot.object.get())) {
+            if (auto* casted = liveOf<TObject>(slot.object.get())) {
                 result.push_back(casted);
             }
         }
@@ -90,26 +90,33 @@ public:
     std::vector<GameObject*> findObjectsByTag(const std::string& tag);
     std::vector<const GameObject*> findObjectsByTag(const std::string& tag) const;
 
+    // Attaches child under parent (InvalidGameObjectId detaches). keepWorld keeps the world transform by
+    // rewriting the local one. Returns false on a cycle, a stale handle or a pending-destroy object; nothing changes then.
+    bool setParent(GameObjectId child, GameObjectId parent, bool keepWorld = true);
+
+    const Transform2D& worldTransform(GameObjectId id) const;
+
+    // Recomputes the cached world transform of every child, parents first. Runs at the end of each flush.
+    void updateTransforms();
+
     void step(float deltaTime);
     void lateStep(float deltaTime);
 
     // Visits live objects (flushed, not pending destroy) in update order. Safe to create/destroy inside.
     template<typename F>
     void forEach(F&& fn) {
-        ++iterating_;
+        IterGuard guard(iterating_);
         for (std::size_t i = 0; i < live_.size(); ++i) {
             if (!live_[i]->pendingDestroy_) fn(*live_[i]);
         }
-        --iterating_;
     }
 
     template<typename F>
     void forEach(F&& fn) const {
-        ++iterating_;
+        IterGuard guard(iterating_);
         for (std::size_t i = 0; i < live_.size(); ++i) {
             if (!live_[i]->pendingDestroy_) fn(static_cast<const GameObject&>(*live_[i]));
         }
-        --iterating_;
     }
 
     // Objects holding a slot, including created-but-unflushed and pending-destroy ones.
@@ -122,6 +129,23 @@ private:
     };
 
     void insert(std::unique_ptr<GameObject> object);
+    // Keeps iterating_ balanced even if a callback throws.
+    struct IterGuard {
+        int& n;
+        explicit IterGuard(int& counter) : n(counter) { ++n; }
+        ~IterGuard() { --n; }
+        IterGuard(const IterGuard&) = delete;
+        IterGuard& operator=(const IterGuard&) = delete;
+    };
+
+    // Cast for the find* scans: skips empty slots and objects pending destroy.
+    template<typename TObject, typename TBase>
+    static TObject* liveOf(TBase* object) {
+        return object && !object->pendingDestroy_ ? dynamic_cast<TObject*>(object) : nullptr;
+    }
+
+    void markDestroy(GameObject& object);
+    void computeWorld(GameObject& object);
     void processDestroys();
 
     std::vector<Slot> slots_;

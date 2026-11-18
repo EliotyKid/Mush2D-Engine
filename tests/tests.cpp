@@ -7,12 +7,15 @@
 #include "engine/world/Ldtk.hpp"
 #include "engine/world/Scene2D.hpp"
 
+#include <cmath>
 #include <filesystem>
+#include <glm/gtc/constants.hpp>
 #include <fstream>
 
 #include <cstdio>
 #include <exception>
 #include <functional>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -195,7 +198,8 @@ struct Counted : GameObject {
         ++steps;
         if (log) log->push_back(tag);
     }
-    void onDestroy(Scene2D&) override { ++destroys; }
+    static inline std::unordered_map<GameObjectId, int> destroyLog; // survives the object being freed
+    void onDestroy(Scene2D&) override { ++destroys; ++destroyLog[id]; }
 };
 struct Spawner : GameObject {
     std::vector<GameObjectId> spawned;
@@ -311,8 +315,11 @@ TEST(destroy_inside_onDestroy_is_safe) {
     GameObjectId spawned;
     a.other = b.id; b.other = a.id; a.spawnedOut = &spawned;
     GameObjectId ia = a.id, ib = b.id;
+    Counted::destroyLog.clear();
     scene.destroy(ia);
     scene.flush();
+    CHECK(Counted::destroyLog[ia] == 1);
+    CHECK(Counted::destroyLog[ib] == 1);
     CHECK(scene.find(ia) == nullptr);
     CHECK(scene.find(ib) == nullptr);
     CHECK(spawned && scene.find(spawned) != nullptr);
@@ -322,6 +329,104 @@ TEST(destroy_inside_onDestroy_is_safe) {
     c.other = d.id; d.other = c.id;
     scene.clear();
     CHECK(scene.aliveCount() == 0);
+}
+
+
+TEST(child_world_transform) {
+    Scene2D scene;
+    auto& parent = scene.createObject<GameObject>();
+    auto& child = scene.createObject<GameObject>();
+    parent.transform.position = {2, 0}; parent.transform.rotation = glm::half_pi<float>(); parent.transform.scale = {2, 2};
+    child.transform.position = {1, 0};
+    CHECK(scene.setParent(child.id, parent.id, false));
+    CHECK(child.parent() == parent.id && parent.children().size() == 1);
+    scene.flush();
+    auto w = child.world();
+    CHECK(std::abs(w.position.x - 2) < 1e-4f && std::abs(w.position.y - 2) < 1e-4f);
+    CHECK(std::abs(w.scale.x - 2) < 1e-4f && std::abs(w.rotation - glm::half_pi<float>()) < 1e-4f);
+    parent.transform.position = {5, 1};
+    scene.step(0.016f);
+    CHECK(std::abs(scene.worldTransform(child.id).position.x - 5) < 1e-4f);
+    CHECK(std::abs(scene.worldTransform(child.id).position.y - 3) < 1e-4f);
+    // keepWorld: reparenting preserves world, detaching too
+    auto& other = scene.createObject<GameObject>();
+    other.transform.position = {-3, 4};
+    CHECK(scene.setParent(other.id, parent.id, true));
+    auto ow = other.world();
+    CHECK(std::abs(ow.position.x + 3) < 1e-4f && std::abs(ow.position.y - 4) < 1e-4f);
+    CHECK(std::abs(other.transform.scale.x - 0.5f) < 1e-4f);
+    CHECK(scene.setParent(other.id, InvalidGameObjectId, true));
+    CHECK(!other.parent() && std::abs(other.transform.position.x + 3) < 1e-4f && parent.children().size() == 1);
+}
+
+TEST(destroy_parent_destroys_children) {
+    Scene2D scene;
+    auto& p = scene.createObject<Counted>();
+    auto& c = scene.createObject<Counted>();
+    auto& g = scene.createObject<Counted>();
+    GameObjectId ip = p.id, ic = c.id, ig = g.id;
+    CHECK(scene.setParent(ic, ip) && scene.setParent(ig, ic));
+    Counted::destroyLog.clear();
+    scene.destroy(ip);
+    scene.flush();
+    CHECK(!scene.find(ip) && !scene.find(ic) && !scene.find(ig));
+    CHECK(Counted::destroyLog[ip] == 1 && Counted::destroyLog[ic] == 1 && Counted::destroyLog[ig] == 1);
+    CHECK(scene.aliveCount() == 0);
+    // destroying only a child unlinks it from the parent
+    auto& p2 = scene.createObject<Counted>(); auto& c2 = scene.createObject<Counted>();
+    scene.setParent(c2.id, p2.id);
+    scene.destroy(c2.id); scene.flush();
+    CHECK(p2.children().empty());
+}
+
+TEST(reparent_cycle_rejected) {
+    Scene2D scene;
+    auto& a = scene.createObject<GameObject>(); auto& b = scene.createObject<GameObject>(); auto& c = scene.createObject<GameObject>();
+    CHECK(scene.setParent(b.id, a.id) && scene.setParent(c.id, b.id));
+    CHECK(!scene.setParent(a.id, c.id));
+    CHECK(!scene.setParent(a.id, a.id));
+    CHECK(!a.parent());
+    CHECK(scene.setParent(c.id, a.id)); // legal reparent
+    CHECK(b.children().empty() && a.children().size() == 2);
+}
+
+TEST(setParent_to_dying_parent_is_consistent) {
+    Scene2D scene;
+    auto& p = scene.createObject<Counted>(); auto& c = scene.createObject<Counted>();
+    GameObjectId ip = p.id, ic = c.id;
+    scene.destroy(ip);
+    CHECK(!scene.setParent(ic, ip)); // would leave a dangling parent after the flush
+    scene.flush();
+    CHECK(!scene.find(ip) && scene.find(ic) && !scene.find(ic)->parent());
+    // a pending-destroy child cannot be attached either
+    auto& p2 = scene.createObject<Counted>(); auto& c2 = scene.createObject<Counted>();
+    scene.destroy(c2.id);
+    CHECK(!scene.setParent(c2.id, p2.id));
+    scene.flush();
+    CHECK(p2.children().empty());
+}
+
+TEST(find_helpers_skip_pending_destroy) {
+    Scene2D scene;
+    auto& a = scene.createObject<Counted>(); a.addTag("x");
+    GameObjectId ia = a.id;
+    scene.destroy(ia);
+    CHECK(scene.find(ia) != nullptr);
+    CHECK(scene.findFirstObjectOfType<Counted>() == nullptr);
+    CHECK(scene.findAllObjectsOfType<Counted>().empty());
+    CHECK(scene.findObjectsByTag("x").empty());
+    CHECK(scene.findObjectAs<Counted>(ia) == nullptr);
+}
+
+TEST(iteration_guard_survives_throw) {
+    Scene2D scene;
+    scene.createObject<GameObject>();
+    scene.flush();
+    try { scene.forEach([](GameObject&) { throw 1; }); } catch (int) {}
+    auto& b = scene.createObject<Counted>();
+    scene.destroy(b.id);
+    scene.flush();
+    CHECK(scene.aliveCount() == 1); // flush ran, so iterating_ was released
 }
 
 int main() {
