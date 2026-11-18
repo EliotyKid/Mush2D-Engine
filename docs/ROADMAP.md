@@ -31,9 +31,17 @@ Pendente no PC Arch (RTX 2060 Super): build debug sem erros de validação, e so
 ## Fase 1 — Mundo
 
 - [ ] Várias salas do LDtk, com transições entre elas e carregamento das salas vizinhas
-- [ ] Câmera com zonas (limites, foco, zoom por área)
+- [ ] Câmera dinâmica: zonas (limites, foco, zoom por área), look-ahead, suavização e shake
+- [ ] Múltiplas câmeras com troca e mistura (blend) entre elas
 - [ ] Checkpoints e save (posição, habilidades, mapa explorado)
 - [ ] Mapa-múndi in-game
+- [ ] Modelo de entidades orientado a objetos revisto (hierarquia, componentes reutilizáveis, ciclo de vida, pai/filho)
+
+## Fase 1.5 — Cinemática
+
+- [ ] Sistema de cutscenes: linha do tempo com trilhas (câmera, entidades, animação, luz, áudio, diálogo, espera de input)
+- [ ] Câmeras cinematográficas: trilhos/curvas, enquadramento, letterbox
+- [ ] Cutscenes autoradas em arquivo de dados (decidir: JSON/LDtk, ou Lua — ver Fase 9)
 
 ## Fase 2 — Partículas e efeitos (o "brilho Ori")
 
@@ -68,7 +76,8 @@ Pendente no PC Arch (RTX 2060 Super): build debug sem erros de validação, e so
 ## Fase 6 — Áudio
 
 - [ ] miniaudio: efeitos, música e mixagem por canais
-- [ ] Som posicional e ambiente por região
+- [ ] Áudio 3D: som posicional com distância, pan estéreo e profundidade das camadas (parallax) influenciando volume/filtro
+- [ ] Ambiente por região (reverb, abafamento atrás de paredes)
 - [ ] Música adaptativa (camadas por intensidade)
 
 ## Fase 7 — Interface e entrada
