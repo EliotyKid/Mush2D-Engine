@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ISceneDefinition.hpp"
+#include "engine/scenes/ISceneDefinition.hpp"
 #include "SceneId.hpp"
 
 #include <memory>

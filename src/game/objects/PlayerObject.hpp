@@ -251,7 +251,7 @@ private:
     }
 
     void playAnimation(Scene2D& scene, GameAnimationId animationId, bool restart = false) {
-        if (!scene.gameAssets) {
+        if (!gameAssetsOf(scene)) {
             return;
         }
 
@@ -266,12 +266,12 @@ private:
     }
 
     void applyCurrentAnimationFrame(Scene2D& scene) {
-        if (!scene.gameAssets) {
+        if (!gameAssetsOf(scene)) {
             return;
         }
 
-        const auto& animationEntry = scene.gameAssets->animations.get(currentAnimation);
-        const TextureAtlas& atlas = scene.gameAssets->getAtlasByTextureIndex(animationEntry.atlasTextureIndex);
+        const auto& animationEntry = gameAssetsOf(scene)->animations.get(currentAnimation);
+        const TextureAtlas& atlas = gameAssetsOf(scene)->getAtlasByTextureIndex(animationEntry.atlasTextureIndex);
 
         if (!atlas.hasAnimation(animationEntry.animationName)) {
             return;
@@ -291,12 +291,12 @@ private:
     }
 
     void updateAnimation(Scene2D& scene, float dt) {
-        if (!scene.gameAssets) {
+        if (!gameAssetsOf(scene)) {
             return;
         }
 
-        const auto& animationEntry = scene.gameAssets->animations.get(currentAnimation);
-        const TextureAtlas& atlas = scene.gameAssets->getAtlasByTextureIndex(animationEntry.atlasTextureIndex);
+        const auto& animationEntry = gameAssetsOf(scene)->animations.get(currentAnimation);
+        const TextureAtlas& atlas = gameAssetsOf(scene)->getAtlasByTextureIndex(animationEntry.atlasTextureIndex);
 
         if (!atlas.hasAnimation(animationEntry.animationName)) {
             return;

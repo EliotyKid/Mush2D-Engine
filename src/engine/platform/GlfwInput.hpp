@@ -10,6 +10,7 @@ public:
     void beginFrame();
     void poll();
     const InputState& getState() const;
+    bool isKeyDown(int key) const { return glfwGetKey(window, key) == GLFW_PRESS; }
 
     static void scrollCallback(GLFWwindow* window, double xOffset, double yOffset);
 

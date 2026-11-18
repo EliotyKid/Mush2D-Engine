@@ -1,7 +1,7 @@
 #include "SceneRegistry.hpp"
 
-#include "game/scenes/SandboxScene.hpp"
-#include "game/scenes/TestScene.hpp"
+#include "SandboxScene.hpp"
+#include "TestScene.hpp"
 
 #include <stdexcept>
 

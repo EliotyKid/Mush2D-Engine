@@ -5,6 +5,7 @@
 #include "engine/graphics/SpriteCatalog.hpp"
 #include "GameAnimationId.hpp"
 #include "GameSpriteId.hpp"
+#include "engine/world/Scene2D.hpp"
 
 #include <cstdint>
 #include <string>
@@ -46,3 +47,7 @@ private:
 
     void ensureAtlasIndexCapacity(std::uint32_t textureIndex);
 };
+
+inline GameAssets* gameAssetsOf(const Scene2D& scene) {
+    return static_cast<GameAssets*>(scene.userData);
+}

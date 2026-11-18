@@ -80,11 +80,11 @@ private:
 
 private:
     void setSprite(Scene2D& scene, GameSpriteId spriteId) {
-        if (!sprite.has_value() || !scene.gameAssets) {
+        if (!sprite.has_value() || !gameAssetsOf(scene)) {
             return;
         }
 
-        const auto& entry = scene.gameAssets->sprites.get(spriteId);
+        const auto& entry = gameAssetsOf(scene)->sprites.get(spriteId);
         sprite->atlasTextureIndex = entry.atlasTextureIndex;
         sprite->frameName = entry.frameName;
     }

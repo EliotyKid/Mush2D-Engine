@@ -7,11 +7,9 @@
 #include <type_traits>
 #include <vector>
 
-struct GameAssets;
-
 class Scene2D {
 public:
-    GameAssets* gameAssets = nullptr;
+    void* userData = nullptr; // opaque, owned by the game
 
 public:
     template<typename TObject, typename... Args>

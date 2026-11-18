@@ -1,56 +1,24 @@
-#include "EngineApp.hpp"
-#include "engine/core/Paths.hpp"
-#include "engine/gpu/Image.hpp"
-#include "engine/scenes/SceneRegistry.hpp"
+#include "game/ShowcaseGame.hpp"
+
+#include "engine/world/Collision.hpp"
+#include "game/objects/PlayerObject.hpp"
+#include "game/scenes/SceneRegistry.hpp"
+
+#include <GLFW/glfw3.h>
 
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
-void EngineApp::run() {
-    initWindow();
-    initVulkan();
-    mainLoop();
-    cleanup();
-}
-
-void EngineApp::initWindow() {
-    if (!glfwInit()) {
-        throw std::runtime_error("Erro: falha ao inicializar GLFW.");
-    }
-
-    if (!glfwVulkanSupported()) {
-        glfwTerminate();
-        throw std::runtime_error("Erro: Vulkan nao esta disponivel no sistema via GLFW.");
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-    window = glfwCreateWindow(
-        static_cast<int>(WIDTH),
-        static_cast<int>(HEIGHT),
-        "Mush2D Engine - Vulkan",
-        nullptr,
-        nullptr
-    );
-
-    if (!window) {
-        glfwTerminate();
-        throw std::runtime_error("Erro: falha ao criar a janela.");
-    }
-
-    input.attachWindow(window);
-}
-
-void EngineApp::initVulkan() {
-    gpu.init(window);
-
+void ShowcaseGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
-    scene.gameAssets = &gameAssets;
+    s.scene.userData = &gameAssets;
 
-    loadScene(SceneId::Sandbox);
+    loadScene(s, SceneId::Sandbox);
 
-    auto* player = scene.findFirstObjectOfType<PlayerObject>();
+    Camera2D& camera = s.camera;
+    auto* player = s.scene.findFirstObjectOfType<PlayerObject>();
     if (player) {
         camera.position = player->transform.position;
         playerObjectId = player->id;
@@ -71,57 +39,39 @@ void EngineApp::initVulkan() {
     };
 }
 
-void EngineApp::mainLoop() {
-    float lastTime = static_cast<float>(glfwGetTime());
+void ShowcaseGame::update(EngineServices& s, float deltaTime) {
+    Scene2D& scene = s.scene;
 
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-        input.beginFrame();
-        input.poll();
-
-        float currentTime = static_cast<float>(glfwGetTime());
-        float deltaTime = currentTime - lastTime;
-        lastTime = currentTime;
-
-        handleGlobalInput(deltaTime);
-        auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
-        if (!player) {
-            player = scene.findFirstObjectOfType<PlayerObject>();
-            if (player) {
-                playerObjectId = player->id;
-            }
-        }
+    handleGlobalInput(s, deltaTime);
+    auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
+    if (!player) {
+        player = scene.findFirstObjectOfType<PlayerObject>();
         if (player) {
-            player->applyInput(input.getState());
+            playerObjectId = player->id;
         }
-
-        scene.step(deltaTime);
-
-        if (activeSceneDefinition) {
-            activeSceneDefinition->update(scene, deltaTime);
-        }
-
-        processTriggerOverlaps();
-        scene.lateStep(deltaTime);
-
-        camera.updateFollow(scene, deltaTime);
-        camera.clampToBounds(gpu.swapchain().extent());
-
-        drawFrame();
     }
-}
-
-void EngineApp::cleanup() {
-    scene.clear();
-    gpu.shutdown();
-
-    if (window) {
-        glfwDestroyWindow(window);
+    if (player) {
+        player->applyInput(s.input.getState());
     }
 
-    glfwTerminate();
+    scene.step(deltaTime);
+
+    if (activeSceneDefinition) {
+        activeSceneDefinition->update(scene, deltaTime);
+    }
+
+    processTriggerOverlaps(s);
+    scene.lateStep(deltaTime);
 }
-void EngineApp::loadScene(SceneId sceneId, const SceneTransitionData& transitionData) {
+
+void ShowcaseGame::shutdown(EngineServices& s) {
+    s.scene.clear();
+    s.scene.userData = nullptr;
+}
+
+void ShowcaseGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
+    Camera2D& camera = s.camera;
+    Scene2D& scene = s.scene;
     std::string previousSceneName;
 
     if (activeSceneDefinition) {
@@ -137,7 +87,7 @@ void EngineApp::loadScene(SceneId sceneId, const SceneTransitionData& transition
         currentSceneTransitionData.previousSceneName = previousSceneName;
     }
 
-    setupInitialScene();
+    setupInitialScene(s);
 
     if (activeSceneDefinition) {
         activeSceneDefinition->onEnter(scene, currentSceneTransitionData);
@@ -156,17 +106,21 @@ void EngineApp::loadScene(SceneId sceneId, const SceneTransitionData& transition
     activeTriggerOverlaps.clear();
 }
 
-void EngineApp::reloadCurrentScene() {
+void ShowcaseGame::reloadCurrentScene(EngineServices& s) {
+    Scene2D& scene = s.scene;
     if (!activeSceneDefinition) {
         throw std::runtime_error("Nao existe cena ativa para recarregar.");
     }
 
     activeSceneDefinition->onReload(scene);
-    loadScene(currentSceneId, currentSceneTransitionData);
+    loadScene(s, currentSceneId, currentSceneTransitionData);
 }
 
-void EngineApp::handleGlobalInput(float deltaTime) {
-    if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS) {
+void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
+    Scene2D& scene = s.scene;
+    GlfwInput& input = s.input;
+    Camera2D& camera = s.camera;
+    if (input.isKeyDown(GLFW_KEY_TAB)) {
         if (!nextScenePressed) {
             SceneId nextScene =
                 (currentSceneId == SceneId::Sandbox)
@@ -187,16 +141,16 @@ void EngineApp::handleGlobalInput(float deltaTime) {
             //     transitionData.preferredPlayerObjectId = player->id;
             // }
 
-            loadScene(nextScene, transitionData);
+            loadScene(s, nextScene, transitionData);
             nextScenePressed = true;
         }
     } else {
         nextScenePressed = false;
     }
 
-    if (glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS) {
+    if (input.isKeyDown(GLFW_KEY_F5)) {
         if (!reloadScenePressed) {
-            reloadCurrentScene();
+            reloadCurrentScene(s);
             reloadScenePressed = true;
         }
     } else {
@@ -268,10 +222,10 @@ void EngineApp::handleGlobalInput(float deltaTime) {
     if (state.dragCamera.down) {
         float worldHeight = camera.size;
         float worldWidth = camera.size *
-            (static_cast<float>(gpu.swapchain().extent().width) / static_cast<float>(gpu.swapchain().extent().height));
+            (static_cast<float>(s.gpu.swapchain().extent().width) / static_cast<float>(s.gpu.swapchain().extent().height));
 
-        float unitsPerPixelX = worldWidth / static_cast<float>(gpu.swapchain().extent().width);
-        float unitsPerPixelY = worldHeight / static_cast<float>(gpu.swapchain().extent().height);
+        float unitsPerPixelX = worldWidth / static_cast<float>(s.gpu.swapchain().extent().width);
+        float unitsPerPixelY = worldHeight / static_cast<float>(s.gpu.swapchain().extent().height);
 
         camera.position.x -= static_cast<float>(state.mouseDeltaX) * unitsPerPixelX;
         camera.position.y += static_cast<float>(state.mouseDeltaY) * unitsPerPixelY;
@@ -280,7 +234,8 @@ void EngineApp::handleGlobalInput(float deltaTime) {
     camera.size = std::clamp(camera.size, 0.2f, 20.0f);
 }
 
-void EngineApp::processTriggerOverlaps() {
+void ShowcaseGame::processTriggerOverlaps(EngineServices& s) {
+    Scene2D& scene = s.scene;
     GameObject* player = scene.findObject(playerObjectId);
     if (!player || !player->active || !player->collider.has_value() || !player->collider->enabled) {
         return;
@@ -331,7 +286,8 @@ void EngineApp::processTriggerOverlaps() {
     activeTriggerOverlaps = std::move(currentOverlaps);
 }
 
-void EngineApp::setupInitialScene() {
+void ShowcaseGame::setupInitialScene(EngineServices& s) {
+    Scene2D& scene = s.scene;
     activeTriggerOverlaps.clear();
 
     if (!activeSceneDefinition) {
@@ -344,35 +300,3 @@ void EngineApp::setupInitialScene() {
     playerObjectId = result.playerObjectId;
 }
 
-void EngineApp::drawFrame() {
-    FrameContext* frame = gpu.beginFrame();
-    if (!frame) {
-        return;
-    }
-
-    Swapchain& sc = gpu.swapchain();
-    VkImage image = sc.image(frame->imageIndex);
-
-    transition(frame->cmd, image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-    VkRenderingAttachmentInfo color{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-    color.imageView = sc.view(frame->imageIndex);
-    color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color.clearValue.color = {{0.05f, 0.05f, 0.08f, 1.0f}};
-
-    VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
-    rendering.renderArea = {{0, 0}, sc.extent()};
-    rendering.layerCount = 1;
-    rendering.colorAttachmentCount = 1;
-    rendering.pColorAttachments = &color;
-
-    vkCmdBeginRendering(frame->cmd, &rendering);
-    // Sprites are not drawn until Task 5 (new renderer).
-    vkCmdEndRendering(frame->cmd);
-
-    transition(frame->cmd, image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-    gpu.endFrame();
-}

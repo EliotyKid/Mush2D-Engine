@@ -1,0 +1,40 @@
+#pragma once
+
+#include "engine/core/IGame.hpp"
+#include "engine/scenes/ISceneDefinition.hpp"
+#include "game/assets/GameAssets.hpp"
+#include "game/scenes/SceneId.hpp"
+
+#include <memory>
+#include <unordered_set>
+
+class ShowcaseGame : public IGame {
+public:
+    void init(EngineServices& s) override;
+    void update(EngineServices& s, float dt) override;
+    void shutdown(EngineServices& s) override;
+
+private:
+    GameAssets gameAssets;
+    GameObjectId playerObjectId = InvalidGameObjectId;
+
+    float mouseZoomSensitivity = 0.15f;
+    float cameraMoveSpeed = 1.5f;
+    float cameraZoomSpeed = 1.0f;
+
+    std::unordered_set<GameObjectId> activeTriggerOverlaps;
+    std::unique_ptr<ISceneDefinition> activeSceneDefinition;
+
+    SceneId currentSceneId = SceneId::Sandbox;
+    bool nextScenePressed = false;
+    bool reloadScenePressed = false;
+
+    SceneTransitionData currentSceneTransitionData{};
+
+private:
+    void handleGlobalInput(EngineServices& s, float deltaTime);
+    void processTriggerOverlaps(EngineServices& s);
+    void setupInitialScene(EngineServices& s);
+    void reloadCurrentScene(EngineServices& s);
+    void loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData = {});
+};
