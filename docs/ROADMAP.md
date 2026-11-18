@@ -18,13 +18,15 @@ Marque `[x]` ao concluir. Cada fase vira um documento de design próprio em `doc
 Design: [specs/2026-11-18-sala-vitrine-design.md](superpowers/specs/2026-11-18-sala-vitrine-design.md)
 
 - [ ] Fundação: `.gitignore`, FetchContent, build igual em Arch e Windows, shaders compilados pelo CMake
-- [ ] GPU: vk-bootstrap, VMA, 2 frames em voo, resize, validation layers
-- [ ] Separação engine × jogo
-- [ ] SpriteBatch bindless e materiais `_n/_e/_m`
-- [ ] Passes: G-buffer, luz, névoa, forward aditivo, bloom, composição
-- [ ] Carregador LDtk (IntGrid, tiles, parallax, entidades)
-- [ ] Painel ImGui e `.look.json`
-- [ ] Sala montada, 60 fps, critérios de pronto atendidos
+- [x] GPU: vk-bootstrap, VMA, 2 frames em voo, resize, validation layers
+- [x] Separação engine × jogo
+- [x] SpriteBatch bindless e materiais `_n/_e/_m`
+- [x] Passes: G-buffer, luz, névoa, forward aditivo, bloom, composição
+- [x] Carregador LDtk (IntGrid, tiles, parallax, entidades)
+- [x] Painel ImGui e `.look.json`
+- [ ] Sala montada, 60 fps, critérios de pronto atendidos (Windows/Intel UHD ok; falta o PC Arch)
+
+Pendente no PC Arch (RTX 2060 Super): build debug sem erros de validação, e soma dos tempos de GPU < 3 ms em 1080p (`MUSH2D_PERF_LOG=10`). Ao medir, marque Fundação e a sala montada.
 
 ## Fase 1 — Mundo
 

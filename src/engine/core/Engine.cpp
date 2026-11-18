@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -115,6 +116,13 @@ void Engine::run(IGame& game) {
     std::string screenshotPath = screenshotEnv ? screenshotEnv : "";
     uint32_t framesRendered = 0;
 
+    // Dev tool (MUSH2D_PERF_LOG=<seconds>): logs fps and average per-pass GPU ms each second, exits after N s.
+    const char* perfEnv = std::getenv("MUSH2D_PERF_LOG");
+    const float perfSeconds = perfEnv ? static_cast<float>(std::atof(perfEnv)) : 0.0f;
+    float perfStart = -1.0f, perfTick = 0.0f;
+    uint32_t perfFrames = 0;
+    std::map<std::string, float> perfSum;
+
     try {
         input.attachWindow(window);
         gpu.init(window);
@@ -197,6 +205,25 @@ void Engine::run(IGame& game) {
                 ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
             }} : nullptr;
             renderer.render(*frame, camera, currentTime);
+
+            if (perfSeconds > 0.0f) {
+                if (perfStart < 0.0f) perfStart = perfTick = currentTime;
+                ++perfFrames;
+                for (const auto& [name, ms] : renderer.timers().lastFrameMs()) perfSum[name] += ms;
+                if (currentTime - perfTick >= 1.0f) {
+                    float dt = currentTime - perfTick, total = 0.0f;
+                    std::cout << "perf fps=" << perfFrames / dt << " frame_ms=" << 1000.0f * dt / perfFrames;
+                    for (const auto& [name, sum] : perfSum) {
+                        std::cout << " " << name << "=" << sum / perfFrames;
+                        total += sum / perfFrames;
+                    }
+                    std::cout << " sum=" << total << std::endl;
+                    perfTick = currentTime;
+                    perfFrames = 0;
+                    perfSum.clear();
+                }
+                if (currentTime - perfStart >= perfSeconds) glfwSetWindowShouldClose(window, GLFW_TRUE);
+            }
 
             bool shoot = !screenshotPath.empty() && ++framesRendered == SCREENSHOT_FRAME;
             GpuBuffer shot;
