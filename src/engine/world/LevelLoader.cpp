@@ -2,15 +2,13 @@
 
 #include <cstdio>
 
-void LevelLoader::load(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials) {
+void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials) {
     constexpr float U = LdtkPixelsPerUnit;
-    const float H = float(level.pxSize.y);
     const int n = int(level.layers.size());
-    auto toWorld = [&](glm::vec2 px) { return glm::vec2(px.x / U, (H - px.y) / U); };
-    const glm::vec2 centre = glm::vec2(level.pxSize) / (2.0f * U);
-    sprites_.clear(); // reload must not duplicate
-    layers_.clear();
-    levelCentre_ = centre;
+    auto toWorld = [&](glm::vec2 px) { return ldtkToWorld(level.worldPx, px); };
+    std::vector<StaticSprite>& sprites = rooms_[level.iid];
+    sprites.clear(); // reload must not duplicate
+    services.scene.spawnRoomIid = level.iid;
 
     for (int li = 0; li < n; ++li) {
         const LdtkLayer& L = level.layers[li];
@@ -19,13 +17,14 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
         if (!L.tilesetPath.empty() && !L.tiles.empty()) {
             Material mat = materials.load(level.baseDir / L.tilesetPath);
             const float g = float(L.gridSize);
-            const glm::vec2 scroll{L.parallaxX, L.parallaxY};
-            const int layerIndex = int(layers_.size());
-            layers_.push_back({L.identifier, scroll, L.depth});
+            int layerIndex = 0;
+            while (layerIndex < int(layers_.size()) && layers_[layerIndex].identifier != L.identifier) ++layerIndex;
+            if (layerIndex == int(layers_.size())) layers_.push_back({L.identifier, {L.parallaxX, L.parallaxY}, L.depth});
+            const LayerState& state = layers_[layerIndex]; // panel edits also reach rooms streamed in later
             for (const LdtkTile& t : L.tiles) {
                 SpriteInstance s{};
                 const glm::vec2 authored = toWorld(glm::vec2(t.px) + g * 0.5f);
-                s.position = ldtkParallaxAnchor(authored, scroll, centre); // centre-based
+                s.position = ldtkParallaxAnchor(authored, state.parallax, parallaxAnchor);
                 s.size = {g / U, g / U};
                 float u = t.src.x / float(L.tilesetPx.x), v = t.src.y / float(L.tilesetPx.y);
                 float w = g / L.tilesetPx.x, h = g / L.tilesetPx.y;
@@ -33,11 +32,11 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
                 if (t.flip & 2) { v += h; h = -h; }
                 s.uvRect = {u, v, w, h};
                 s.color = {1, 1, 1, 1};
-                s.depth = L.depth;
-                s.parallax = {L.parallaxX, L.parallaxY};
+                s.depth = state.depth;
+                s.parallax = state.parallax;
                 s.albedo = mat.albedo; s.normal = mat.normal; s.emissive = mat.emissive; s.mask = mat.mask;
                 s.flags = SpriteFlagNearest;
-                sprites_.push_back({s, order, layerIndex, authored});
+                sprites.push_back({s, order, layerIndex, authored});
             }
         }
 
@@ -60,9 +59,18 @@ void LevelLoader::load(const LdtkLevel& level, EngineServices& services, Materia
                 std::fprintf(stderr, "LDtk: no factory for entity '%s', ignored\n", e.identifier.c_str());
                 continue;
             }
-            f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, centre), services);
+            f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, parallaxAnchor), services);
         }
     }
+    services.scene.spawnRoomIid.clear();
+}
+
+void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {
+    rooms_.erase(roomIid);
+    scene.flush(); // forEach only visits flushed objects
+    scene.forEach([&](GameObject& o) {
+        if (o.roomIid == roomIid && !o.persistent) scene.destroy(o.id);
+    });
 }
 
 void LevelLoader::setLayer(const std::string& identifier, glm::vec2 parallax, float depth) {
@@ -71,15 +79,19 @@ void LevelLoader::setLayer(const std::string& identifier, glm::vec2 parallax, fl
         if (l.identifier != identifier || (l.parallax == parallax && l.depth == depth)) continue;
         l.parallax = parallax;
         l.depth = depth;
-        for (StaticSprite& s : sprites_) {
-            if (s.layer != i) continue;
-            s.instance.position = ldtkParallaxAnchor(s.authoredPos, parallax, levelCentre_);
-            s.instance.parallax = parallax;
-            s.instance.depth = depth;
+        for (auto& [iid, sprites] : rooms_) {
+            for (StaticSprite& s : sprites) {
+                if (s.layer != i) continue;
+                s.instance.position = ldtkParallaxAnchor(s.authoredPos, parallax, parallaxAnchor);
+                s.instance.parallax = parallax;
+                s.instance.depth = depth;
+            }
         }
     }
 }
 
 void LevelLoader::appendStatic(SpriteBatch& batch) const {
-    for (const StaticSprite& s : sprites_) batch.add(s.instance, s.order);
+    for (const auto& [iid, sprites] : rooms_) {
+        for (const StaticSprite& s : sprites) batch.add(s.instance, s.order);
+    }
 }

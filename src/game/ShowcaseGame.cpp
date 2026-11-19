@@ -69,6 +69,10 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
     processTriggerOverlaps(s);
     scene.lateStep(deltaTime);
 
+    if (currentSceneId == SceneId::Showcase) {
+        if (const GameObject* p = scene.findObject(playerObjectId)) world.update(p->transform.position);
+    }
+
     submitRenderData(s);
 }
 
@@ -148,7 +152,7 @@ void ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneT
 void ShowcaseGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
     // Parse before touching any state, so a malformed level throws with the old scene intact.
     if (sceneId == SceneId::Showcase) {
-        preparedLevel = loadLdtkLevel(sourceAssetPath("assets/levels/showcase.ldtk"), "Showcase");
+        preparedProject = loadLdtkProject(sourceAssetPath("assets/levels/showcase.ldtk"));
     }
     Camera2D& camera = s.camera;
     Scene2D& scene = s.scene;
@@ -401,6 +405,7 @@ glm::vec2 bottomOf(const LdtkEntity& e, glm::vec2 centre) {
 
 void ShowcaseGame::registerLevelEntities() {
     levelLoader.registerEntity("PlayerStart", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        if (s.scene.findFirstObjectOfType<PlayerObject>()) return; // its room streamed in again
         PlayerObject::Config c{};
         c.movementMode = PlayerObject::Config::MovementMode::Platformer;
         c.moveSpeed = 4.5f;
@@ -411,9 +416,14 @@ void ShowcaseGame::registerLevelEntities() {
         c.maxFallSpeed = -18.0f;
         PlayerObject& player = Spawn::player(s.scene, bottomOf(e, pos) + glm::vec2(0.0f, 0.5f * c.colliderSize.y), c);
         player.setCheckpointPosition(player.transform.position);
+        player.persistent = true; // the player never belongs to a room
+        player.roomIid.clear();
     });
 
+    // shortcut: lights and crystals are not scene objects, so they outlive their room's unload (kept once
+    // per iid, panel edits survive); make them objects with roomIid if many rooms make this costly.
     levelLoader.registerEntity("Light", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices&) {
+        for (const EditableLight& l : lightEdits) if (l.iid == e.iid) return;
         glm::vec3 color = colorField(e, "color", glm::vec3(1.0f, 0.76f, 0.48f));
         lightEdits.push_back({e.iid, pos,
             {color, numberField(e, "intensity", 2.0f), numberField(e, "radius", 6.0f), numberField(e, "height", 1.5f),
@@ -421,8 +431,9 @@ void ShowcaseGame::registerLevelEntities() {
     });
 
     levelLoader.registerEntity("Crystal", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices&) {
+        for (const Crystal& c : crystals) if (c.iid == e.iid) return;
         int variant = static_cast<int>(numberField(e, "variant", 0.0f));
-        crystals.push_back({bottomOf(e, pos), std::clamp(variant, 0, 3)});
+        crystals.push_back({e.iid, bottomOf(e, pos), std::clamp(variant, 0, 3)});
     });
 
     levelLoader.registerEntity("Prop", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
@@ -452,12 +463,25 @@ void ShowcaseGame::registerLevelEntities() {
 
 void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
     s.scene.clear();
-    LdtkLevel level = std::move(*preparedLevel);
-    preparedLevel.reset();
-    levelLoader.load(level, s, s.materials);
+    world.open(*preparedProject, levelLoader, &s);
+    preparedProject.reset();
 
-    glm::vec2 size = glm::vec2(level.pxSize) / LdtkPixelsPerUnit;
-    s.camera.bounds = Camera2D::WorldBounds{0.0f, size.x, 0.0f, size.y};
+    // Start in the room holding PlayerStart (the first room if none does).
+    const std::vector<LdtkLevel>& levels = world.project().levels;
+    int start = 0;
+    for (int i = 0; i < int(levels.size()); ++i)
+        for (const LdtkLayer& L : levels[i].layers)
+            for (const LdtkEntity& e : L.entities)
+                if (e.identifier == "PlayerStart") start = i;
+    // shortcut: the showcase's parallax tiles were authored around its room centre, so the world-wide anchor
+    // sits there to keep its look; drop this when its parallax layers move to regions (world-origin offsets).
+    if (!levels.empty()) {
+        levelLoader.parallaxAnchor = ldtkToWorld(levels[start].worldPx, glm::vec2(levels[start].pxSize) * 0.5f);
+        world.loadAround(start);
+    }
+
+    const glm::vec4 b = world.worldBounds(); // (minX, minY, maxX, maxY)
+    s.camera.bounds = Camera2D::WorldBounds{b.x, b.z, b.y, b.w};
     s.camera.followOffset = {0.0f, 0.6f};
 
     // Look comes from showcase.look.json (Debug: the source-tree file, so panel saves survive rebuilds).

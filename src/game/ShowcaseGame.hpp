@@ -4,6 +4,7 @@
 #include "engine/scenes/ISceneDefinition.hpp"
 #include "engine/tools/LookPanel.hpp"
 #include "engine/world/LevelLoader.hpp"
+#include "engine/world/World.hpp"
 #include "game/assets/GameAssets.hpp"
 #include "game/scenes/SceneId.hpp"
 
@@ -27,8 +28,9 @@ private:
     std::vector<Material> atlasMaterials; // by atlas texture index (GameAtlasId)
 
     // Showcase room (LDtk)
-    struct Crystal { glm::vec2 anchor; int variant; };
+    struct Crystal { std::string iid; glm::vec2 anchor; int variant; };
     LevelLoader levelLoader;
+    World world;                         // streams the rooms of showcase.ldtk around the player
     LookFile look;                       // showcase.look.json, edited live by the panel
     LookPanel lookPanel;
     std::vector<EditableLight> lightEdits;   // one per LDtk Light entity, by iid
@@ -58,7 +60,7 @@ private:
     void registerLevelEntities();
     void loadShowcaseLevel(EngineServices& s);
     void tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData);
-    std::optional<LdtkLevel> preparedLevel; // parsed by loadScene before any teardown
+    std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown
     void submitShowcaseExtras(EngineServices& s);
     void reloadCurrentScene(EngineServices& s);
     void loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData = {});

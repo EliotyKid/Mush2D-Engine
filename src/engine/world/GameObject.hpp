@@ -55,6 +55,8 @@ public:
     bool active = true; // false = paused, not destroyed
     bool visible = true;
     int updateOrder = 0; // lower runs first; changes apply at the next flush
+    std::string roomIid;     // LDtk room that created it (empty = none); unloading that room destroys it
+    bool persistent = false; // survives its room's unload (player, camera, carried items)
 
     Transform2D transform{};
 

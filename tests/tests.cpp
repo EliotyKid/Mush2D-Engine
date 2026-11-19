@@ -7,7 +7,9 @@
 #include "engine/tools/LookFile.hpp"
 #include "engine/world/Collision.hpp"
 #include "engine/world/Ldtk.hpp"
+#include "engine/world/LevelLoader.hpp"
 #include "engine/world/Scene2D.hpp"
+#include "engine/world/World.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -156,6 +158,101 @@ TEST(world_neighbours_by_touching_rects) {
     CHECK((n[2] == std::vector<int>{1}));
     CHECK(n[3].empty());
 }
+namespace {
+// Rooms in a row along +X, all 320 px tall at worldY = 0; widths in px.
+LdtkProject roomsInRow(std::vector<int> widths) {
+    LdtkProject p;
+    int x = 0;
+    for (std::size_t i = 0; i < widths.size(); ++i) {
+        LdtkLevel l;
+        l.iid = "room" + std::to_string(i);
+        l.worldPx = {x, 0};
+        l.pxSize = {widths[i], 320};
+        p.levels.push_back(l);
+        x += widths[i];
+    }
+    return p;
+}
+struct StreamLog { int loads = 0, unloads = 0; };
+void hookWorld(World& w, StreamLog& log) {
+    w.onLoad = [&log](int) { ++log.loads; };
+    w.onUnload = [&log](int) { ++log.unloads; };
+}
+}
+
+TEST(world_streaming_loads_neighbours_and_unloads_with_hysteresis) {
+    // Units: room0 x 0..10, room1 x 10..12 (narrow), room2 x 12..22; all y -10..0.
+    LdtkProject p = roomsInRow({320, 64, 320});
+    World w; StreamLog log; hookWorld(w, log);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    CHECK(w.worldBounds() == glm::vec4(0.0f, -10.0f, 22.0f, 0.0f));
+    using V = std::vector<int>;
+    auto at = [&](float x) { w.update({x, -5.0f}); };
+
+    at(1.0f);  CHECK(w.currentRoom() == 0); CHECK((w.loadedRooms() == V{0, 1}));
+    at(11.0f); CHECK(w.currentRoom() == 1); CHECK((w.loadedRooms() == V{0, 1, 2}));
+    at(12.5f); CHECK(w.currentRoom() == 2); CHECK((w.loadedRooms() == V{0, 1, 2})); // room0 2.5 away: kept
+    at(14.0f); CHECK((w.loadedRooms() == V{0, 1, 2}));                              // exactly 4: kept
+    at(14.5f); CHECK((w.loadedRooms() == V{1, 2}));                                 // 4.5 away: unloaded
+    at(21.0f); CHECK((w.loadedRooms() == V{1, 2}));
+    CHECK(log.loads == 3 && log.unloads == 1);
+    // Walk back: room0 is a neighbour of room1 again.
+    at(11.0f); CHECK(w.currentRoom() == 1); CHECK((w.loadedRooms() == V{0, 1, 2}));
+    at(9.0f);  CHECK(w.currentRoom() == 0); CHECK((w.loadedRooms() == V{0, 1, 2})); // room2 3 away: kept
+    at(1.0f);  CHECK((w.loadedRooms() == V{0, 1}));                                 // room2 11 away: unloaded
+    CHECK(log.loads == 4 && log.unloads == 2);
+}
+
+TEST(streaming_no_thrash_at_border) {
+    LdtkProject p = roomsInRow({320, 320, 320});
+    World w; StreamLog log; hookWorld(w, log);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    w.update({10.0f, -5.0f}); // on the shared edge of room0 and room1
+    const int firstLoads = log.loads, firstUnloads = log.unloads;
+    CHECK(firstLoads > 0);
+    for (int i = 0; i < 200; ++i) w.update({10.0f, -5.0f});
+    CHECK(log.loads - firstLoads <= 1);
+    CHECK(log.unloads - firstUnloads == 0);
+}
+
+TEST(world_room_at_keeps_current_on_overlap_and_gap) {
+    // Spec decision 4. room0 x 0..10, room1 x 8..18 (overlap 8..10), room2 x 30..40 (gap 18..30).
+    LdtkProject p = roomsInRow({320, 320, 320});
+    p.levels[1].worldPx.x = 256;
+    p.levels[2].worldPx.x = 960;
+    World w; StreamLog log; hookWorld(w, log);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    w.update({1.0f, -5.0f});  CHECK(w.currentRoom() == 0);
+    w.update({9.0f, -5.0f});  CHECK(w.currentRoom() == 0); // both contain it: current wins
+    w.update({12.0f, -5.0f}); CHECK(w.currentRoom() == 1);
+    w.update({9.0f, -5.0f});  CHECK(w.currentRoom() == 1);
+    w.update({24.0f, -5.0f}); CHECK(w.currentRoom() == 1); // gap: keep the last
+    w.update({31.0f, -5.0f}); CHECK(w.currentRoom() == 2);
+}
+
+TEST(world_unload_keeps_persistent_objects) {
+    Scene2D scene;
+    scene.spawnRoomIid = "A"; // what LevelLoader::loadRoom sets while a room loads
+    GameObjectId a = scene.createObject<GameObject>().id;
+    GameObject& kept = scene.createObject<GameObject>();
+    kept.persistent = true;
+    scene.spawnRoomIid = "B";
+    GameObjectId b = scene.createObject<GameObject>().id;
+    scene.spawnRoomIid.clear();
+    GameObjectId free = scene.createObject<GameObject>().id;
+    CHECK(scene.find(a)->roomIid == "A" && scene.find(free)->roomIid.empty());
+    GameObjectId keptId = kept.id;
+
+    LevelLoader loader;
+    loader.unloadRoom("A", scene);
+    scene.flush();
+    CHECK(scene.find(a) == nullptr);
+    CHECK(scene.find(keptId) != nullptr && scene.find(b) != nullptr && scene.find(free) != nullptr);
+}
+
 TEST(ldtk_malformed_throws) {
     bool threw = false;
     try { loadLdtkLevel(MUSH2D_TEST_DATA "/bad.ldtk", "Level_0"); } catch (const std::exception&) { threw = true; }

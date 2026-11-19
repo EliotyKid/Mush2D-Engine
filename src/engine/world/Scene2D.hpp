@@ -21,6 +21,7 @@ struct ObjectDestroyed {
 class Scene2D {
 public:
     void* userData = nullptr; // opaque, owned by the game
+    std::string spawnRoomIid; // stamped as roomIid on every object created while set (LevelLoader::loadRoom)
 
 public:
     // The object resolves with find() at once and gets onCreate now; it joins the update list at the next flush.
@@ -31,6 +32,7 @@ public:
 
         auto object = std::make_unique<TObject>(std::forward<Args>(args)...);
         TObject& ref = *object;
+        ref.roomIid = spawnRoomIid;
         insert(std::move(object));
         ref.onCreate(*this);
         return ref;
