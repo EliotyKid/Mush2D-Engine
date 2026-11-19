@@ -5,6 +5,7 @@
 #include "engine/render/PixelScale.hpp"
 #include "engine/render/SceneRenderer.hpp"
 #include "engine/tools/LookFile.hpp"
+#include "engine/world/CharacterController.hpp"
 #include "engine/world/Collision.hpp"
 #include "engine/world/CollisionWorld.hpp"
 #include "engine/world/Ldtk.hpp"
@@ -1442,6 +1443,281 @@ TEST(collision_world_add_query_remove) {
     w.removeRoom("a");
     w.query({{0.0f, -2.0f}, {4.0f, 0.0f}}, out);
     CHECK(out.empty());
+}
+
+TEST(intgrid_22_slope_world_coords) {
+    // 5 + 7 at the level origin: one diagonal from (0,-0.5) up to (1,0), facing up-left
+    auto a = gridSegs(gridLayer(4, 1, {{{0,0},5},{{1,0},7}}));
+    CHECK(countIf(a, isDiag) == 1);
+    for (auto& s : a) if (isDiag(s)) {
+        const glm::vec2 lo = s.a.x < s.b.x ? s.a : s.b, hi = s.a.x < s.b.x ? s.b : s.a;
+        CHECK(lo == glm::vec2(0.0f, -0.5f) && hi == glm::vec2(1.0f, 0.0f));
+        CHECK(s.normal.x < 0 && s.normal.y > 0);
+    }
+    // each half on its own: left / right heights of the diagonal for 5, 6, 7, 8 in cell (1,0)
+    const std::pair<int, glm::vec2> cases[] = {{5, {-0.5f, -0.25f}}, {6, {-0.25f, -0.5f}}, {7, {-0.25f, 0.0f}}, {8, {0.0f, -0.25f}}};
+    for (auto& [v, h] : cases) {
+        auto segs = gridSegs(gridLayer(4, 1, {{{1,0},v}}));
+        CHECK(countIf(segs, isDiag) == 1);
+        for (auto& s : segs) if (isDiag(s)) {
+            const glm::vec2 l = s.a.x < s.b.x ? s.a : s.b, r = s.a.x < s.b.x ? s.b : s.a;
+            CHECK(l == glm::vec2(0.5f, h.x) && r == glm::vec2(1.0f, h.y));
+            CHECK((s.normal.x < 0) == (h.y > h.x) && s.normal.y > 0); // faces away from the rise
+        }
+    }
+}
+
+TEST(intgrid_ramp_beside_and_on_block_count) {
+    // ramp 3 left of a block and ramp 3 on top of it: a triangle (bottom, right wall, one diagonal)
+    auto segs = gridSegs(gridLayer(6, 4, {{{1,2},3},{{2,2},1},{{2,1},3}}));
+    CHECK(segs.size() == 3);
+    CHECK(countIf(segs, isDiag) == 1);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {0, -1}) && std::abs(glm::length(s.b - s.a) - 1.0f) < 1e-4f; }) == 1);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {1, 0}) && std::abs(glm::length(s.b - s.a) - 1.0f) < 1e-4f; }) == 1);
+}
+
+namespace {
+constexpr float kDt = 1.0f / 60.0f;
+
+void setCells(LdtkLayer& L, int y, int x0, int x1, int v) { for (int x = x0; x <= x1; ++x) L.intGrid[size_t(y) * L.cells.x + x] = v; }
+
+std::vector<Segment> polySegs(std::initializer_list<glm::vec2> ccw, bool oneWay = false) {
+    std::vector<glm::vec2> p(ccw);
+    std::vector<Segment> out;
+    for (size_t i = 0; i < p.size(); ++i) {
+        const glm::vec2 a = p[i], b = p[(i + 1) % p.size()], d = b - a;
+        out.push_back({a, b, glm::normalize(glm::vec2(d.y, -d.x)), oneWay, "r"});
+    }
+    return out;
+}
+
+// The old stepPlatformer loop (input, jump, gravity) driving the controller.
+struct Sim {
+    Body body;
+    glm::vec2 v{0.0f};
+    bool grounded = false;
+    MoveResult r;
+    CollisionQuery q;
+    Sim(const CollisionWorld* w, glm::vec2 pos) { q.world = w; body.position = pos; }
+    void step(float input, bool jump = false, float dt = kDt) {
+        v.x = input * 4.5f;
+        bool jumped = false;
+        if (jump && grounded) { v.y = 11.0f; jumped = true; }
+        v.y = std::max(v.y - 32.0f * dt, -18.0f);
+        r = move(body, v, dt, q, grounded, jumped);
+        v = r.velocity;
+        grounded = r.grounded;
+    }
+    void settle(float seconds) { for (int i = 0; i < int(seconds / kDt); ++i) step(0.0f); }
+    float bottom() const { return body.position.y - body.halfSize.y; }
+};
+
+// 20 x 8 cells: floor top y = -3.5, 45 deg ramp from (3,-3.5) to (4.5,-2), flat top y = -2.
+LdtkLayer rampLayer() {
+    LdtkLayer L = gridLayer(20, 8, {});
+    setCells(L, 7, 0, 19, 1);
+    setCells(L, 6, 6, 6, 3); setCells(L, 6, 7, 19, 1);
+    setCells(L, 5, 7, 7, 3); setCells(L, 5, 8, 19, 1);
+    setCells(L, 4, 8, 8, 3); setCells(L, 4, 9, 19, 1);
+    return L;
+}
+}
+
+TEST(controller_walks_up_and_down_45) {
+    CollisionWorld w; w.addRoom("r", gridSegs(rampLayer()));
+    Sim s(&w, {1.0f, -2.6f});
+    s.settle(0.5f);
+    CHECK(s.grounded && std::abs(s.bottom() + 3.5f) < 0.01f);
+    int lost = 0, frames = 0;
+    while (s.body.position.x < 7.0f && frames++ < 600) { s.step(1.0f); lost += s.grounded ? 0 : 1; }
+    CHECK(lost == 0);
+    CHECK(s.body.position.x >= 7.0f && std::abs(s.bottom() + 2.0f) < 0.01f);
+    frames = 0;
+    while (s.body.position.x > 1.5f && frames++ < 600) { s.step(-1.0f); lost += s.grounded ? 0 : 1; }
+    CHECK(lost == 0);
+    CHECK(s.body.position.x <= 1.5f && std::abs(s.bottom() + 3.5f) < 0.01f);
+}
+
+TEST(controller_rests_on_slope) {
+    CollisionWorld w; w.addRoom("r", gridSegs(rampLayer()));
+    Sim s(&w, {3.75f, -1.0f});
+    s.settle(1.0f);
+    CHECK(s.grounded);
+    const glm::vec2 p = s.body.position;
+    s.settle(2.0f);
+    CHECK(s.grounded && glm::length(s.body.position - p) < 0.01f);
+}
+
+TEST(controller_rests_on_slope_vertex) {
+    // valley \/ and peak /\ at x = 3 over a floor at y = -3.5; also rest on the ramp-to-flat vertices
+    LdtkLayer valley = gridLayer(12, 8, {});
+    setCells(valley, 7, 0, 11, 1); setCells(valley, 6, 0, 4, 1); setCells(valley, 6, 5, 5, 4);
+    setCells(valley, 6, 6, 6, 3); setCells(valley, 6, 7, 11, 1);
+    LdtkLayer peak = gridLayer(12, 8, {});
+    setCells(peak, 7, 0, 11, 1); setCells(peak, 6, 5, 5, 3); setCells(peak, 6, 6, 6, 4);
+    for (auto* L : {&valley, &peak})
+        for (float x : {3.0f, 2.5f, 3.5f}) {
+            CollisionWorld w; w.addRoom("r", gridSegs(*L));
+            Sim s(&w, {x, -1.5f});
+            s.settle(1.0f);
+            CHECK(s.grounded);
+            const glm::vec2 p = s.body.position;
+            s.settle(2.0f);
+            CHECK(s.grounded && glm::length(s.body.position - p) < 0.01f);
+        }
+}
+
+TEST(controller_slides_on_steep) {
+    // 60 deg surface from (2,0) up to (3,1.732), floor y = 0 to its left
+    const float h = std::sqrt(3.0f);
+    CollisionWorld w; w.addRoom("r", polySegs({{-5, -5}, {10, -5}, {10, h}, {3, h}, {2, 0}, {-5, 0}}));
+    Sim s(&w, {2.3f, 3.0f});
+    int steep = 0, frames = 0;
+    float prevY = s.body.position.y;
+    while (!s.grounded && frames++ < 300) {
+        s.step(steep ? 1.0f : 0.0f, true); // once on it: pushing into the slope and mashing jump
+        if (s.r.onSteep) {
+            ++steep;
+            CHECK(s.v.y <= 0.0f);                       // never jumped
+            CHECK(s.body.position.y <= prevY + 1e-4f);  // input does not climb it
+            CHECK(std::abs(s.r.groundNormal.y - 0.5f) < 1e-3f);
+        }
+        prevY = s.body.position.y;
+    }
+    CHECK(steep > 3);
+    CHECK(s.grounded && std::abs(s.bottom()) < 0.01f && s.body.position.x < 2.3f); // slid down to the floor
+}
+
+TEST(controller_no_snag_on_seams) {
+    // flat, 22.5 up (5,7), 45 up (3), flat top, 45 down (4), 22.5 down (8,6), flat, then a hole filled
+    // by a solid box flush with the floor (segment-to-box seams)
+    LdtkLayer L = gridLayer(40, 10, {});
+    setCells(L, 9, 0, 39, 1); setCells(L, 8, 0, 39, 1); setCells(L, 8, 24, 25, 0);
+    setCells(L, 7, 10, 10, 5); setCells(L, 7, 11, 11, 7); setCells(L, 7, 12, 17, 1);
+    setCells(L, 7, 18, 18, 8); setCells(L, 7, 19, 19, 6);
+    setCells(L, 6, 12, 12, 3); setCells(L, 6, 13, 16, 1); setCells(L, 6, 17, 17, 4);
+    CollisionWorld w; w.addRoom("r", gridSegs(L));
+    Sim s(&w, {1.0f, -3.0f});
+    s.q.solids.push_back({{12.0f, -4.5f}, {13.0f, -4.0f}});
+    s.settle(0.5f);
+    CHECK(s.grounded);
+    int snags = 0, lost = 0, frames = 0;
+    for (float dir : {1.0f, -1.0f}) {
+        frames = 0;
+        while ((dir > 0 ? s.body.position.x < 15.0f : s.body.position.x > 1.0f) && frames++ < 600) {
+            const float x0 = s.body.position.x;
+            s.step(dir);
+            snags += (s.body.position.x - x0) * dir < 0.9f * 4.5f * kDt || s.v.x == 0.0f ? 1 : 0;
+            lost += s.grounded ? 0 : 1;
+        }
+        CHECK(frames < 600);
+    }
+    CHECK(snags == 0);
+    CHECK(lost == 0);
+}
+
+TEST(controller_oneway_from_below_and_drop) {
+    LdtkLayer L = gridLayer(12, 10, {});
+    setCells(L, 9, 0, 11, 1); setCells(L, 6, 3, 8, 2); // floor top -4.5, one-way top -3.0 (x 1.5..4.5)
+    CollisionWorld w; w.addRoom("r", gridSegs(L));
+    Sim s(&w, {3.0f, -3.6f});
+    s.settle(0.3f);
+    CHECK(s.grounded && std::abs(s.bottom() + 4.5f) < 0.01f && !s.r.onOneWay);
+    CHECK(!requestDropThrough(s.body, s.r)); // solid floor: a normal jump
+    s.step(0.0f, true);
+    for (int i = 0; i < 200 && !s.grounded; ++i) s.step(0.0f);
+    CHECK(s.grounded && s.r.onOneWay && std::abs(s.bottom() + 3.0f) < 0.01f);
+    s.settle(0.2f);
+    CHECK(s.grounded && s.r.onOneWay);
+    CHECK(requestDropThrough(s.body, s.r));
+    int frames = 0;
+    do { s.step(0.0f); } while (!s.grounded && ++frames < 200);
+    CHECK(frames > 2 && std::abs(s.bottom() + 4.5f) < 0.01f);
+}
+
+TEST(oneway_next_to_solid) {
+    // one-way top (x 1..2.5, y -1) beside a 2 x 1 block (x 2.5..3.5), floor top y = -2.5
+    LdtkLayer L = gridLayer(10, 6, {});
+    setCells(L, 5, 0, 9, 1); setCells(L, 2, 2, 4, 2); setCells(L, 2, 5, 6, 1);
+    auto segs = gridSegs(L);
+    CHECK(segs.size() == 7); // floor top + bottom, one-way top, block top/bottom/left/right
+    CHECK(countIf(segs, [](auto& s) { return s.oneWay; }) == 1);
+    CHECK(countIf(segs, [](auto& s) { return s.oneWay && std::abs(glm::length(s.b - s.a) - 1.5f) < 1e-4f; }) == 1);
+    CollisionWorld w; w.addRoom("r", segs);
+    Sim s(&w, {1.6f, 0.5f});
+    s.settle(1.0f);
+    CHECK(s.grounded && s.r.onOneWay && std::abs(s.bottom() + 1.0f) < 0.01f);
+    int lost = 0, frames = 0;
+    while (s.body.position.x < 3.2f && frames++ < 300) { s.step(1.0f); lost += s.grounded ? 0 : 1; }
+    CHECK(!s.r.onOneWay && std::abs(s.bottom() + 1.0f) < 0.01f);
+    frames = 0;
+    while (s.body.position.x > 1.6f && frames++ < 300) { s.step(-1.0f); lost += s.grounded ? 0 : 1; }
+    CHECK(lost == 0 && s.r.onOneWay);
+    CHECK(requestDropThrough(s.body, s.r));
+    for (int i = 0; i < 200; ++i) s.step(0.0f);
+    CHECK(s.grounded && std::abs(s.bottom() + 2.5f) < 0.01f);
+}
+
+TEST(controller_no_tunnel_at_max_fall) {
+    CollisionWorld solid; solid.addRoom("r", polySegs({{0, 0}, {4, 0}, {4, 0.25f}, {0, 0.25f}}));
+    CollisionWorld oneWay; oneWay.addRoom("r", {Segment{{4, 0.25f}, {0, 0.25f}, {0, 1}, true, "r"}});
+    for (auto* w : {&solid, &oneWay}) {
+        Sim s(w, {2.0f, 10.0f});
+        s.v = {0.0f, -18.0f};
+        for (int i = 0; i < 20; ++i) s.step(0.0f, false, 0.1f);
+        CHECK(s.grounded && std::abs(s.bottom() - 0.25f) < 0.01f);
+    }
+}
+
+TEST(controller_ceiling_stops_vy) {
+    LdtkLayer L = gridLayer(10, 10, {});
+    setCells(L, 9, 0, 9, 1); setCells(L, 4, 2, 6, 1); // floor top -4.5, ceiling bottom -2.5
+    CollisionWorld w; w.addRoom("r", gridSegs(L));
+    Sim s(&w, {2.5f, -3.6f});
+    s.settle(0.3f);
+    s.step(0.0f, true);
+    int hits = 0;
+    for (int i = 0; i < 120; ++i) {
+        s.step(0.0f);
+        if (s.r.hitCeiling) { ++hits; CHECK(s.v.y <= 0.0f); }
+        CHECK(s.body.position.y + s.body.halfSize.y <= -2.5f + 1e-3f);
+    }
+    CHECK(hits >= 1);
+    CHECK(s.grounded && std::abs(s.bottom() + 4.5f) < 0.01f);
+}
+
+TEST(controller_flat_jump_matches_old) {
+    // decision 3: jump ~3.8 cells (1.9 u) high and land on the same y
+    LdtkLayer L = gridLayer(10, 10, {});
+    setCells(L, 9, 0, 9, 1);
+    CollisionWorld w; w.addRoom("r", gridSegs(L));
+    Sim s(&w, {2.5f, -3.6f});
+    s.settle(0.3f);
+    const float y0 = s.bottom();
+    s.step(0.0f, true);
+    float apex = y0;
+    for (int i = 0; i < 120; ++i) { s.step(0.0f); apex = std::max(apex, s.bottom()); }
+    float expected = 0.0f; // the old integration: vy = 11, then vy += g dt before each move
+    for (float vy = 11.0f - 32.0f * kDt; vy > 0.0f; vy -= 32.0f * kDt) expected += vy * kDt;
+    CHECK(std::abs(apex - y0 - expected) < 0.01f && expected > 1.75f);
+    CHECK(s.grounded && std::abs(s.bottom() - y0) < 1e-3f && s.v.y == 0.0f);
+}
+
+TEST(controller_speed_on_slope_matches_flat) {
+    const float h = 8.0f * std::tan(glm::radians(22.5f));
+    CollisionWorld w; w.addRoom("r", polySegs({{-10, -5}, {20, -5}, {20, h}, {8, h}, {0, 0}, {-10, 0}}));
+    auto walk = [&](glm::vec2 start, float dir) {
+        Sim s(&w, start);
+        s.settle(0.5f);
+        const float x0 = s.body.position.x;
+        for (int i = 0; i < 60; ++i) s.step(dir);
+        CHECK(s.grounded);
+        return std::abs(s.body.position.x - x0);
+    };
+    const float flat = walk({-8.0f, 1.0f}, 1.0f);
+    CHECK(std::abs(flat - 4.5f) < 0.05f);
+    CHECK(std::abs(walk({1.5f, 2.0f}, 1.0f) / flat - 1.0f) < 0.05f);  // up
+    CHECK(std::abs(walk({7.0f, 4.5f}, -1.0f) / flat - 1.0f) < 0.05f); // down
 }
 
 int main() {

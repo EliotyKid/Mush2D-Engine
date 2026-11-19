@@ -114,6 +114,8 @@ std::vector<Segment> segmentsFromTerrain(const LdtkEntity& e, glm::ivec2 levelWo
             if (!dup) pts.push_back(ldtkToWorld(levelWorldPx, glm::vec2(cx * layerGridPx, cy * layerGridPx)));
         }
     }
+    // shortcut: an open terrain whose surface drops more than `thickness` self-intersects (the bottom
+    // runs straight between the end points); upgrade by clipping the thickness offset under the surface.
     if (!closed && pts.size() >= 2) { // fill down by thickness
         const glm::vec2 last = pts.back(), first = pts.front();
         pts.push_back({last.x, last.y - thickness});
