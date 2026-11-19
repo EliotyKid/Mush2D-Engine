@@ -1,11 +1,158 @@
 {
-  "ambient": { "color": [0.4, 0.5, 0.66], "intensity": 0.6 },
-  "fog": { "color": [0.18, 0.4, 0.5], "density": 0.05, "gradientStart": 0, "gradientEnd": 10, "gradientStrength": 0 },
-  "bloom": { "threshold": 0.9, "knee": 0.5, "intensity": 0.7 },
+  "ambient": {
+    "color": [
+      0.317762,
+      0.414249,
+      0.568627
+    ],
+    "intensity": 0.6
+  },
+  "bloom": {
+    "intensity": 0.7,
+    "knee": 0.5,
+    "threshold": 0.9
+  },
   "exposure": 1.1,
-  "grading": { "lift": [0, 0, 0], "gamma": [1, 1, 1], "gain": [1, 1, 1], "saturation": 1.3, "temperature": 0 },
-  "pixelArt": { "mode": "smooth", "pixelateLight": false, "pixelateFactor": 2 },
+  "fog": {
+    "color": [
+      0.0735294,
+      0.174632,
+      0.220588
+    ],
+    "density": 0.0044,
+    "gradientEnd": 10.0,
+    "gradientStart": 0.0,
+    "gradientStrength": 0.0
+  },
+  "grading": {
+    "gain": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "gamma": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "lift": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "saturation": 1.109,
+    "temperature": 0.73
+  },
+  "layers": {
+    "Forest_d18": {
+      "depth": 18.0,
+      "parallax": [
+        0.22,
+        0.55
+      ]
+    },
+    "Ground_d0": {
+      "depth": 0.0,
+      "parallax": [
+        1.0,
+        1.0
+      ]
+    },
+    "Lake_d7": {
+      "depth": 7.0,
+      "parallax": [
+        0.55,
+        0.75
+      ]
+    },
+    "Reeds_d2": {
+      "depth": 2.0,
+      "parallax": [
+        0.85,
+        0.92
+      ]
+    },
+    "Shore_d4": {
+      "depth": 4.0,
+      "parallax": [
+        0.7,
+        0.85
+      ]
+    },
+    "Trees_d11": {
+      "depth": 11.0,
+      "parallax": [
+        0.4,
+        0.65
+      ]
+    }
+  },
   "lightHalfRes": false,
-  "layers": {},
-  "lights": {}
+  "lights": {
+    "1e2feb89-414c-443c-9027-c4d1c386bbc4": {
+      "color": [
+        1.0,
+        0.835294,
+        0.603922
+      ],
+      "depth": 0.0,
+      "flicker": 0.0,
+      "height": 2.5,
+      "intensity": 1.6,
+      "radius": 6.5
+    },
+    "35bf992d-c9e9-4616-a12e-7696a6cecc1b": {
+      "color": [
+        1.0,
+        0.690196,
+        0.439216
+      ],
+      "depth": 11.0,
+      "flicker": 0.0,
+      "height": 1.0,
+      "intensity": 1.0,
+      "radius": 10.0
+    },
+    "78e51061-7311-48a3-82ce-6f447ed4d57b": {
+      "color": [
+        1.0,
+        0.886275,
+        0.478431
+      ],
+      "depth": 0.0,
+      "flicker": 0.3,
+      "height": 0.6,
+      "intensity": 1.8,
+      "radius": 3.0
+    },
+    "9b810e76-6ec9-4286-a3ca-828dd5f4b3b2": {
+      "color": [
+        1.0,
+        0.619608,
+        0.368627
+      ],
+      "depth": 0.0,
+      "flicker": 0.12,
+      "height": 1.5,
+      "intensity": 2.2,
+      "radius": 6.5
+    },
+    "e4b06ce6-0741-47a8-bce4-2c8218072e8c": {
+      "color": [
+        1.0,
+        0.811765,
+        0.541176
+      ],
+      "depth": 0.0,
+      "flicker": 0.05,
+      "height": 2.0,
+      "intensity": 2.2,
+      "radius": 7.0
+    }
+  },
+  "pixelArt": {
+    "mode": "smooth",
+    "pixelateFactor": 2,
+    "pixelateLight": false
+  }
 }
