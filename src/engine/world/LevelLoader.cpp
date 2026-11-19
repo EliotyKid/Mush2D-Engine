@@ -2,19 +2,21 @@
 
 #include <cstdio>
 
+namespace {
+struct SpawnRoom { // reset even if a factory throws
+    Scene2D& scene;
+    SpawnRoom(Scene2D& s, const std::string& iid) : scene(s) { scene.spawnRoomIid = iid; }
+    ~SpawnRoom() { scene.spawnRoomIid.clear(); }
+};
+}
+
 void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials) {
     constexpr float U = LdtkPixelsPerUnit;
     const int n = int(level.layers.size());
     auto toWorld = [&](glm::vec2 px) { return ldtkToWorld(level.worldPx, px); };
-    // Entities with parallax show at their authored place when the camera is at their room's centre, as in LDtk.
-    const glm::vec2 roomCentre = toWorld(glm::vec2(level.pxSize) * 0.5f);
     std::vector<StaticSprite>& sprites = rooms_[level.iid];
     sprites.clear(); // reload must not duplicate
-    struct SpawnRoom { // reset even if a factory throws
-        Scene2D& scene;
-        ~SpawnRoom() { scene.spawnRoomIid.clear(); }
-    } spawnRoom{services.scene};
-    services.scene.spawnRoomIid = level.iid;
+    SpawnRoom spawnRoom{services.scene, level.iid};
 
     for (int li = 0; li < n; ++li) {
         const LdtkLayer& L = level.layers[li];
@@ -24,8 +26,11 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
             Material mat = materials.load(level.baseDir / L.tilesetPath);
             const float g = float(L.gridSize);
             int layerIndex = 0;
-            while (layerIndex < int(layers_.size()) && layers_[layerIndex].identifier != L.identifier) ++layerIndex;
-            if (layerIndex == int(layers_.size())) layers_.push_back({L.identifier, {L.parallaxX, L.parallaxY}, L.depth});
+            while (layerIndex < int(layers_.size()) &&
+                   (layers_[layerIndex].region != level.region || layers_[layerIndex].identifier != L.identifier))
+                ++layerIndex;
+            if (layerIndex == int(layers_.size()))
+                layers_.push_back({level.region, L.identifier, {L.parallaxX, L.parallaxY}, L.depth});
             const LayerState& state = layers_[layerIndex]; // panel edits also reach rooms streamed in later
             for (const LdtkTile& t : L.tiles) {
                 SpriteInstance s{};
@@ -58,16 +63,20 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
                 o.collider = c;
             }
         }
-
-        for (const LdtkEntity& e : L.entities) {
-            auto f = factories_.find(e.identifier);
-            if (f == factories_.end()) {
-                std::fprintf(stderr, "LDtk: no factory for entity '%s', ignored\n", e.identifier.c_str());
-                continue;
-            }
-            f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, roomCentre), services);
-        }
     }
+}
+
+void LevelLoader::spawnEntity(const LdtkLevel& level, const LdtkEntity& e, EngineServices& services) {
+    auto f = factories_.find(e.identifier);
+    if (f == factories_.end()) {
+        std::fprintf(stderr, "LDtk: no factory for entity '%s', ignored\n", e.identifier.c_str());
+        return;
+    }
+    SpawnRoom spawnRoom{services.scene, level.iid};
+    auto toWorld = [&](glm::vec2 px) { return ldtkToWorld(level.worldPx, px); };
+    // Entities with parallax show at their authored place when the camera is at their room's centre, as in LDtk.
+    const glm::vec2 roomCentre = toWorld(glm::vec2(level.pxSize) * 0.5f);
+    f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, roomCentre), services);
 }
 
 void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {
@@ -79,10 +88,10 @@ void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {
     scene.flush(); // gone now: no object outlives its room's tiles for a frame
 }
 
-void LevelLoader::setLayer(const std::string& identifier, glm::vec2 parallax, float depth) {
+void LevelLoader::setLayer(const std::string& region, const std::string& identifier, glm::vec2 parallax, float depth) {
     for (int i = 0; i < int(layers_.size()); ++i) {
         LayerState& l = layers_[i];
-        if (l.identifier != identifier || (l.parallax == parallax && l.depth == depth)) continue;
+        if (l.region != region || l.identifier != identifier || (l.parallax == parallax && l.depth == depth)) continue;
         l.parallax = parallax;
         l.depth = depth;
         for (auto& [iid, sprites] : rooms_) {

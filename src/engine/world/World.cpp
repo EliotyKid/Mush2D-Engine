@@ -11,6 +11,34 @@ void World::open(const LdtkProject& project, LevelLoader& loader, EngineServices
     current_ = -1;
     loader_ = &loader;
     services_ = services;
+    nextRespawnCheck_ = 0.0;
+    tracked_.clear();
+    for (int r = 0; r < int(project_.levels.size()); ++r)
+        for (const LdtkLayer& L : project_.levels[r].layers)
+            for (const LdtkEntity& e : L.entities) {
+                const Persistence p = parsePersistence(e);
+                if (p != Persistence::None && !e.iid.empty()) tracked_[e.iid] = {r, &e, p, parseRespawnDistance(e)};
+            }
+}
+
+void World::checkRespawns(glm::vec2 playerPos, glm::vec4 view, double time) {
+    if (time < nextRespawnCheck_) return;
+    nextRespawnCheck_ = time + RespawnCheckInterval;
+    for (const auto& [iid, t] : tracked_) {
+        const EntityState* s = state.find(iid);
+        if (t.policy != Persistence::Respawn || !s || !s->gone) continue;
+        if (!std::binary_search(loaded_.begin(), loaded_.end(), t.room)) continue;
+        const glm::vec2 p = s->spawnPos;
+        const bool onScreen = p.x >= view.x && p.x <= view.z && p.y >= view.y && p.y <= view.w;
+        if (onScreen || glm::distance(playerPos, p) <= t.respawnDistance) continue;
+        state.clearGone(iid);
+        spawn(t.room, *t.entity);
+    }
+}
+
+void World::spawn(int room, const LdtkEntity& e) {
+    if (onSpawn) onSpawn(room, e);
+    else if (services_) loader_->spawnEntity(project_.levels[room], e, *services_);
 }
 
 glm::vec4 World::rect(int room) const {
@@ -71,6 +99,10 @@ void World::load(int room) {
     // shortcut: a whole room is built in one frame; slice by entities per frame if a room passes ~2 ms.
     if (onLoad) onLoad(room);
     else loader_->loadRoom(project_.levels[room], *services_, services_->materials);
+    // Gone entities (killed, collected) are not created; Respawn ones come back through checkRespawns.
+    for (const LdtkLayer& L : project_.levels[room].layers)
+        for (const LdtkEntity& e : L.entities)
+            if (!state.isGone(e.iid)) spawn(room, e);
     loaded_.insert(std::upper_bound(loaded_.begin(), loaded_.end(), room), room); // only once it loaded
 }
 

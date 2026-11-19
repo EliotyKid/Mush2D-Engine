@@ -11,6 +11,16 @@
 #include "engine/world/Region.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/World.hpp"
+#include "engine/world/WorldState.hpp"
+#include "engine/graphics/Camera2D.hpp"
+#include "engine/world/PersistentComponent.hpp"
+#include "game/objects/DoorObject.hpp"
+#include "game/objects/ItemObject.hpp"
+#include "game/objects/LeverObject.hpp"
+#include "game/objects/PlayerObject.hpp"
+#include "game/objects/SlimeEnemy.hpp"
+
+#include <map>
 
 #include <algorithm>
 #include <cmath>
@@ -265,6 +275,228 @@ TEST(world_unload_keeps_persistent_objects) {
     CHECK(scene.find(keptId) != nullptr && scene.find(b) != nullptr && scene.find(free) != nullptr);
 }
 
+// --- WorldState, respawn rules, interactive objects ---
+namespace {
+LdtkEntity entity(std::string identifier, std::string iid, glm::vec2 px, nlohmann::json fields) {
+    LdtkEntity e;
+    e.identifier = std::move(identifier);
+    e.iid = std::move(iid);
+    e.px = px;
+    e.size = {32, 32};
+    e.fields = std::move(fields);
+    return e;
+}
+// Three rooms in a row (x 0..10, 10..20, 20..30, y -10..0); `entities` go into room 0.
+LdtkProject roomsWith(std::vector<LdtkEntity> entities) {
+    LdtkProject p = roomsInRow({320, 320, 320});
+    p.levels[0].layers.push_back(LdtkLayer{});
+    p.levels[0].layers[0].entities = std::move(entities);
+    return p;
+}
+// Counts factory runs by iid (no GPU: onSpawn replaces LevelLoader::spawnEntity).
+struct SpawnCount {
+    std::map<std::string, int> n;
+    void hook(World& w) {
+        w.onLoad = [](int) {};
+        w.onUnload = [](int) {};
+        w.onSpawn = [this](int, const LdtkEntity& e) { ++n[e.iid]; };
+    }
+};
+// Room 0 entity at px (32, 288) -> world centre (1.5, -9.5).
+constexpr glm::vec2 SpawnAt{1.5f, -9.5f};
+const glm::vec4 FarView{100.0f, 100.0f, 110.0f, 110.0f}; // a camera rect that shows none of the rooms
+}
+
+TEST(worldstate_permanent_never_respawns) {
+    CHECK(parsePersistence(entity("Slime", "a", {}, {{"respawn", false}})) == Persistence::Permanent);
+    CHECK(parsePersistence(entity("Slime", "a", {}, {{"respawn", true}})) == Persistence::Respawn);
+    CHECK(parsePersistence(entity("Item", "a", {}, {{"persistence", "permanent"}})) == Persistence::Permanent);
+    CHECK(parsePersistence(entity("Item", "a", {}, {{"persistence", "respawn"}})) == Persistence::Respawn);
+    CHECK(parsePersistence(entity("Item", "a", {}, {{"persistence", "none"}})) == Persistence::None);
+    CHECK(parsePersistence(entity("Light", "a", {}, nlohmann::json::object())) == Persistence::None);
+    CHECK(parseRespawnDistance(entity("Item", "a", {}, nlohmann::json::object())) == 12.0f);
+
+    World w; SpawnCount c; c.hook(w);
+    LevelLoader loader;
+    w.open(roomsWith({entity("Slime", "s1", {32, 288}, {{"respawn", false}})}), loader, nullptr);
+    w.update({1.0f, -5.0f});
+    CHECK(c.n["s1"] == 1);
+    w.state.markGone("s1", SpawnAt, 1.0);
+    w.update({25.0f, -5.0f}); // room 0 unloads
+    CHECK((w.loadedRooms() == std::vector<int>{1, 2}));
+    w.update({11.0f, -5.0f}); // and loads again
+    CHECK(w.loadedRooms().front() == 0);
+    for (double t = 2.0; t < 10.0; t += 0.5) w.checkRespawns({28.0f, -5.0f}, FarView, t);
+    CHECK(c.n["s1"] == 1 && w.state.isGone("s1"));
+}
+
+TEST(worldstate_respawn_by_distance_offscreen) {
+    World w; SpawnCount c; c.hook(w);
+    LevelLoader loader;
+    w.open(roomsWith({entity("Item", "i1", {32, 288}, {{"persistence", "respawn"}, {"respawnDistance", 5}})}), loader,
+           nullptr);
+    w.update({1.0f, -5.0f});
+    w.state.markGone("i1", SpawnAt, 1.0);
+    w.checkRespawns(SpawnAt + glm::vec2(4.0f, 0.0f), FarView, 1.0); // 4 < 5: too close
+    CHECK(c.n["i1"] == 1);
+    w.checkRespawns(SpawnAt + glm::vec2(6.0f, 0.0f), FarView, 1.2); // far, but within the 0.5 s interval
+    CHECK(c.n["i1"] == 1);
+    w.checkRespawns(SpawnAt + glm::vec2(6.0f, 0.0f), FarView, 1.5);
+    CHECK(c.n["i1"] == 2 && !w.state.isGone("i1"));
+
+    // Room not loaded: no respawn; reloading the room skips it (still gone) until the check brings it back.
+    w.state.markGone("i1", SpawnAt, 2.0);
+    w.update({25.0f, -5.0f});
+    w.checkRespawns({25.0f, -5.0f}, FarView, 3.0);
+    CHECK(c.n["i1"] == 2);
+    w.update({11.0f, -5.0f});
+    CHECK(c.n["i1"] == 2);
+    w.checkRespawns({11.0f, -5.0f}, FarView, 4.0);
+    CHECK(c.n["i1"] == 3);
+}
+
+TEST(respawn_waits_until_offscreen) {
+    World w; SpawnCount c; c.hook(w);
+    LevelLoader loader;
+    w.open(roomsWith({entity("Slime", "s1", {32, 288}, {{"respawn", true}})}), loader, nullptr);
+    w.update({1.0f, -5.0f});
+    w.state.markGone("s1", SpawnAt, 0.0);
+    const glm::vec2 far{SpawnAt.x + 13.0f, SpawnAt.y}; // beyond the default 12
+    const glm::vec4 showsSpawn{0.0f, -10.0f, 20.0f, 0.0f};
+    for (double t = 1.0; t < 4.0; t += 0.5) w.checkRespawns(far, showsSpawn, t);
+    CHECK(c.n["s1"] == 1 && w.state.isGone("s1"));
+    w.checkRespawns(far, {5.0f, -10.0f, 25.0f, 0.0f}, 4.0); // camera moved right: spawn point off screen
+    CHECK(c.n["s1"] == 2);
+}
+
+TEST(interactive_state_survives_unload) {
+    Scene2D scene;
+    World w;
+    LevelLoader loader;
+    std::map<std::string, GameObjectId> live;
+    w.onLoad = [](int) {};
+    w.onUnload = [&](int room) { loader.unloadRoom(w.project().levels[room].iid, scene); };
+    w.onSpawn = [&](int room, const LdtkEntity& e) {
+        scene.spawnRoomIid = w.project().levels[room].iid;
+        GameObject* o = nullptr;
+        if (e.identifier == "Door") o = &scene.createObject<DoorObject>(w.state, e.iid, glm::vec2(1.0f, 2.0f));
+        else o = &scene.createObject<LeverObject>(w.state, e.iid, e.fields.at("door").at("entityIid").get<std::string>());
+        scene.spawnRoomIid.clear();
+        live[e.iid] = o->id;
+    };
+    w.open(roomsWith({entity("Door", "d1", {32, 288}, nlohmann::json::object()),
+                      entity("Lever", "l1", {96, 288}, {{"door", {{"entityIid", "d1"}}}})}),
+           loader, nullptr);
+    w.update({1.0f, -5.0f});
+    scene.flush();
+    auto* door = scene.findObjectAs<DoorObject>(live["d1"]);
+    CHECK(door && !door->isOpen() && door->collider->enabled);
+
+    scene.findObjectAs<LeverObject>(live["l1"])->toggle();
+    w.update({25.0f, -5.0f}); // unload room 0
+    CHECK(scene.findObject(live["d1"]) == nullptr);
+    w.update({11.0f, -5.0f}); // reload
+    scene.flush();
+    door = scene.findObjectAs<DoorObject>(live["d1"]);
+    auto* lever = scene.findObjectAs<LeverObject>(live["l1"]);
+    CHECK(door && door->isOpen() && !door->collider->enabled && !door->visible);
+    CHECK(lever && lever->isOn());
+    lever->toggle(); // closes it again, live
+    scene.step(0.016f);
+    CHECK(!door->isOpen() && door->collider->enabled);
+}
+
+TEST(lever_toggles_on_down_and_item_is_collected) {
+    Scene2D scene;
+    WorldState state;
+    PlayerObject::Config pc;
+    pc.movementMode = PlayerObject::Config::MovementMode::Platformer;
+    pc.gravity = 0.0f;
+    PlayerObject& player = scene.createObject<PlayerObject>(pc);
+    LeverObject& lever = scene.createObject<LeverObject>(state, "l1", "d1");
+    InputState down;
+    down.moveDown.pressed = down.moveDown.down = true;
+    player.applyInput(down);
+    scene.step(0.016f); // not standing on it yet (the game's trigger scan reports overlaps)
+    CHECK(!lever.isOn());
+    lever.onTriggerEnter(scene, player);
+    player.applyInput(down);
+    scene.step(0.016f);
+    CHECK(lever.isOn() && state.get("d1", "open", 0.0) == 1.0);
+    player.applyInput(InputState{}); // not pressed this frame: no toggle
+    scene.step(0.016f);
+    CHECK(lever.isOn());
+
+    ItemObject& item = scene.createObject<ItemObject>(state, "coin");
+    trackEntity(item, entity("Item", "i1", {}, {{"persistence", "permanent"}}), {2.0f, 3.0f});
+    const GameObjectId itemId = item.id;
+    item.onTriggerEnter(scene, player);
+    scene.flush();
+    CHECK(scene.findObject(itemId) == nullptr && state.isGone("i1") && state.find("i1")->spawnPos == glm::vec2(2.0f, 3.0f));
+}
+
+TEST(reload_keeps_world_state) {
+    World w; SpawnCount c; c.hook(w);
+    LevelLoader loader;
+    LdtkProject p = roomsWith({entity("Slime", "s1", {32, 288}, {{"respawn", false}}),
+                               entity("Door", "d1", {96, 288}, nlohmann::json::object())});
+    w.open(p, loader, nullptr);
+    w.update({1.0f, -5.0f});
+    w.state.markGone("s1", SpawnAt, 1.0);
+    w.state.set("d1", "open", 1.0);
+    w.open(p, loader, nullptr); // F5: same project parsed again
+    w.update({1.0f, -5.0f});
+    CHECK(c.n["s1"] == 1 && c.n["d1"] == 2);
+    CHECK(w.state.isGone("s1") && w.state.get("d1", "open", 0.0) == 1.0);
+
+    // Snapshot of a room's iids: restore rolls changes back and erases entries made after it.
+    auto snap = w.state.snapshot({"s1", "d1", "x"});
+    CHECK(snap.size() == 2);
+    w.state.clearGone("s1");
+    w.state.set("d1", "open", 0.0);
+    w.state.set("x", "open", 1.0);
+    w.state.set("other", "open", 1.0);
+    w.state.restore({"s1", "d1", "x"}, snap);
+    CHECK(w.state.isGone("s1") && w.state.get("d1", "open", 0.0) == 1.0);
+    CHECK(w.state.find("x") == nullptr && w.state.get("other", "open", 0.0) == 1.0);
+}
+
+TEST(slime_stomp_kills_and_bounces) {
+    Scene2D scene;
+    WorldState state;
+    SlimeEnemy::Config sc;
+    sc.worldState = &state;
+    sc.moveSpeed = 0.0f;
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc); // collider 0.8 x 0.8 at (0, 0)
+    trackEntity(slime, entity("Slime", "s1", {}, {{"respawn", false}}), {0.0f, 0.0f});
+    PlayerObject::Config pc;
+    pc.movementMode = PlayerObject::Config::MovementMode::Platformer;
+    pc.colliderSize = {0.6f, 1.6f};
+    pc.jumpSpeed = 10.0f;
+    PlayerObject& player = scene.createObject<PlayerObject>(pc);
+    player.transform.position = {0.0f, 1.5f}; // feet at 0.7, slime top at 0.4
+    const GameObjectId slimeId = slime.id;
+    bool bounced = false;
+    for (int i = 0; i < 60 && !bounced; ++i) {
+        scene.step(1.0f / 60.0f);
+        bounced = player.velocity.y > 0.0f;
+    }
+    scene.flush();
+    CHECK(bounced && std::abs(player.velocity.y - 6.0f) < 0.6f); // jumpSpeed * 0.6, minus up to a frame of gravity
+    CHECK(scene.findObject(slimeId) == nullptr && state.isGone("s1"));
+
+    // From the side (feet below the slime's centre) nothing happens.
+    SlimeEnemy& other = scene.createObject<SlimeEnemy>(sc);
+    other.transform.position = {5.0f, 0.0f};
+    GameObject& floor = scene.createObject<GameObject>();
+    floor.transform.position = {5.0f, -0.5f};
+    floor.collider = ColliderData{.size = {20.0f, 0.2f}};
+    player.transform.position = {5.65f, 0.401f}; // overlaps the slime's right edge, feet just above the floor
+    player.velocity = {0.0f, 0.0f};
+    for (int i = 0; i < 10; ++i) scene.step(1.0f / 60.0f);
+    CHECK(scene.findObject(other.id) != nullptr && player.velocity.y <= 0.0f);
+}
+
 TEST(ldtk_malformed_throws) {
     bool threw = false;
     try { loadLdtkLevel(MUSH2D_TEST_DATA "/bad.ldtk", "Level_0"); } catch (const std::exception&) { threw = true; }
@@ -383,6 +615,17 @@ TEST(region_repeat_copies_cover_only_the_view) {
     CHECK(regionCopyRange(l, 18.0f, {0.0f, 0.0f}, 1.0f) == glm::ivec2(-1, -1)); // -1..1: only copy -1 (-16..2)
     l.repeatX = false;
     CHECK(regionCopyRange(l, 18.0f, {400.0f, 0.0f}, 5.0f) == glm::ivec2(0, 0)); // single copy, never culled here
+}
+TEST(region_bad_image_is_skipped) {
+    Region r;
+    r.layers.push_back({"assets/nowhere/missing.png", 1.0f, {1.0f, 1.0f}, {0.0f, 0.0f}, true});
+    MaterialLibrary lib; // no GPU: an unreadable image fails before any upload
+    resolveRegionMaterials(r, lib); // resolved once, at region load
+    CHECK(r.layers.size() == 1 && !r.layers[0].material); // kept (saved back), not drawn
+    Camera2D cam;
+    SpriteBatch b;
+    appendRegionLayers(r, cam, VkExtent2D{1280, 720}, b);
+    CHECK(b.sorted().empty());
 }
 
 // --- Entity model (Scene2D) ---

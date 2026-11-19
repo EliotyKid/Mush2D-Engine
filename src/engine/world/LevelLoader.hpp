@@ -18,22 +18,25 @@ class LevelLoader {
 public:
     void registerEntity(std::string identifier, EntityFactory factory) { factories_[std::move(identifier)] = std::move(factory); }
     // One room, in world coordinates: tiles -> static SpriteInstances kept under the room's iid; IntGrid
-    // "Collision" (value 1) -> static collider objects; entities -> registered factories (unknown identifiers
-    // are warned about and ignored). Every object created meanwhile gets roomIid = level.iid.
+    // "Collision" (value 1) -> static collider objects with roomIid = level.iid. Entities: spawnEntity (World).
     void loadRoom(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials);
+    // Runs the entity's registered factory (unknown identifiers are warned about and ignored); every object
+    // created meanwhile gets roomIid = level.iid.
+    void spawnEntity(const LdtkLevel& level, const LdtkEntity& entity, EngineServices& services);
     // Drops the room's static sprites and destroys its objects that are not persistent (flushed before return).
     void unloadRoom(const std::string& roomIid, Scene2D& scene);
     // Static sprites of the loaded rooms only.
     void appendStatic(SpriteBatch& batch) const;
     void clear() { rooms_.clear(); layers_.clear(); }
 
-    // Tile layers kept as static sprites, editable by LDtk identifier and shared by every room using that
-    // identifier (initial values come from the first room loaded with it). Parallax tiles are anchored at the
-    // world origin: with the camera at 0 they show at their authored place.
-    struct LayerState { std::string identifier; glm::vec2 parallax; float depth; };
+    // Tile layers kept as static sprites, editable by (region, LDtk identifier): shared by the rooms of one
+    // region using that identifier, independent across regions (initial values come from the first room loaded
+    // with it; append-only until clear). Parallax tiles are anchored at the world origin: with the camera at 0
+    // they show at their authored place.
+    struct LayerState { std::string region, identifier; glm::vec2 parallax; float depth; };
     const std::vector<LayerState>& layers() const { return layers_; }
     // Rewrites that layer's instances; no-op if unchanged.
-    void setLayer(const std::string& identifier, glm::vec2 parallax, float depth);
+    void setLayer(const std::string& region, const std::string& identifier, glm::vec2 parallax, float depth);
 
 private:
     struct StaticSprite { SpriteInstance instance; int order; int layer; };

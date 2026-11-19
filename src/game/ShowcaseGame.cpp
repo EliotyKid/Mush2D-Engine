@@ -5,6 +5,9 @@
 #include "engine/world/Collision.hpp"
 #include "game/assets/GameAtlasId.hpp"
 #include "game/objects/CritterObject.hpp"
+#include "game/objects/DoorObject.hpp"
+#include "game/objects/ItemObject.hpp"
+#include "game/objects/LeverObject.hpp"
 #include "game/objects/PivotSprite.hpp"
 #include "game/objects/PlayerObject.hpp"
 #include "game/scenes/SceneRegistry.hpp"
@@ -24,6 +27,7 @@
 void ShowcaseGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
     s.scene.userData = &gameAssets;
+    materials = &s.materials;
 
     atlasMaterials.clear();
     for (const char* path : GameAtlasId::ImagePaths) {
@@ -71,7 +75,14 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
     scene.lateStep(deltaTime);
 
     if (currentSceneId == SceneId::Showcase) {
-        if (const GameObject* p = scene.findObject(playerObjectId)) world.update(p->transform.position);
+        world.state.clock += deltaTime;
+        if (const GameObject* p = scene.findObject(playerObjectId)) {
+            world.update(p->transform.position);
+            const glm::vec2 half = s.camera.halfExtent(s.gpu.swapchain().extent());
+            world.checkRespawns(p->transform.position,
+                                glm::vec4(s.camera.position - half, s.camera.position + half), world.state.clock);
+        }
+        applyNewLayerOverrides();
         // Lights and crystals belong to their room: drop those of rooms that just unloaded.
         auto unloaded = [this](const std::string& roomIid) {
             for (int r : world.loadedRooms()) if (world.project().levels[r].iid == roomIid) return false;
@@ -107,7 +118,7 @@ void ShowcaseGame::submitRenderData(EngineServices& s) {
     batch.clear();
     levelLoader.appendStatic(batch);
     if (currentSceneId == SceneId::Showcase) {
-        appendRegionLayers(region(currentRegion), s.camera, s.gpu.swapchain().extent(), s.materials, batch);
+        appendRegionLayers(region(currentRegion), s.camera, s.gpu.swapchain().extent(), batch);
     }
     appendSceneSprites(s.scene, batch, [this](std::uint32_t atlasIndex, const std::string& frameName) {
         return lookupAtlasFrame(atlasIndex, frameName);
@@ -362,7 +373,7 @@ void ShowcaseGame::setupInitialScene(EngineServices& s) {
     activeTriggerOverlaps.clear();
     levelLoader.clear();
     lightEdits.clear();
-    layerEdits.clear();
+    layersApplied = 0;
     crystals.clear();
     s.renderer.settings() = FrameSettings{};
     s.camera.bounds = Camera2D::WorldBounds{-5.0f, 5.0f, -3.0f, 3.0f};
@@ -407,6 +418,14 @@ glm::vec3 colorField(const LdtkEntity& e, const char* key, glm::vec3 fallback) {
     unsigned rgb = 0;
     if (hex.size() != 7 || hex[0] != '#' || std::sscanf(hex.c_str() + 1, "%6x", &rgb) != 1) return fallback;
     return glm::vec3((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF) / 255.0f;
+}
+
+// F_EntityRef -> the referenced entity's iid ("" when unset).
+std::string entityRefField(const LdtkEntity& e, const char* key) {
+    auto it = e.fields.find(key);
+    if (it == e.fields.end() || !it->is_object()) return "";
+    auto ref = it->find("entityIid");
+    return ref != it->end() && ref->is_string() ? ref->get<std::string>() : "";
 }
 
 // Entities use pivot (0.5, 1): the bottom-centre of the box is where they stand.
@@ -472,6 +491,40 @@ void ShowcaseGame::registerLevelEntities() {
             GameAtlasId::KaaAnimals, stringField(e, "anim", "fox_idle"), boolField(e, "flipX"));
         critter.transform.position = bottomOf(e, pos);
     });
+
+    // Interactive objects (spec decision 1). Their state lives in world.state; trackEntity records the policy.
+    levelLoader.registerEntity("Slime", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        SlimeEnemy::Config c{};
+        c.worldState = &world.state;
+        SlimeEnemy& slime = Spawn::slime(s.scene, bottomOf(e, pos) + glm::vec2(0.0f, 0.5f * c.colliderSize.y), c);
+        trackEntity(slime, e, slime.transform.position);
+    });
+
+    levelLoader.registerEntity("Item", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        ItemObject& item = s.scene.createObject<ItemObject>(world.state, stringField(e, "kind", ""));
+        item.transform.position = pos;
+        trackEntity(item, e, pos);
+    });
+
+    levelLoader.registerEntity("Door", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        DoorObject& door = s.scene.createObject<DoorObject>(world.state, e.iid, e.size / LdtkPixelsPerUnit);
+        door.transform.position = pos;
+        trackEntity(door, e, pos);
+    });
+
+    levelLoader.registerEntity("Lever", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        LeverObject& lever = s.scene.createObject<LeverObject>(world.state, e.iid, entityRefField(e, "door"));
+        lever.transform.position = pos;
+        trackEntity(lever, e, pos);
+    });
+
+    levelLoader.registerEntity("Checkpoint", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        CheckpointObject::Config c{};
+        c.worldState = &world.state;
+        c.iid = e.iid;
+        CheckpointObject& checkpoint = Spawn::checkpoint(s.scene, pos, c);
+        trackEntity(checkpoint, e, pos);
+    });
 }
 
 void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
@@ -494,12 +547,7 @@ void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
     s.camera.bounds = Camera2D::WorldBounds{b.x, b.z, b.y, b.w};
     s.camera.followOffset = {0.0f, 0.6f};
 
-    // Tile layer overrides come from the start region (lights got theirs per room, in the Light factory).
-    for (const LevelLoader::LayerState& l : levelLoader.layers()) layerEdits.push_back({l.identifier, {l.parallax, l.depth}});
-    LookFile tileLook = region(currentRegion).look;
-    tileLook.lights.clear();
-    applyLook(tileLook, lightEdits, layerEdits);
-    for (const EditableLayer& l : layerEdits) levelLoader.setLayer(l.identifier, l.value.parallax, l.value.depth);
+    applyNewLayerOverrides(); // lights got theirs per room, in the Light factory
     s.renderer.settings() = region(currentRegion).look.settings;
     blendTime = RegionBlendSeconds; // no blend into the first region
 }
@@ -510,8 +558,21 @@ Region& ShowcaseGame::region(const std::string& name) {
         // Debug: the source-tree file, so panel saves survive rebuilds.
         it = regions.emplace(name, loadRegionOrDefault(sourceAssetPath("assets/regions/" + name + ".region.json"),
                                                        FrameSettings{})).first;
+        resolveRegionMaterials(it->second, *materials);
     }
     return it->second;
+}
+
+// A tile layer's overrides belong to the region of the rooms that own it: applied once, when the layer first
+// appears (its room loaded), from that region's file.
+void ShowcaseGame::applyNewLayerOverrides() {
+    const std::vector<LevelLoader::LayerState>& layers = levelLoader.layers();
+    for (; layersApplied < layers.size(); ++layersApplied) {
+        const LevelLoader::LayerState& l = layers[layersApplied];
+        const auto& overrides = region(l.region).look.layers;
+        if (auto it = overrides.find(l.identifier); it != overrides.end())
+            levelLoader.setLayer(l.region, l.identifier, it->second.parallax, it->second.depth);
+    }
 }
 
 std::string ShowcaseGame::roomRegion(const std::string& roomIid) const {
@@ -533,12 +594,12 @@ void ShowcaseGame::updateRegion(EngineServices& s, float dt) {
 }
 
 void ShowcaseGame::saveRegions() {
-    // Tile layers go to the current region; each loaded light to its own room's region, keeping the overrides
-    // of lights in rooms that are not loaded.
+    // Tile layers of the current region's rooms go to it (other regions' layers never cross over); each loaded
+    // light to its own room's region. Overrides of layers and lights not loaded now are kept.
     std::set<std::string> touched{currentRegion};
     Region& current = region(currentRegion);
-    current.look.layers.clear();
-    for (const EditableLayer& l : layerEdits) current.look.layers[l.identifier] = l.value;
+    for (const LevelLoader::LayerState& l : levelLoader.layers())
+        if (l.region == currentRegion) current.look.layers[l.identifier] = {l.parallax, l.depth};
     for (const EditableLight& l : lightEdits) {
         const std::string name = roomRegion(l.roomIid);
         region(name).look.lights[l.iid] = l.value;
@@ -549,10 +610,20 @@ void ShowcaseGame::saveRegions() {
 
 void ShowcaseGame::onImGui(EngineServices& s) {
     if (currentSceneId != SceneId::Showcase) return;
+    // The panel shows the current room's tile layers (they belong to its region, currentRegion = room.region).
+    std::vector<EditableLayer> roomLayers;
+    if (world.currentRoom() >= 0) {
+        const LdtkLevel& room = world.project().levels[world.currentRoom()];
+        for (const LevelLoader::LayerState& l : levelLoader.layers()) {
+            const bool inRoom = std::any_of(room.layers.begin(), room.layers.end(),
+                                            [&](const LdtkLayer& L) { return L.identifier == l.identifier; });
+            if (l.region == currentRegion && inRoom) roomLayers.push_back({l.identifier, {l.parallax, l.depth}});
+        }
+    }
     bool save = false;
-    lookPanel.draw(region(currentRegion), lightEdits, layerEdits, s.renderer.timers(), save);
+    lookPanel.draw(region(currentRegion), lightEdits, roomLayers, s.renderer.timers(), save);
     // Look edits reach the renderer through updateRegion next frame (it may be blending).
-    for (const EditableLayer& l : layerEdits) levelLoader.setLayer(l.identifier, l.value.parallax, l.value.depth);
+    for (const EditableLayer& l : roomLayers) levelLoader.setLayer(currentRegion, l.identifier, l.value.parallax, l.value.depth);
     if (save) saveRegions();
 }
 

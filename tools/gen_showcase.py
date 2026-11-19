@@ -7,7 +7,7 @@ Outputs:
       4 crystals (32x32 cells) + a soft "halo 0" cell for the additive glow.
   assets/kaa/tilesets/grass_m.png
       mask for grass.png: R = rim on top edges, G = AO (darker towards inner corners).
-  assets/levels/showcase.ldtk
+  assets/levels/showcase.ldtk (only if missing: an existing level is never overwritten)
       LDtk 1.5 project, one 96x30 level (16 px grid): Collision IntGrid, Ground tiles
       auto-picked from the IntGrid, kaa parallax layers, props, critters, lights, crystals.
 Never touches the kaa images or their _n maps (tools/import_kaa.py owns those).
@@ -438,6 +438,10 @@ def main():
     }
     out = ASSETS / "levels"
     out.mkdir(parents=True, exist_ok=True)
+    if (out / "showcase.ldtk").exists():
+        # The author edits the level in LDtk (and later scripts append rooms): never overwrite it.
+        raise SystemExit(f"gen_showcase: {out / 'showcase.ldtk'} already exists, not overwritten "
+                         "(crystals and grass_m were regenerated). Delete it first to regenerate the level.")
     (out / "showcase.ldtk").write_text(json.dumps(project, indent=1), encoding="utf-8")
     print(f"showcase.ldtk: {CW}x{CH} cells, {len(ground_tiles)} ground tiles, "
           f"{len(entities) + len(fg_entities)} entities")

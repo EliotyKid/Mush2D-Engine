@@ -72,15 +72,7 @@
       "saturation": 1.109,
       "temperature": -0.2
     },
-    "layers": {
-      "Ground_d0": {
-        "depth": 0.0,
-        "parallax": [
-          1.0,
-          1.0
-        ]
-      }
-    },
+    "layers": {},
     "lightHalfRes": false,
     "lights": {},
     "pixelArt": {

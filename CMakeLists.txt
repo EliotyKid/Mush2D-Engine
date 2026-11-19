@@ -24,7 +24,7 @@ mush2d_compile_shaders(Mush2DEngine)
 mush2d_copy_assets(Mush2DEngine)
 
 enable_testing()
-add_executable(mush2d_tests tests/tests.cpp)
+add_executable(mush2d_tests tests/tests.cpp src/game/assets/GameAssets.cpp) # game objects are header-only
 target_link_libraries(mush2d_tests PRIVATE mush2d_engine)
 target_compile_definitions(mush2d_tests PRIVATE MUSH2D_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data")
 add_test(NAME mush2d_tests COMMAND mush2d_tests)

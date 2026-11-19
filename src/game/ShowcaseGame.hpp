@@ -40,8 +40,9 @@ private:
     static constexpr float RegionBlendSeconds = 1.5f;
     LookPanel lookPanel;
     std::vector<EditableLight> lightEdits;   // one per LDtk Light entity of a loaded room
-    std::vector<EditableLayer> layerEdits;   // one per static tile layer
+    std::size_t layersApplied = 0;           // levelLoader.layers() that got their region's overrides
     std::vector<Crystal> crystals;           // of loaded rooms
+    MaterialLibrary* materials = nullptr;    // region images are resolved once, when a region loads
     GameObjectId playerObjectId = InvalidGameObjectId;
 
     float mouseZoomSensitivity = 0.15f;
@@ -71,6 +72,7 @@ private:
     Region& region(const std::string& name);
     std::string roomRegion(const std::string& roomIid) const;
     void updateRegion(EngineServices& s, float dt);
+    void applyNewLayerOverrides();
     void saveRegions();
     void reloadCurrentScene(EngineServices& s);
     void loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData = {});

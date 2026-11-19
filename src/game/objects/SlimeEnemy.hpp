@@ -3,6 +3,7 @@
 #include "game/assets/GameAnimationId.hpp"
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
+#include "game/objects/Tracked.hpp"
 
 #include "engine/world/GameObject.hpp"
 #include "engine/world/Scene2D.hpp"
@@ -22,6 +23,7 @@ public:
         int orderInLayer = 0;
 
         glm::vec2 initialScale{0.8f, 0.8f};
+        WorldState* worldState = nullptr; // records the kill (PersistentComponent) when set
     };
 
 public:
@@ -86,6 +88,12 @@ public:
         }
 
         updateVisuals(scene, dt);
+    }
+
+    // The player landed on it (PlayerObject decides when): dies.
+    void stomp(Scene2D& scene) {
+        if (config.worldState) removeTracked(scene, *config.worldState, *this, config.worldState->clock);
+        else scene.destroy(id);
     }
 
 private:

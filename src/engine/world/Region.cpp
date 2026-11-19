@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <fstream>
 #include <sstream>
 
@@ -115,13 +116,24 @@ glm::ivec2 regionCopyRange(const RegionLayer& l, float imageWidth, glm::vec2 cam
     return {int(std::floor((centre - halfWidth) / imageWidth)), int(std::floor((centre + halfWidth) / imageWidth))};
 }
 
-void appendRegionLayers(const Region& region, const Camera2D& camera, VkExtent2D viewport, MaterialLibrary& materials,
-                        SpriteBatch& batch) {
+void resolveRegionMaterials(Region& region, MaterialLibrary& materials) {
+    for (RegionLayer& l : region.layers) {
+        try {
+            l.material = materials.load(assetPath(l.image));
+        } catch (const std::exception& e) {
+            l.material.reset();
+            std::fprintf(stderr, "Region %s: layer skipped: %s\n", region.name.c_str(), e.what());
+        }
+    }
+}
+
+void appendRegionLayers(const Region& region, const Camera2D& camera, VkExtent2D viewport, SpriteBatch& batch) {
     constexpr float PixelsPerUnit = 32.0f;
     // The game submits before the camera follows this frame: pad so a moving camera never shows a missing copy.
     const float halfWidth = camera.halfExtent(viewport).x + 2.0f;
     for (const RegionLayer& l : region.layers) {
-        const Material m = materials.load(assetPath(l.image));
+        if (!l.material) continue;
+        const Material& m = *l.material;
         const glm::vec2 size = glm::vec2(m.width, m.height) / PixelsPerUnit;
         const glm::ivec2 range = regionCopyRange(l, size.x, camera.position, halfWidth);
         for (int k = range.x; k <= range.y; ++k) {

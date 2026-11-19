@@ -7,6 +7,9 @@
 
 #include "engine/world/GameObject.hpp"
 #include "engine/world/Scene2D.hpp"
+#include "engine/world/WorldState.hpp"
+
+#include <string>
 
 class CheckpointObject : public GameObject {
 public:
@@ -18,6 +21,9 @@ public:
         bool oneShot = false;
 
         glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+
+        WorldState* worldState = nullptr; // when set, touching it records iid "activated" = 1
+        std::string iid;
     };
 
 public:
@@ -67,6 +73,7 @@ public:
             }
 
             player->setCheckpointPosition(player->transform.position);
+            if (config.worldState) config.worldState->set(config.iid, "activated", 1.0);
 
             if (trigger->oneShot) {
                 trigger->consumed = true;

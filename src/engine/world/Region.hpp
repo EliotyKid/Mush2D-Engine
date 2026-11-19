@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/render/Materials.hpp"
 #include "engine/tools/LookFile.hpp"
 
 #include <filesystem>
@@ -22,6 +23,7 @@ struct RegionLayer {
     glm::vec2 parallax;
     glm::vec2 offset;
     bool repeatX;
+    std::optional<Material> material; // set by resolveRegionMaterials; empty = unreadable image, not drawn
 };
 
 // assets/regions/<name>.region.json: { "look": <.look.json format>, "layers": [RegionLayer...] }.
@@ -44,5 +46,7 @@ FrameSettings lerpSettings(const FrameSettings& a, const FrameSettings& b, float
 // Copies k (inclusive range x..y) of a layer whose image is imageWidth wide that touch the view
 // [camera.x * parallax.x - halfWidth, camera.x * parallax.x + halfWidth]; always (0, 0) without repeatX.
 glm::ivec2 regionCopyRange(const RegionLayer&, float imageWidth, glm::vec2 cameraPos, float halfWidth);
-// Emits the visible copies of every layer (images loaded through the library's cache).
-void appendRegionLayers(const Region&, const Camera2D&, VkExtent2D viewport, MaterialLibrary&, SpriteBatch&);
+// Once, when the region loads: loads every layer image; an unreadable one warns and leaves material empty.
+void resolveRegionMaterials(Region&, MaterialLibrary&);
+// Emits the visible copies of every layer with a resolved material.
+void appendRegionLayers(const Region&, const Camera2D&, VkExtent2D viewport, SpriteBatch&);

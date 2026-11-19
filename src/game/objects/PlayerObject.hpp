@@ -4,6 +4,7 @@
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
 #include "game/objects/PivotSprite.hpp"
+#include "game/objects/SlimeEnemy.hpp"
 
 #include "engine/world/Collision.hpp"
 #include "engine/world/GameObject.hpp"
@@ -117,7 +118,11 @@ public:
             jumpRequested = true;
         }
         jumpHeld = input.jump.down || input.moveUp.down;
+        interact = input.moveDown.pressed;
     }
+
+    // Down was pressed this frame (levers read it during the step).
+    bool interactPressed() const { return interact; }
 
     void onStep(Scene2D& scene, float dt) override {
         if (platformer()) {
@@ -209,6 +214,7 @@ private:
     bool jumpHeld = false;
     bool jumpWasHeld = false;
     bool grounded = false;
+    bool interact = false;
 
     glm::vec2 checkpointPosition{0.0f, 0.0f};
 
@@ -246,6 +252,25 @@ private:
         return true;
     }
 
+    // Landed while falling: a slime right below whose centre is under the player's feet dies, and the player
+    // bounces (spec decision 1: stomp).
+    void stompBelow(Scene2D& scene) {
+        Collision2D::AABB probe = Collision2D::buildAABB(*this);
+        const float feet = probe.min.y;
+        probe.min.y -= 0.05f;
+        probe.max.y -= 0.05f;
+        bool stomped = false;
+        for (GameObjectId other : Collision2D::queryAABB(scene, probe, Collision2D::QueryKind::Solid)) {
+            auto* slime = scene.findObjectAs<SlimeEnemy>(other);
+            if (!slime || !Collision2D::hasCollider(*slime)) continue;
+            const Collision2D::AABB box = Collision2D::buildAABB(*slime);
+            if (!Collision2D::intersects(probe, box) || feet <= 0.5f * (box.min.y + box.max.y)) continue;
+            slime->stomp(scene);
+            stomped = true;
+        }
+        if (stomped) velocity.y = config.jumpSpeed * 0.6f;
+    }
+
     void stepPlatformer(Scene2D& scene, float dt) {
         grounded = Collision2D::collidesAtPosition(scene, id, transform.position + glm::vec2(0.0f, -0.02f));
 
@@ -262,7 +287,11 @@ private:
         velocity.y = std::max(velocity.y + config.gravity * dt, config.maxFallSpeed);
 
         if (moveAxis(scene, 0, velocity.x * dt)) velocity.x = 0.0f;
-        if (moveAxis(scene, 1, velocity.y * dt)) velocity.y = 0.0f;
+        if (moveAxis(scene, 1, velocity.y * dt)) {
+            const bool falling = velocity.y < 0.0f;
+            velocity.y = 0.0f;
+            if (falling) stompBelow(scene);
+        }
 
         if (inputDir.x != 0.0f) {
             facingDir = {inputDir.x > 0.0f ? 1.0f : -1.0f, 0.0f};
