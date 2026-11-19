@@ -109,7 +109,8 @@ ISceneDefinition::BuildResult SandboxScene::build(
             .colliderSize = {0.8f, 0.8f},
             .layer = 1,
             .orderInLayer = 3,
-            .initialScale = {0.8f, 0.8f}
+            .initialScale = {0.8f, 0.8f},
+            .gravity = 0.0f // top-down
         }
     );
     slime.name = "Slime01";

@@ -576,6 +576,9 @@ TEST(slime_stomp_kills_and_bounces) {
     sc.worldState = &state;
     sc.moveSpeed = 0.0f;
     SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc); // collider 0.8 x 0.8 at (0, 0)
+    GameObject& ground = scene.createObject<GameObject>(); // the slime falls now: it stands on this
+    ground.transform.position = {0.0f, -0.5f};
+    ground.collider = ColliderData{.size = {2.0f, 0.2f}};
     trackEntity(slime, entity("Slime", "s1", {}, {{"respawn", false}}), {0.0f, 0.0f});
     PlayerObject::Config pc;
     pc.movementMode = PlayerObject::Config::MovementMode::Platformer;
@@ -1500,7 +1503,7 @@ struct Sim {
     CollisionQuery q;
     Sim(const CollisionWorld* w, glm::vec2 pos) { q.world = w; body.position = pos; }
     void step(float input, bool jump = false, float dt = kDt) {
-        v.x = input * 4.5f;
+        v.x = nextVelocityX(r, input * 4.5f);
         bool jumped = false;
         if (jump && grounded) { v.y = 11.0f; jumped = true; }
         v.y = std::max(v.y - 32.0f * dt, -18.0f);
@@ -1718,6 +1721,195 @@ TEST(controller_speed_on_slope_matches_flat) {
     CHECK(std::abs(flat - 4.5f) < 0.05f);
     CHECK(std::abs(walk({1.5f, 2.0f}, 1.0f) / flat - 1.0f) < 0.05f);  // up
     CHECK(std::abs(walk({7.0f, 4.5f}, -1.0f) / flat - 1.0f) < 0.05f); // down
+}
+
+TEST(controller_steep_slide_frame_rate_independent) {
+    // 60 deg surface rising right from (0,0) to (6, 10.4); floor y = 0 to its left
+    const float H = 6.0f * std::tan(glm::radians(60.0f));
+    CollisionWorld w; w.addRoom("r", polySegs({{-20, -5}, {20, -5}, {20, H}, {6, H}, {0, 0}, {-20, 0}}));
+    auto slide = [&](float dt) { // speeds 0.25 s and 0.5 s after touching the slope
+        Sim s(&w, {5.0f, 10.4f});
+        for (int i = 0; i < 400 && !s.r.onSteep; ++i) s.step(0.0f, false, dt);
+        CHECK(s.r.onSteep);
+        const int n = int(std::lround(0.5f / dt));
+        glm::vec2 out{0.0f};
+        for (int i = 1; i <= n; ++i) {
+            s.step(0.0f, false, dt);
+            CHECK(s.r.onSteep);
+            if (i == n / 2) out.x = glm::length(s.v);
+        }
+        out.y = glm::length(s.v);
+        return out;
+    };
+    const glm::vec2 a = slide(1.0f / 60.0f), b = slide(1.0f / 144.0f);
+    CHECK(std::abs(a.y / b.y - 1.0f) < 0.1f);
+    const float g = 32.0f * std::sin(glm::radians(60.0f));
+    for (glm::vec2 v : {a, b}) CHECK(std::abs((v.y - v.x) / 0.25f / g - 1.0f) < 0.1f);
+}
+
+TEST(controller_wedge_is_stable) {
+    // 45 deg ramp from (0,0) up to (6,6) between floors y = 0 and y = 6. A wall x 2..3 cuts the ramp:
+    // walk up into its left face and down into its right face. Then a ceiling at y = 3.2 over the ramp.
+    for (int scenario = 0; scenario < 3; ++scenario) {
+        CollisionWorld w; w.addRoom("r", polySegs({{-10, -5}, {20, -5}, {20, 6}, {6, 6}, {0, 0}, {-10, 0}}));
+        if (scenario < 2) w.addRoom("x", polySegs({{2, 1}, {3, 1}, {3, 10}, {2, 10}}));
+        else w.addRoom("x", polySegs({{-1, 3.2f}, {6, 3.2f}, {6, 5}, {-1, 5}}));
+        const float dir = scenario == 1 ? -1.0f : 1.0f;
+        Sim s(&w, scenario == 1 ? glm::vec2(8.0f, 6.9f) : glm::vec2(-2.0f, 0.9f));
+        s.settle(0.3f);
+        for (int i = 0; i < 180; ++i) s.step(dir);
+        glm::vec2 lo = s.body.position, hi = lo;
+        int toggles = 0;
+        bool ceiling = s.r.hitCeiling;
+        for (int i = 0; i < 60; ++i) {
+            s.step(dir);
+            lo = glm::min(lo, s.body.position); hi = glm::max(hi, s.body.position);
+            toggles += s.r.hitCeiling != ceiling ? 1 : 0;
+            ceiling = s.r.hitCeiling;
+        }
+        CHECK(hi.x - lo.x <= 0.01f && hi.y - lo.y <= 0.01f);
+        CHECK(toggles == 0);
+        CHECK(s.body.position.x > 0.5f && s.body.position.x < 5.5f); // it did reach the wedge
+    }
+}
+
+TEST(controller_walks_onto_oneway_from_root) {
+    // flat floor y = 0; a one-way segment rising right at 35 deg from (2,0) to (5,2.1)
+    const glm::vec2 hiEnd{5.0f, 3.0f * std::tan(glm::radians(35.0f))}, root{2.0f, 0.0f};
+    const glm::vec2 d = root - hiEnd;
+    CollisionWorld w;
+    w.addRoom("r", polySegs({{-10, -5}, {20, -5}, {20, 0}, {-10, 0}}));
+    w.addRoom("o", {Segment{hiEnd, root, glm::normalize(glm::vec2(d.y, -d.x)), true, "o"}});
+    Sim s(&w, {0.0f, 0.85f});
+    s.settle(0.3f);
+    CHECK(s.grounded);
+    bool onOneWay = false;
+    for (int i = 0; i < 120 && s.body.position.x < 4.0f; ++i) { s.step(1.0f); onOneWay |= s.r.onOneWay; }
+    CHECK(onOneWay && s.r.onOneWay);
+    CHECK(s.bottom() > 1.0f);
+}
+
+TEST(controller_skips_degenerate_solids) {
+    CollisionWorld w; w.addRoom("r", polySegs({{-10, -5}, {10, -5}, {10, 0}, {-10, 0}}));
+    Sim s(&w, {0.0f, 2.5f});
+    s.q.solids = {{{-1.0f, 1.0f}, {1.0f, 1.0f}}, {{0.1f, -1.0f}, {0.1f, 3.0f}}}; // zero height, zero width
+    s.settle(1.0f);
+    CHECK(std::isfinite(s.body.position.x) && std::isfinite(s.body.position.y));
+    CHECK(s.grounded && std::abs(s.bottom()) < 0.01f);
+}
+
+namespace {
+PlayerObject& platformerPlayer(Scene2D& scene, glm::vec2 pos) { // the Showcase PlayerStart config
+    PlayerObject::Config pc;
+    pc.movementMode = PlayerObject::Config::MovementMode::Platformer;
+    pc.moveSpeed = 4.5f; pc.colliderSize = {0.6f, 1.6f};
+    pc.gravity = -32.0f; pc.jumpSpeed = 11.0f; pc.jumpCutFactor = 0.5f; pc.maxFallSpeed = -18.0f;
+    PlayerObject& p = scene.createObject<PlayerObject>(pc);
+    p.transform.position = pos;
+    return p;
+}
+void stepPlayer(Scene2D& scene, PlayerObject& p, const InputState& in, int frames = 1) {
+    for (int i = 0; i < frames; ++i) { p.applyInput(in); scene.step(kDt); }
+}
+}
+
+TEST(player_jump_height_unchanged) {
+    Scene2D scene;
+    LdtkLayer L = gridLayer(20, 10, {});
+    setCells(L, 9, 0, 19, 1); // floor top y = -4.5
+    scene.collision.addRoom("r", gridSegs(L));
+    PlayerObject& p = platformerPlayer(scene, {3.0f, -3.6f});
+    stepPlayer(scene, p, {}, 30);
+    const float y0 = p.transform.position.y - 0.8f;
+    CHECK(p.isGrounded() && std::abs(y0 + 4.5f) < 0.01f);
+    InputState jump; jump.jump.pressed = jump.jump.down = true;
+    InputState hold; hold.jump.down = true;
+    stepPlayer(scene, p, jump);
+    float apex = y0;
+    for (int i = 0; i < 120; ++i) { stepPlayer(scene, p, hold); apex = std::max(apex, p.transform.position.y - 0.8f); }
+    float expected = 0.0f; // the old stepPlatformer: vy = 11, then vy += g dt before each move
+    for (float vy = 11.0f - 32.0f * kDt; vy > 0.0f; vy -= 32.0f * kDt) expected += vy * kDt;
+    CHECK(std::abs(apex - y0 - expected) < 0.01f && apex - y0 > 1.75f); // ~1.89 u (3.8 cells) at dt -> 0
+    CHECK(p.isGrounded() && std::abs(p.transform.position.y - 0.8f - y0) < 1e-3f);
+    InputState right; right.moveRight.down = true;
+    const float x0 = p.transform.position.x;
+    stepPlayer(scene, p, right, 60);
+    CHECK(std::abs(p.transform.position.x - x0 - 4.5f) < 0.05f && p.isGrounded());
+}
+
+TEST(player_down_jump_drops_through_oneway) {
+    Scene2D scene;
+    LdtkLayer L = gridLayer(12, 10, {});
+    setCells(L, 9, 0, 11, 1); setCells(L, 6, 3, 8, 2); // floor top -4.5, one-way top -3.0 (x 1.5..4.5)
+    scene.collision.addRoom("r", gridSegs(L));
+    PlayerObject& p = platformerPlayer(scene, {3.0f, -1.5f});
+    stepPlayer(scene, p, {}, 30);
+    CHECK(p.isGrounded() && std::abs(p.transform.position.y - 0.8f + 3.0f) < 0.01f);
+    InputState downJump; downJump.moveDown.down = downJump.moveDown.pressed = true; downJump.jump.pressed = downJump.jump.down = true;
+    stepPlayer(scene, p, downJump);
+    CHECK(p.velocity.y <= 0.0f); // no jump
+    stepPlayer(scene, p, {}, 60);
+    CHECK(p.isGrounded() && std::abs(p.transform.position.y - 0.8f + 4.5f) < 0.01f);
+    stepPlayer(scene, p, downJump); // on solid ground: a normal jump
+    CHECK(p.velocity.y > 5.0f);
+}
+
+TEST(slime_turns_at_ledge_on_slope) {
+    // floor top -4.0; a 22.5 deg ramp (5, 7) on x 3..4 up to -3.5, then a 0.5 u drop back to -4.0
+    LdtkLayer L = gridLayer(20, 10, {});
+    setCells(L, 9, 0, 19, 1); setCells(L, 8, 0, 19, 1); setCells(L, 7, 6, 6, 5); setCells(L, 7, 7, 7, 7);
+    Scene2D scene;
+    scene.collision.addRoom("r", gridSegs(L));
+    SlimeEnemy::Config sc;
+    sc.patrolDistance = 20.0f;
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    slime.transform.position = {1.5f, -3.6f};
+    float maxX = 0.0f, minBottom = 0.0f;
+    for (int i = 0; i < 360; ++i) {
+        scene.step(kDt);
+        maxX = std::max(maxX, slime.transform.position.x);        if (slime.transform.position.x > 3.5f) minBottom = std::min(minBottom, slime.transform.position.y - 0.4f);
+    }
+    CHECK(maxX > 3.4f && maxX < 4.0f);              // reached the edge, never went over it
+    CHECK(minBottom > -3.7f);                        // and stayed on the ramp up there
+    CHECK(slime.transform.position.x < maxX - 0.5f); // walking back
+}
+
+TEST(slime_walks_down_45_ramp) {
+    Scene2D scene;
+    scene.collision.addRoom("r", gridSegs(rampLayer())); // flat top -2 from x 4.5 to the room edge at 10
+    SlimeEnemy::Config sc;
+    sc.patrolDistance = 20.0f;
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    slime.transform.position = {6.0f, -1.6f};
+    float minX = 10.0f;
+    for (int i = 0; i < 720; ++i) { scene.step(kDt); minX = std::min(minX, slime.transform.position.x); }
+    CHECK(minX < 2.5f); // turned at the room edge, then went down the ramp without turning on it
+}
+
+TEST(slime_patrols_around_where_it_was_placed) {
+    Scene2D scene;
+    LdtkLayer L = gridLayer(40, 10, {});
+    setCells(L, 9, 0, 39, 1); // floor top -4.5, x 0..20
+    scene.collision.addRoom("r", gridSegs(L));
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(SlimeEnemy::Config{}); // patrol 2 u
+    slime.transform.position = {10.0f, -4.1f}; // placed after onCreate, as Spawn::slime does
+    float lo = 10.0f, hi = 10.0f;
+    for (int i = 0; i < 600; ++i) {
+        scene.step(kDt);
+        lo = std::min(lo, slime.transform.position.x); hi = std::max(hi, slime.transform.position.x);
+    }
+    CHECK(lo > 7.9f && hi < 12.1f && hi > 11.9f);
+}
+
+TEST(collides_at_position_sees_segments) {
+    Scene2D scene;
+    scene.collision.addRoom("r", polySegs({{0, 0}, {4, 0}, {4, 1}, {0, 1}}));
+    GameObject& m = scene.createObject<GameObject>();
+    m.collider = ColliderData{.size = {1.0f, 1.0f}};
+    scene.flush();
+    CHECK(Collision2D::collidesAtPosition(scene, m.id, {2.0f, 1.4f}));  // overlaps the top by 0.1
+    CHECK(!Collision2D::collidesAtPosition(scene, m.id, {2.0f, 1.5f})); // resting on it
+    CHECK(!Collision2D::collidesAtPosition(scene, m.id, {6.0f, 0.5f}));
 }
 
 int main() {

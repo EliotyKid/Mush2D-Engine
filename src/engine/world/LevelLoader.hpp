@@ -18,12 +18,13 @@ class LevelLoader {
 public:
     void registerEntity(std::string identifier, EntityFactory factory) { factories_[std::move(identifier)] = std::move(factory); }
     // One room, in world coordinates: tiles -> static SpriteInstances kept under the room's iid; IntGrid
-    // "Collision" (value 1) -> static collider objects with roomIid = level.iid. Entities: spawnEntity (World).
+    // "Collision" and "Terrain" entities -> collision segments (scene.collision, room level.iid).
+    // Entities: spawnEntity (World).
     void loadRoom(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials);
     // Runs the entity's registered factory (unknown identifiers are warned about and ignored); every object
     // created meanwhile gets roomIid = level.iid.
     void spawnEntity(const LdtkLevel& level, const LdtkEntity& entity, EngineServices& services);
-    // Drops the room's static sprites and destroys its objects that are not persistent (flushed before return).
+    // Drops the room's static sprites and collision segments and destroys its objects that are not persistent (flushed before return).
     void unloadRoom(const std::string& roomIid, Scene2D& scene);
     // Static sprites of the loaded rooms only.
     void appendStatic(SpriteBatch& batch) const;

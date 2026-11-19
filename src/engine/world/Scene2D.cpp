@@ -265,6 +265,7 @@ void Scene2D::clear() {
     liveDirty_ = false;
     componentsDirty_ = false;
     destroyQueue_.clear(); // handlers may have queued destroys for objects just dropped; they must not hit reused slots
+    collision = CollisionWorld{};
 }
 
 std::vector<GameObject*> Scene2D::findObjectsByTag(const std::string& tag) {

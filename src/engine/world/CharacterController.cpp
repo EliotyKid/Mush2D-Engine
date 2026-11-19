@@ -119,6 +119,7 @@ MoveResult move(Body& body, glm::vec2 velocity, float dt, const CollisionQuery& 
     boxSegs.reserve(query.solids.size() * 4);
     for (const Collision2D::AABB& s : query.solids) {
         if (s.max.x < box.min.x || s.min.x > box.max.x || s.max.y < box.min.y || s.min.y > box.max.y) continue;
+        if (!(s.max.x > s.min.x && s.max.y > s.min.y)) continue; // degenerate: zero-length edges have no normal
         const glm::vec2 c[4] = {s.min, {s.max.x, s.min.y}, s.max, {s.min.x, s.max.y}}; // CCW: normals out
         for (int i = 0; i < 4; ++i) {
             const glm::vec2 d = c[(i + 1) % 4] - c[i];
@@ -154,7 +155,8 @@ MoveResult move(Body& body, glm::vec2 velocity, float dt, const CollisionQuery& 
     MoveResult r;
     auto clip = [&](glm::vec2 n) {
         if (walkable(n)) {
-            if (glm::dot(v, n) < 0.0f) v = groundedMode ? tangent(n) * (inputX / n.y) : v - glm::dot(v, n) * n;
+            // v.x, not input: a wall that already stopped v.x must not be walked into again (wedge)
+            if (glm::dot(v, n) < 0.0f) v = groundedMode ? tangent(n) * (v.x / n.y) : v - glm::dot(v, n) * n;
             return;
         }
         if (n.y >= 0.0f && v.x * n.x < 0.0f) v.x = 0.0f; // steep or wall: input only moves away from it

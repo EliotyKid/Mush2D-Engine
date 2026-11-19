@@ -73,7 +73,8 @@ ISceneDefinition::BuildResult TestScene::build(
             .colliderSize = {0.8f, 0.8f},
             .layer = 1,
             .orderInLayer = 0,
-            .initialScale = {0.8f, 0.8f}
+            .initialScale = {0.8f, 0.8f},
+            .gravity = 0.0f // top-down
         }
     );
     slimeA.name = "TestSlimeA";
@@ -88,7 +89,8 @@ ISceneDefinition::BuildResult TestScene::build(
             .colliderSize = {0.9f, 0.9f},
             .layer = 1,
             .orderInLayer = 1,
-            .initialScale = {0.9f, 0.9f}
+            .initialScale = {0.9f, 0.9f},
+            .gravity = 0.0f // top-down
         }
     );
     slimeB.name = "TestSlimeB";

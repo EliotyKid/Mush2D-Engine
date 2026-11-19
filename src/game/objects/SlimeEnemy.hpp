@@ -5,9 +5,12 @@
 #include "game/assets/GameSpriteId.hpp"
 #include "game/objects/Tracked.hpp"
 
+#include "engine/world/CharacterController.hpp"
+#include "engine/world/Collision.hpp"
 #include "engine/world/GameObject.hpp"
 #include "engine/world/Scene2D.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 
@@ -24,6 +27,8 @@ public:
 
         glm::vec2 initialScale{0.8f, 0.8f};
         WorldState* worldState = nullptr; // records the kill (PersistentComponent) when set
+        float gravity = -32.0f; // 0 in top-down scenes
+        float maxFallSpeed = -18.0f;
     };
 
 public:
@@ -60,7 +65,6 @@ public:
 
         moveSpeed = config.moveSpeed;
         patrolDistance = config.patrolDistance;
-        spawnPosition = transform.position;
 
         currentAnimation = GameAnimationId::SlimeIdle;
         currentFrameIndex = 0;
@@ -71,7 +75,30 @@ public:
     }
 
     void onStep(Scene2D& scene, float dt) override {
-        transform.position.x += direction * moveSpeed * dt;
+        // The patrol centre: spawners place the slime after onCreate, so take it at the first step.
+        if (!patrolAnchored) { spawnPosition = transform.position; patrolAnchored = true; }
+        // Walks with the controller, ignoring the player (contact is a trigger, plus the stomp).
+        body.position = transform.position + collider->offset;
+        body.halfSize = collider->size * 0.5f;
+        velocity.x = direction * moveSpeed;
+        velocity.y = std::max(velocity.y + config.gravity * dt, config.maxFallSpeed);
+        const float reach = glm::length(velocity) * dt + 1.0f;
+        const Collision2D::AABB area{body.position - body.halfSize - reach, body.position + body.halfSize + reach};
+        const CollisionQuery query{&scene.collision, Collision2D::solidBoxes(scene, id, area, "player")};
+        const MoveResult r = move(body, velocity, dt, query, grounded, false);
+        transform.position = r.position - collider->offset;
+        velocity = r.velocity;
+        grounded = r.grounded;
+
+        // Turn at a wall or a steep surface (they stop v.x) or at a ledge: a copy of the body walked one body
+        // width ahead, 0.1 u at a time, loses the ground (the controller snaps it down slopes up to 0.3 u).
+        bool turn = moveSpeed != 0.0f && r.velocity.x * float(direction) <= 0.0f;
+        if (grounded && moveSpeed != 0.0f && !turn) {
+            Body ahead = body;
+            for (float walked = 0.0f; walked < 2.0f * body.halfSize.x + 0.05f && !turn; walked += 0.1f)
+                turn = !move(ahead, {float(direction) * 0.1f, 0.0f}, 1.0f, query, true, false).grounded;
+        }
+        if (turn) direction = -direction;
 
         if (transform.position.x > spawnPosition.x + patrolDistance) {
             direction = -1;
@@ -102,7 +129,11 @@ private:
     float moveSpeed = 1.0f;
     float patrolDistance = 2.0f;
     glm::vec2 spawnPosition{0.0f, 0.0f};
+    bool patrolAnchored = false;
     int direction = 1;
+    glm::vec2 velocity{0.0f};
+    bool grounded = false;
+    Body body;
 
     GameAnimationId currentAnimation = GameAnimationId::SlimeIdle;
     std::size_t currentFrameIndex = 0;

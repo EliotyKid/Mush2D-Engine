@@ -33,6 +33,11 @@ struct CollisionQuery {
 // end it snaps down to ground up to 0.3 u below. One-way segments collide only from above.
 MoveResult move(Body& body, glm::vec2 velocity, float dt, const CollisionQuery& query, bool wasGrounded,
                 bool jumpedThisFrame);
+// The caller's horizontal velocity for the next frame: input, except while sliding on a steep surface,
+// where the slide keeps last frame's v.x (frame-rate independent) unless input points away from it.
+inline float nextVelocityX(const MoveResult& last, float inputVx) {
+    return last.onSteep && inputVx * last.groundNormal.x <= 0.0f ? last.velocity.x : inputVx;
+}
 // Down + jump: ignore the one-way segment stood on for 0.25 s or until the body's base passes below
 // it. False (do a normal jump instead) unless the body stands only on one-way ground.
 bool requestDropThrough(Body& body, const MoveResult& last);

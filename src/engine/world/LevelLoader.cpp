@@ -17,6 +17,7 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
     std::vector<StaticSprite>& sprites = rooms_[level.iid];
     sprites.clear(); // reload must not duplicate
     SpawnRoom spawnRoom{services.scene, level.iid};
+    std::vector<Segment> segments;
 
     for (int li = 0; li < n; ++li) {
         const LdtkLayer& L = level.layers[li];
@@ -52,21 +53,20 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
         }
 
         if (L.identifier == "Collision" && L.type == "IntGrid") {
-            for (const IntRect& r : mergeIntGrid(L.intGrid, L.cells.x, L.cells.y, 1)) {
-                GameObject& o = services.scene.createObject<GameObject>();
-                o.name = "Collision";
-                o.addTag("solid");
-                const float g = float(L.gridSize);
-                o.transform.position = toWorld({(r.x + r.w * 0.5f) * g, (r.y + r.h * 0.5f) * g});
-                ColliderData c;
-                c.size = {r.w * g / U, r.h * g / U};
-                o.collider = c;
-            }
+            std::vector<Segment> s = segmentsFromIntGrid(L, level.worldPx, level.pxSize, level.iid);
+            segments.insert(segments.end(), s.begin(), s.end());
+        }
+        for (const LdtkEntity& e : L.entities) {
+            if (e.identifier != "Terrain") continue;
+            std::vector<Segment> s = segmentsFromTerrain(e, level.worldPx, L.gridSize, level.iid);
+            segments.insert(segments.end(), s.begin(), s.end());
         }
     }
+    services.scene.collision.addRoom(level.iid, std::move(segments));
 }
 
 void LevelLoader::spawnEntity(const LdtkLevel& level, const LdtkEntity& e, EngineServices& services) {
+    if (e.identifier == "Terrain") return; // collision only, built by loadRoom
     auto f = factories_.find(e.identifier);
     if (f == factories_.end()) {
         std::fprintf(stderr, "LDtk: no factory for entity '%s', ignored\n", e.identifier.c_str());
@@ -81,6 +81,7 @@ void LevelLoader::spawnEntity(const LdtkLevel& level, const LdtkEntity& e, Engin
 
 void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {
     rooms_.erase(roomIid);
+    scene.collision.removeRoom(roomIid);
     scene.flush(); // forEach only visits flushed objects
     scene.forEach([&](GameObject& o) {
         if (o.roomIid == roomIid && !o.persistent) scene.destroy(o.id);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CollisionWorld.hpp"
 #include "EventBus.hpp"
 #include "GameObject.hpp"
 #include "SpatialGrid.hpp"
@@ -22,6 +23,8 @@ class Scene2D {
 public:
     void* userData = nullptr; // opaque, owned by the game
     std::string spawnRoomIid; // stamped as roomIid on every object created while set (LevelLoader::loadRoom)
+    // Static level collision (segments per room; LevelLoader adds and removes rooms). Emptied by clear().
+    CollisionWorld collision;
 
 public:
     // The object resolves with find() at once and gets onCreate now; it joins the update list at the next flush.

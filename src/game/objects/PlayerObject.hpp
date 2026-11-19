@@ -6,6 +6,7 @@
 #include "game/objects/PivotSprite.hpp"
 #include "game/objects/SlimeEnemy.hpp"
 
+#include "engine/world/CharacterController.hpp"
 #include "engine/world/Collision.hpp"
 #include "engine/world/GameObject.hpp"
 #include "engine/world/Scene2D.hpp"
@@ -215,6 +216,8 @@ private:
     bool jumpWasHeld = false;
     bool grounded = false;
     bool interact = false;
+    Body body;           // platformer: the controller's body (drop-through state lives here)
+    MoveResult lastMove; // platformer: last controller result (steep slide, one-way ground)
 
     glm::vec2 checkpointPosition{0.0f, 0.0f};
 
@@ -233,28 +236,9 @@ private:
         return platformer() ? GameAnimationId::KaaIdle : GameAnimationId::PlayerIdle;
     }
 
-    // Moves along one axis up to `delta`, stopping at contact (bisection). Returns true when blocked.
-    bool moveAxis(Scene2D& scene, int axis, float delta) {
-        glm::vec2 target = transform.position;
-        target[axis] += delta;
-        if (!Collision2D::collidesAtPosition(scene, id, target)) {
-            transform.position = target;
-            return false;
-        }
-        float lo = 0.0f, hi = 1.0f; // lo = free fraction, hi = blocked fraction
-        for (int i = 0; i < 10; ++i) {
-            float mid = 0.5f * (lo + hi);
-            glm::vec2 p = transform.position;
-            p[axis] += delta * mid;
-            (Collision2D::collidesAtPosition(scene, id, p) ? hi : lo) = mid;
-        }
-        transform.position[axis] += delta * lo;
-        return true;
-    }
-
     // Landed while falling: a slime right below whose centre is under the player's feet dies, and the player
-    // bounces (spec decision 1: stomp).
-    void stompBelow(Scene2D& scene) {
+    // bounces (spec decision 1: stomp). Returns true when it bounced.
+    bool stompBelow(Scene2D& scene) {
         Collision2D::AABB probe = Collision2D::buildAABB(*this);
         const float feet = probe.min.y;
         probe.min.y -= 0.05f;
@@ -269,15 +253,22 @@ private:
             stomped = true;
         }
         if (stomped) velocity.y = config.jumpSpeed * 0.6f;
+        return stomped;
     }
 
+    // The old stepPlatformer feel (input, jump, jump cut, gravity) driving the CharacterController.
     void stepPlatformer(Scene2D& scene, float dt) {
-        grounded = Collision2D::collidesAtPosition(scene, id, transform.position + glm::vec2(0.0f, -0.02f));
+        body.position = transform.position + collider->offset;
+        body.halfSize = collider->size * 0.5f;
 
-        velocity.x = inputDir.x * config.moveSpeed;
+        velocity.x = nextVelocityX(lastMove, inputDir.x * config.moveSpeed);
+        bool jumped = false;
         if (jumpRequested && grounded) {
-            velocity.y = config.jumpSpeed;
-            grounded = false;
+            // Down + jump on a one-way platform drops through it; anywhere else it is a normal jump.
+            if (!(inputDir.y < 0.0f && requestDropThrough(body, lastMove))) {
+                velocity.y = config.jumpSpeed;
+                jumped = true;
+            }
         }
         jumpRequested = false;
         if (jumpWasHeld && !jumpHeld && velocity.y > 0.0f) {
@@ -286,12 +277,14 @@ private:
         jumpWasHeld = jumpHeld;
         velocity.y = std::max(velocity.y + config.gravity * dt, config.maxFallSpeed);
 
-        if (moveAxis(scene, 0, velocity.x * dt)) velocity.x = 0.0f;
-        if (moveAxis(scene, 1, velocity.y * dt)) {
-            const bool falling = velocity.y < 0.0f;
-            velocity.y = 0.0f;
-            if (falling) stompBelow(scene);
-        }
+        const float reach = glm::length(velocity) * dt + 1.0f;
+        const Collision2D::AABB area{body.position - body.halfSize - reach, body.position + body.halfSize + reach};
+        const CollisionQuery query{&scene.collision, Collision2D::solidBoxes(scene, id, area)};
+        lastMove = move(body, velocity, dt, query, grounded, jumped);
+        transform.position = lastMove.position - collider->offset;
+        velocity = lastMove.velocity;
+        grounded = lastMove.grounded;
+        if (grounded && stompBelow(scene)) grounded = false; // the bounce leaves the ground
 
         if (inputDir.x != 0.0f) {
             facingDir = {inputDir.x > 0.0f ? 1.0f : -1.0f, 0.0f};

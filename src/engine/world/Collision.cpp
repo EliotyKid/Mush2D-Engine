@@ -1,5 +1,28 @@
 #include "Collision.hpp"
 
+#include <algorithm>
+
+namespace {
+// Segment ab passes through the open interior of the box (Liang-Barsky); lying on its edge does not count.
+bool segmentCrossesBox(glm::vec2 a, glm::vec2 b, const Collision2D::AABB& box) {
+    constexpr float eps = 1e-5f;
+    const glm::vec2 d = b - a;
+    float t0 = 0.0f, t1 = 1.0f;
+    for (int axis = 0; axis < 2; ++axis) {
+        const float lo = box.min[axis] + eps - a[axis], hi = box.max[axis] - eps - a[axis];
+        if (d[axis] == 0.0f) {
+            if (lo >= 0.0f || hi <= 0.0f) return false;
+            continue;
+        }
+        float ta = lo / d[axis], tb = hi / d[axis];
+        if (ta > tb) std::swap(ta, tb);
+        t0 = std::max(t0, ta);
+        t1 = std::min(t1, tb);
+    }
+    return t0 < t1;
+}
+}
+
 namespace Collision2D {
 
 bool hasCollider(const GameObject& object) {
@@ -73,22 +96,41 @@ bool collidesAtPosition(
     movingBox.min = movingCenter - movingHalfSize;
     movingBox.max = movingCenter + movingHalfSize;
 
-    // shortcut: other objects' grid boxes can be one step stale, so the query box is inflated by this margin
-    // and each candidate is re-tested against its live box. An object that moved more than the margin in one
-    // step can be missed; raise the margin (or sync the grid on move) if something gets that fast.
-    constexpr float kStaleMargin = 1.0f;
-    AABB wide{movingBox.min - kStaleMargin, movingBox.max + kStaleMargin};
-
-    for (GameObjectId id : queryAABB(scene, wide, QueryKind::Solid)) {
-        const GameObject* other = scene.find(id);
-        if (id == movingObjectId || !other->active || !hasCollider(*other) || other->collider->isTrigger) {
-            continue;
-        }
-        if (intersects(movingBox, buildAABB(*other))) {
+    if (!solidBoxes(scene, movingObjectId, movingBox).empty()) {
+        return true;
+    }
+    // shortcut: only segments crossing the box count, so a box wholly inside level geometry reads as free;
+    // fine for the step-wise movers left (top-down), add a point-in-solid test if something can teleport in.
+    std::vector<const Segment*> segments;
+    scene.collision.query(movingBox, segments);
+    for (const Segment* s : segments) {
+        if (!s->oneWay && segmentCrossesBox(s->a, s->b, movingBox)) {
             return true;
         }
     }
     return false;
+}
+
+std::vector<AABB> solidBoxes(const Scene2D& scene, GameObjectId self, const AABB& area, const char* skipTag) {
+    // shortcut: other objects' grid boxes can be one step stale, so the query box is inflated by this margin
+    // and each candidate is re-tested against its live box. An object that moved more than the margin in one
+    // step can be missed; raise the margin (or sync the grid on move) if something gets that fast.
+    constexpr float kStaleMargin = 1.0f;
+    AABB wide{area.min - kStaleMargin, area.max + kStaleMargin};
+
+    std::vector<AABB> out;
+    for (GameObjectId id : queryAABB(scene, wide, QueryKind::Solid)) {
+        const GameObject* other = scene.find(id);
+        if (id == self || !other->active || !hasCollider(*other) || other->collider->isTrigger ||
+            (skipTag && other->hasTag(skipTag))) {
+            continue;
+        }
+        const AABB box = buildAABB(*other);
+        if (intersects(area, box)) {
+            out.push_back(box);
+        }
+    }
+    return out;
 }
 
 }
