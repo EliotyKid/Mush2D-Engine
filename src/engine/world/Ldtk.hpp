@@ -31,11 +31,20 @@ struct LdtkLayer {
     std::vector<int> intGrid; std::vector<LdtkTile> tiles; std::vector<LdtkEntity> entities;
 };
 struct LdtkLevel {
-    std::string identifier; glm::ivec2 pxSize{0, 0};
+    std::string identifier, iid; glm::ivec2 pxSize{0, 0};
+    glm::ivec2 worldPx{0, 0};      // LDtk worldX/worldY, pixels, Y down
+    std::string region = "forest"; // level field "region"; "forest" when absent
     std::filesystem::path baseDir; // directory of the .ldtk file
     std::vector<LdtkLayer> layers; // front -> back, as in LDtk
 };
 
+struct LdtkProject { std::filesystem::path baseDir; std::vector<LdtkLevel> levels; };
+// Parses every level. Throws std::runtime_error on missing file or bad JSON.
+LdtkProject loadLdtkProject(const std::filesystem::path& ldtk);
+// World units (32 px) with one Y-up axis: ((worldX + px.x) / 32, -(worldY + px.y) / 32).
+glm::vec2 ldtkToWorld(glm::ivec2 levelWorldPx, glm::vec2 px);
+// Per level, indices (ascending) of levels whose rects touch or overlap within tolerancePx.
+std::vector<std::vector<int>> computeNeighbours(const std::vector<LdtkLevel>& levels, int tolerancePx = 1);
 // Throws std::runtime_error on missing file, bad JSON or unknown level.
 LdtkLevel loadLdtkLevel(const std::filesystem::path& ldtk, const std::string& levelIdentifier);
 // Identifier suffix "_d<number>" wins; else index-based: layers behind the gameplay layer get positive (far) depth.

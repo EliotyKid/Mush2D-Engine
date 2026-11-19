@@ -56,7 +56,22 @@ std::string str(const json& j, const char* k) {
 glm::ivec2 pair2i(const json& a) { return {a[0].get<int>(), a[1].get<int>()}; }
 }
 
-LdtkLevel loadLdtkLevel(const std::filesystem::path& file, const std::string& levelId) {
+glm::vec2 ldtkToWorld(glm::ivec2 o, glm::vec2 px) { return {(o.x + px.x) / 32.0f, -(o.y + px.y) / 32.0f}; }
+
+std::vector<std::vector<int>> computeNeighbours(const std::vector<LdtkLevel>& lv, int tol) {
+    std::vector<std::vector<int>> out(lv.size());
+    for (size_t i = 0; i < lv.size(); ++i)
+        for (size_t j = 0; j < lv.size(); ++j) {
+            if (i == j) continue;
+            const LdtkLevel &a = lv[i], &b = lv[j];
+            if (b.worldPx.x <= a.worldPx.x + a.pxSize.x + tol && a.worldPx.x <= b.worldPx.x + b.pxSize.x + tol &&
+                b.worldPx.y <= a.worldPx.y + a.pxSize.y + tol && a.worldPx.y <= b.worldPx.y + b.pxSize.y + tol)
+                out[i].push_back(int(j));
+        }
+    return out;
+}
+
+LdtkProject loadLdtkProject(const std::filesystem::path& file) {
     std::ifstream in(file);
     if (!in) throw std::runtime_error("LDtk: cannot open " + file.string());
     json root = json::parse(in, nullptr, false);
@@ -71,12 +86,19 @@ LdtkLevel loadLdtkLevel(const std::filesystem::path& file, const std::string& le
             tilesetSize[t.value("uid", -1)] = {t.value("pxWid", 0), t.value("pxHei", 0)};
     }
 
+    LdtkProject proj;
+    proj.baseDir = file.parent_path();
     for (auto& lv : root.value("levels", json::array())) {
-        if (str(lv, "identifier") != levelId) continue;
         LdtkLevel out;
-        out.identifier = levelId;
+        out.identifier = str(lv, "identifier");
+        out.iid = str(lv, "iid");
         out.pxSize = {lv.value("pxWid", 0), lv.value("pxHei", 0)};
-        out.baseDir = file.parent_path();
+        out.worldPx = {lv.value("worldX", 0), lv.value("worldY", 0)};
+        out.baseDir = proj.baseDir;
+        for (auto& f : lv.value("fieldInstances", json::array()))
+            if (str(f, "__identifier") == "region" && f.contains("__value") && f["__value"].is_string() &&
+                !f["__value"].get<std::string>().empty())
+                out.region = f["__value"].get<std::string>();
 
         for (auto& li : lv.value("layerInstances", json::array())) {
             LdtkLayer L;
@@ -133,7 +155,13 @@ LdtkLevel loadLdtkLevel(const std::filesystem::path& file, const std::string& le
             L.depth = parseLayerDepth(L.identifier, i, gameplay);
             for (LdtkEntity& e : L.entities) { e.depth = L.depth; e.parallax = {L.parallaxX, L.parallaxY}; }
         }
-        return out;
+        proj.levels.push_back(std::move(out));
     }
+    return proj;
+}
+
+LdtkLevel loadLdtkLevel(const std::filesystem::path& file, const std::string& levelId) {
+    for (LdtkLevel& l : loadLdtkProject(file).levels)
+        if (l.identifier == levelId) return std::move(l);
     throw std::runtime_error("LDtk: level not found: " + levelId);
 }

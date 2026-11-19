@@ -130,6 +130,32 @@ TEST(ldtk_tolerates_unknowns) {
     CHECK(lv.layers[0].entities[0].identifier == "Mystery");
 }
 
+TEST(ldtk_world_coordinates) {
+    // level at worldPx (512,-256): both corners, single Y-up axis
+    CHECK(ldtkToWorld({512, -256}, {0, 0}) == glm::vec2(16.0f, 8.0f));
+    CHECK(ldtkToWorld({512, -256}, {320, 160}) == glm::vec2(26.0f, 3.0f));
+    CHECK(ldtkToWorld({0, 0}, {64, 96}) == glm::vec2(2.0f, -3.0f));
+}
+TEST(ldtk_project_reads_all_levels) {
+    auto p = loadLdtkProject(MUSH2D_TEST_DATA "/world3.ldtk");
+    CHECK(p.levels.size() == 3);
+    CHECK(p.levels[2].identifier == "Room_C" && p.levels[2].iid == "iid-c");
+    CHECK(p.levels[2].worldPx == glm::ivec2(512, -256) && p.levels[2].pxSize == glm::ivec2(320, 160));
+    CHECK(p.levels[0].region == "forest" && p.levels[2].region == "cave");
+    CHECK(p.levels[1].region == "forest"); // missing field -> default
+    bool threw = false;
+    try { loadLdtkProject(MUSH2D_TEST_DATA "/bad.ldtk"); } catch (const std::exception&) { threw = true; }
+    CHECK(threw);
+}
+TEST(world_neighbours_by_touching_rects) {
+    auto room = [](int x, int y) { LdtkLevel l; l.worldPx = {x, y}; l.pxSize = {100, 100}; return l; };
+    // 0 anchor; 1 touches right edge; 2 overlaps 1; 3 is 2 px left of 0; 4 is 1 px below 0 (tolerance)
+    auto n = computeNeighbours({room(0, 0), room(100, 0), room(150, 50), room(-102, 0), room(0, 101)});
+    CHECK((n[0] == std::vector<int>{1, 4}));
+    CHECK((n[1] == std::vector<int>{0, 2, 4}));
+    CHECK((n[2] == std::vector<int>{1}));
+    CHECK(n[3].empty());
+}
 TEST(ldtk_malformed_throws) {
     bool threw = false;
     try { loadLdtkLevel(MUSH2D_TEST_DATA "/bad.ldtk", "Level_0"); } catch (const std::exception&) { threw = true; }
