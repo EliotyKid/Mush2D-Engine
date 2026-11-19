@@ -38,6 +38,7 @@ layout(std140, set = 1, binding = 0) uniform FrameUniforms {
     vec3 lift; float bloomIntensity;
     vec3 gamma; float saturation;
     vec3 gain; float temperature;
+    float fade;          // 1 = visible, 0 = black
 } u;
 
 layout(std430, set = 1, binding = 1) readonly buffer Instances { SpriteInstance instances[]; };

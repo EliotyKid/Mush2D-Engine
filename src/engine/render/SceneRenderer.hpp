@@ -33,6 +33,7 @@ struct FrameSettings {
     glm::vec3 lift{0}, gamma{1}, gain{1}; float saturation = 1, temperature = 0;
     int pixelMode = 1; /* PixelMode: smooth by default */ bool pixelateLight = false; int pixelateFactor = 2;
     bool lightHalfRes = false;
+    float fade = 1.0f; // final colour factor: 1 = visible, 0 = black (death fade; not part of a look)
 };
 
 class LightList {

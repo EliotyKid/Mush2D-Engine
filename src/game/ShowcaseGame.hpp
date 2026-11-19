@@ -55,6 +55,7 @@ private:
     SceneId currentSceneId = SceneId::Showcase;
     bool nextScenePressed = false;
     bool reloadScenePressed = false;
+    bool killPressed = false;
 
     SceneTransitionData currentSceneTransitionData{};
 
@@ -71,6 +72,8 @@ private:
     void submitShowcaseExtras(EngineServices& s);
     Region& region(const std::string& name);
     std::string roomRegion(const std::string& roomIid) const;
+    glm::vec2 respawnPoint() const;
+    void killPlayer(EngineServices& s, GameObjectId playerId); // death behind the fade (debug K)
     void updateRegion(EngineServices& s, float dt);
     void applyNewLayerOverrides();
     void saveRegions();

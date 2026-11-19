@@ -163,7 +163,7 @@ def build_collision():
 
 def ground_tile(g, x, y):
     """grass.png tile (col, row) for solid cell (x, y). Out of bounds counts as solid."""
-    s = lambda xx, yy: not (0 <= xx < CW and 0 <= yy < CH) or g[yy][xx] == 1
+    s = lambda xx, yy: not (0 <= xx < len(g[0]) and 0 <= yy < len(g)) or g[yy][xx] == 1  # any room size
     n, so, w, e = s(x, y - 1), s(x, y + 1), s(x - 1, y), s(x + 1, y)
     if not n:
         return (1, 0) if not w else (3, 0) if not e else (2, 0)

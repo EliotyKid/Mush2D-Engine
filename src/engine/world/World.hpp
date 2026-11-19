@@ -41,6 +41,16 @@ public:
     // spawnPos is outside view = (minX, minY, maxX, maxY).
     void checkRespawns(glm::vec2 playerPos, glm::vec4 view, double time);
 
+    static constexpr float FadeSeconds = 0.2f; // each way: dark, die, light (spec decision 7)
+    // Death: puts the current room's state back as it was on entry (the snapshot loadAround takes; values
+    // "activated" are kept, so a checkpoint stays the respawn point), reloads that room, synchronously streams
+    // around respawnPoint and calls teleportPlayer(respawnPoint).
+    void onPlayerDeath(glm::vec2 respawnPoint, std::function<void(glm::vec2)> teleportPlayer);
+    // Death behind a fade: stepFade darkens over FadeSeconds, runs onPlayerDeath at black and lightens again.
+    // Ignored while a death is fading.
+    void killPlayer(glm::vec2 respawnPoint, std::function<void(glm::vec2)> teleportPlayer);
+    float stepFade(float dt); // advances the death fade; returns FrameSettings::fade (1 = visible)
+
     int currentRoom() const { return current_; }
     const std::vector<int>& loadedRooms() const { return loaded_; } // ascending
     // First room containing pos (edges inclusive), or -1.
@@ -62,6 +72,11 @@ private:
     std::vector<std::vector<int>> neighbours_;
     std::vector<int> loaded_;
     std::map<std::string, Tracked> tracked_; // by iid; entity points into project_
+    std::vector<std::vector<std::string>> roomIids_; // per room, every entity iid (the snapshot's scope)
+    std::map<std::string, EntityState> snapshot_;    // the current room's entries on entry
+    float deathTime_ = -1.0f;                        // < 0: no death fading
+    glm::vec2 deathPoint_{0.0f};
+    std::function<void(glm::vec2)> deathTeleport_;
     double nextRespawnCheck_ = 0.0;
     int current_ = -1;
     LevelLoader* loader_ = nullptr;

@@ -14,6 +14,7 @@
 #include "engine/world/WorldState.hpp"
 #include "engine/graphics/Camera2D.hpp"
 #include "engine/world/PersistentComponent.hpp"
+#include "game/objects/CheckpointObject.hpp"
 #include "game/objects/DoorObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
@@ -365,7 +366,9 @@ TEST(respawn_waits_until_offscreen) {
     const glm::vec4 showsSpawn{0.0f, -10.0f, 20.0f, 0.0f};
     for (double t = 1.0; t < 4.0; t += 0.5) w.checkRespawns(far, showsSpawn, t);
     CHECK(c.n["s1"] == 1 && w.state.isGone("s1"));
-    w.checkRespawns(far, {5.0f, -10.0f, 25.0f, 0.0f}, 4.0); // camera moved right: spawn point off screen
+    w.checkRespawns(far, {2.0f, -10.0f, 22.0f, 0.0f}, 4.0); // 0.5 outside the view: inside the 1-unit margin
+    CHECK(c.n["s1"] == 1);
+    w.checkRespawns(far, {5.0f, -10.0f, 25.0f, 0.0f}, 4.5); // camera moved right: spawn point off screen
     CHECK(c.n["s1"] == 2);
 }
 
@@ -459,6 +462,78 @@ TEST(reload_keeps_world_state) {
     w.state.restore({"s1", "d1", "x"}, snap);
     CHECK(w.state.isGone("s1") && w.state.get("d1", "open", 0.0) == 1.0);
     CHECK(w.state.find("x") == nullptr && w.state.get("other", "open", 0.0) == 1.0);
+}
+
+TEST(death_restores_room_snapshot) {
+    // Room 0: permanent slime, door, checkpoint. Room 1: a door of its own.
+    LdtkProject p = roomsWith({entity("Slime", "s1", {32, 288}, {{"respawn", false}}),
+                               entity("Door", "d1", {96, 288}, nlohmann::json::object()),
+                               entity("Checkpoint", "c1", {160, 288}, nlohmann::json::object())});
+    p.levels[1].layers.push_back(LdtkLayer{});
+    p.levels[1].layers[0].entities = {entity("Door", "d2", {32, 288}, nlohmann::json::object())};
+    World w; SpawnCount c; c.hook(w);
+    std::vector<int> unloads;
+    w.onUnload = [&](int room) { unloads.push_back(room); };
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    w.update({11.0f, -5.0f}); // start in room 1
+    w.state.set("d1", "open", 1.0); // opened from afar before entering room 0
+    w.state.set("d2", "open", 1.0);
+    w.update({1.0f, -5.0f}); // enter room 0: snapshot
+    CHECK(w.currentRoom() == 0);
+    w.state.markGone("s1", SpawnAt, 2.0);
+    w.state.set("d1", "open", 0.0);
+    w.state.set("c1", "activated", 3.0);
+    w.state.set("d2", "open", 0.0); // another room's state, changed while in room 0
+
+    glm::vec2 teleported{-1.0f};
+    unloads.clear(); // room 2 left when room 0 became current
+    w.onPlayerDeath({5.0f, -9.0f},[&](glm::vec2 at) { teleported = at; });
+    CHECK(!w.state.isGone("s1") && w.state.get("d1", "open", 0.0) == 1.0); // room 0 as it was on entry
+    CHECK(w.state.get("c1", "activated", -1.0) == 3.0);                   // checkpoints are never rolled back
+    CHECK(w.state.get("d2", "open", 1.0) == 0.0);                          // other rooms keep their state
+    CHECK((unloads == std::vector<int>{0}) && c.n["s1"] == 2 && c.n["d1"] == 2); // room 0 reloaded
+    CHECK(teleported == glm::vec2(5.0f, -9.0f) && w.currentRoom() == 0);
+}
+
+TEST(teleport_streams_target_synchronously) {
+    LdtkProject p = roomsInRow({320, 320, 320, 320, 320}); // x 0..50
+    World w; StreamLog log; hookWorld(w, log);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    w.update({1.0f, -5.0f});
+    glm::vec2 teleported{-1.0f};
+    w.onPlayerDeath({45.0f, -5.0f}, [&](glm::vec2 at) { teleported = at; });
+    const std::vector<int>& L = w.loadedRooms();
+    CHECK(w.currentRoom() == 4 && teleported == glm::vec2(45.0f, -5.0f));
+    CHECK(std::count(L.begin(), L.end(), 3) == 1 && std::count(L.begin(), L.end(), 4) == 1);
+    CHECK(std::count(L.begin(), L.end(), 0) == 0); // the far death room is not reloaded
+    w.update({45.0f, -5.0f});
+    CHECK((w.loadedRooms() == std::vector<int>{3, 4}));
+
+    // killPlayer: fades out over FadeSeconds, dies at black, fades back in.
+    teleported = glm::vec2(-1.0f);
+    w.killPlayer({1.0f, -5.0f}, [&](glm::vec2 at) { teleported = at; });
+    const float h = World::FadeSeconds * 0.5f;
+    CHECK(std::abs(w.stepFade(h) - 0.5f) < 1e-4f && teleported.x < 0.0f);
+    w.killPlayer({45.0f, -5.0f}, [&](glm::vec2 at) { teleported = at; }); // ignored while dying
+    CHECK(w.stepFade(h) < 1e-4f && teleported == glm::vec2(1.0f, -5.0f) && w.currentRoom() == 0);
+    CHECK(std::abs(w.stepFade(h) - 0.5f) < 1e-4f);
+    CHECK(w.stepFade(h) == 1.0f && w.stepFade(h) == 1.0f);
+}
+
+TEST(checkpoint_records_activation_time_only_with_iid) {
+    Scene2D scene;
+    WorldState state;
+    state.clock = 7.0;
+    PlayerObject& player = scene.createObject<PlayerObject>(PlayerObject::Config{});
+    CheckpointObject::Config cc;
+    cc.worldState = &state;
+    scene.createObject<CheckpointObject>(cc).onTriggerEnter(scene, player); // no iid
+    CHECK(state.find("") == nullptr);
+    cc.iid = "c1";
+    scene.createObject<CheckpointObject>(cc).onTriggerEnter(scene, player);
+    CHECK(state.get("c1", "activated", -1.0) == 7.0); // activation time: the latest one is the respawn point
 }
 
 TEST(slime_stomp_kills_and_bounces) {

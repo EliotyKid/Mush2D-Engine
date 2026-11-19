@@ -91,6 +91,7 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
         std::erase_if(lightEdits, [&](const EditableLight& l) { return unloaded(l.roomIid); });
         std::erase_if(crystals, [&](const Crystal& c) { return unloaded(c.roomIid); });
         updateRegion(s, deltaTime);
+        s.renderer.settings().fade = world.stepFade(deltaTime); // after updateRegion, which rewrites settings
     }
 
     submitRenderData(s);
@@ -275,6 +276,17 @@ void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
         }
     }
 
+#ifndef NDEBUG
+    // Debug K = die (the showcase has no damage yet): the room goes back to its entry state, respawn at the
+    // latest activated checkpoint.
+    if (input.isKeyDown(GLFW_KEY_K)) {
+        if (!killPressed && player && currentSceneId == SceneId::Showcase) killPlayer(s, player->id);
+        killPressed = true;
+    } else {
+        killPressed = false;
+    }
+#endif
+
     if (state.scrollDeltaY != 0.0) {
         camera.size -= static_cast<float>(state.scrollDeltaY) * mouseZoomSensitivity * camera.size;
     }
@@ -455,6 +467,8 @@ void ShowcaseGame::registerLevelEntities() {
     // A light's values come from its room's region file when it overrides that iid, else from LDtk.
     levelLoader.registerEntity("Light", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         const std::string& room = s.scene.spawnRoomIid;
+        // Death reloads its room within one frame: the light is still listed (keep it and its live edits).
+        if (std::any_of(lightEdits.begin(), lightEdits.end(), [&](const EditableLight& l) { return l.iid == e.iid; })) return;
         glm::vec3 color = colorField(e, "color", glm::vec3(1.0f, 0.76f, 0.48f));
         LightOverride value{color, numberField(e, "intensity", 2.0f), numberField(e, "radius", 6.0f),
                             numberField(e, "height", 1.5f), numberField(e, "depth", 0.0f), numberField(e, "flicker", 0.0f)};
@@ -464,6 +478,7 @@ void ShowcaseGame::registerLevelEntities() {
     });
 
     levelLoader.registerEntity("Crystal", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        if (std::any_of(crystals.begin(), crystals.end(), [&](const Crystal& c) { return c.iid == e.iid; })) return; // as Light
         int variant = static_cast<int>(numberField(e, "variant", 0.0f));
         crystals.push_back({e.iid, bottomOf(e, pos), std::clamp(variant, 0, 3), s.scene.spawnRoomIid});
     });
@@ -573,6 +588,34 @@ void ShowcaseGame::applyNewLayerOverrides() {
         if (auto it = overrides.find(l.identifier); it != overrides.end())
             levelLoader.setLayer(l.region, l.identifier, it->second.parallax, it->second.depth);
     }
+}
+
+void ShowcaseGame::killPlayer(EngineServices& s, GameObjectId id) {
+    world.killPlayer(respawnPoint(), [&scene = s.scene, &camera = s.camera, id](glm::vec2 at) {
+        if (auto* p = scene.findObjectAs<PlayerObject>(id)) {
+            p->transform.position = at;
+            p->velocity = {0.0f, 0.0f};
+            camera.position = at + camera.followOffset;
+        }
+    });
+}
+
+// Where the player stands after dying: the latest activated Checkpoint ("activated" = activation time), else
+// PlayerStart. Same placement as the PlayerStart factory: feet on the entity's base.
+glm::vec2 ShowcaseGame::respawnPoint() const {
+    const LdtkLevel* bestLevel = nullptr;
+    const LdtkEntity* best = nullptr;
+    double bestTime = -1.0;
+    for (const LdtkLevel& l : world.project().levels)
+        for (const LdtkLayer& L : l.layers)
+            for (const LdtkEntity& e : L.entities) {
+                const double t = e.identifier == "Checkpoint" ? world.state.get(e.iid, "activated", -1.0)
+                               : e.identifier == "PlayerStart" ? -0.5 : -1.0; // PlayerStart only beats nothing
+                if (t > bestTime) { bestTime = t; best = &e; bestLevel = &l; }
+            }
+    if (!best) return glm::vec2(0.0f);
+    const glm::vec2 centre = ldtkToWorld(bestLevel->worldPx, best->px + best->size * 0.5f);
+    return bottomOf(*best, centre) + glm::vec2(0.0f, 0.8f); // player collider is 1.6 tall
 }
 
 std::string ShowcaseGame::roomRegion(const std::string& roomIid) const {

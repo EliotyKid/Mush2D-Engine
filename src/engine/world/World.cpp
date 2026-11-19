@@ -3,6 +3,11 @@
 #include "engine/world/LevelLoader.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <utility>
 
 void World::open(const LdtkProject& project, LevelLoader& loader, EngineServices* services) {
     project_ = project;
@@ -13,9 +18,13 @@ void World::open(const LdtkProject& project, LevelLoader& loader, EngineServices
     services_ = services;
     nextRespawnCheck_ = 0.0;
     tracked_.clear();
+    roomIids_.assign(project_.levels.size(), {});
+    snapshot_.clear();
+    deathTime_ = -1.0f;
     for (int r = 0; r < int(project_.levels.size()); ++r)
         for (const LdtkLayer& L : project_.levels[r].layers)
             for (const LdtkEntity& e : L.entities) {
+                if (!e.iid.empty()) roomIids_[r].push_back(e.iid);
                 const Persistence p = parsePersistence(e);
                 if (p != Persistence::None && !e.iid.empty()) tracked_[e.iid] = {r, &e, p, parseRespawnDistance(e)};
             }
@@ -29,11 +38,48 @@ void World::checkRespawns(glm::vec2 playerPos, glm::vec4 view, double time) {
         if (t.policy != Persistence::Respawn || !s || !s->gone) continue;
         if (!std::binary_search(loaded_.begin(), loaded_.end(), t.room)) continue;
         const glm::vec2 p = s->spawnPos;
-        const bool onScreen = p.x >= view.x && p.x <= view.z && p.y >= view.y && p.y <= view.w;
+        // 1-unit margin: a sprite centred just outside the view would still pop in half-visible.
+        const bool onScreen = p.x >= view.x - 1.0f && p.x <= view.z + 1.0f && p.y >= view.y - 1.0f && p.y <= view.w + 1.0f;
         if (onScreen || glm::distance(playerPos, p) <= t.respawnDistance) continue;
         state.clearGone(iid);
         spawn(t.room, *t.entity);
     }
+}
+
+void World::onPlayerDeath(glm::vec2 respawnPoint, std::function<void(glm::vec2)> teleportPlayer) {
+    if (current_ >= 0) {
+        const std::vector<std::string>& iids = roomIids_[current_];
+        std::map<std::string, double> activated; // checkpoints keep their activation (never rolled back)
+        for (const std::string& iid : iids)
+            if (const double a = state.get(iid, "activated", -1.0); a >= 0.0) activated[iid] = a;
+        state.restore(iids, snapshot_);
+        for (const auto& [iid, a] : activated) state.set(iid, "activated", a);
+        // Reloaded by loadAround below when it is near the respawn point; a far one stays unloaded.
+        if (std::find(loaded_.begin(), loaded_.end(), current_) != loaded_.end()) unload(current_);
+    }
+    const int target = roomAt(respawnPoint);
+    if (target >= 0) loadAround(target);
+    else if (current_ >= 0) loadAround(current_);
+    teleportPlayer(respawnPoint);
+}
+
+void World::killPlayer(glm::vec2 respawnPoint, std::function<void(glm::vec2)> teleportPlayer) {
+    if (deathTime_ >= 0.0f) return;
+    deathTime_ = 0.0f;
+    deathPoint_ = respawnPoint;
+    deathTeleport_ = std::move(teleportPlayer);
+}
+
+float World::stepFade(float dt) {
+    if (deathTime_ < 0.0f) return 1.0f;
+    const bool dies = deathTime_ < FadeSeconds && deathTime_ + dt >= FadeSeconds;
+    deathTime_ += dt;
+    if (dies) onPlayerDeath(deathPoint_, deathTeleport_);
+    if (deathTime_ >= 2.0f * FadeSeconds) {
+        deathTime_ = -1.0f;
+        return 1.0f;
+    }
+    return std::abs(deathTime_ - FadeSeconds) / FadeSeconds;
 }
 
 void World::spawn(int room, const LdtkEntity& e) {
@@ -90,12 +136,15 @@ void World::update(glm::vec2 focus) {
 
 void World::loadAround(int room) {
     current_ = room;
+    snapshot_ = state.snapshot(roomIids_[room]); // entering the room: death puts it back this way
     load(room);
     for (int n : neighbours_[room]) load(n);
 }
 
 void World::load(int room) {
     if (std::find(loaded_.begin(), loaded_.end(), room) != loaded_.end()) return;
+    static const bool perfLog = std::getenv("MUSH2D_PERF_LOG") != nullptr; // CPU cost of each room load
+    const auto start = std::chrono::steady_clock::now();
     // shortcut: a whole room is built in one frame; slice by entities per frame if a room passes ~2 ms.
     if (onLoad) onLoad(room);
     else loader_->loadRoom(project_.levels[room], *services_, services_->materials);
@@ -104,6 +153,9 @@ void World::load(int room) {
         for (const LdtkEntity& e : L.entities)
             if (!state.isGone(e.iid)) spawn(room, e);
     loaded_.insert(std::upper_bound(loaded_.begin(), loaded_.end(), room), room); // only once it loaded
+    if (perfLog)
+        std::cout << "room " << project_.levels[room].identifier << " load_ms="
+                  << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() << std::endl;
 }
 
 void World::unload(int room) {

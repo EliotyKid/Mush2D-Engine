@@ -30,7 +30,7 @@ Pendente no PC Arch (RTX 2060 Super): build debug sem erros de validação, e so
 
 ## Fase 1 — Mundo
 
-- [ ] Várias salas do LDtk, com transições entre elas e carregamento das salas vizinhas
+- [x] Várias salas do LDtk, com transições entre elas e carregamento das salas vizinhas — [design](superpowers/specs/2026-11-19-mundo-continuo-design.md)
 - [ ] Câmera dinâmica: zonas (limites, foco, zoom por área), look-ahead, suavização e shake
 - [ ] Múltiplas câmeras com troca e mistura (blend) entre elas
 - [ ] Checkpoints e save (posição, habilidades, mapa explorado)

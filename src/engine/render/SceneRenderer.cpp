@@ -35,6 +35,7 @@ struct FrameUniforms {
     glm::vec3 lift;  float bloomIntensity;
     glm::vec3 gamma; float saturation;
     glm::vec3 gain;  float temperature;
+    float fade; float pad0, pad1, pad2;
 };
 static_assert(offsetof(FrameUniforms, lightCount) == 96);
 static_assert(offsetof(FrameUniforms, ambientColor) == 112);
@@ -47,7 +48,8 @@ static_assert(offsetof(FrameUniforms, gamma) == 176);
 static_assert(offsetof(FrameUniforms, saturation) == 188);
 static_assert(offsetof(FrameUniforms, gain) == 192);
 static_assert(offsetof(FrameUniforms, temperature) == 204);
-static_assert(sizeof(FrameUniforms) == 208);
+static_assert(offsetof(FrameUniforms, fade) == 208);
+static_assert(sizeof(FrameUniforms) == 224);
 
 // Shared by every pipeline: firstInstance for sprites, t0..t3 = bindless indices / sampler choice.
 struct PushConstants {
@@ -337,6 +339,7 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     u.gain = settings_.gain;
     u.saturation = settings_.saturation;
     u.temperature = settings_.temperature;
+    u.fade = std::clamp(settings_.fade, 0.0f, 1.0f);
     std::memcpy(fr.uniforms.mapped, &u, sizeof(u));
     flush(gpu, fr.uniforms);
 

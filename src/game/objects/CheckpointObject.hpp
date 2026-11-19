@@ -22,7 +22,7 @@ public:
 
         glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
 
-        WorldState* worldState = nullptr; // when set, touching it records iid "activated" = 1
+        WorldState* worldState = nullptr; // when set (and iid is), touching it records iid "activated" = clock
         std::string iid;
     };
 
@@ -73,7 +73,9 @@ public:
             }
 
             player->setCheckpointPosition(player->transform.position);
-            if (config.worldState) config.worldState->set(config.iid, "activated", 1.0);
+            // Activation time: the latest activated checkpoint is the respawn point.
+            if (config.worldState && !config.iid.empty())
+                config.worldState->set(config.iid, "activated", config.worldState->clock);
 
             if (trigger->oneShot) {
                 trigger->consumed = true;

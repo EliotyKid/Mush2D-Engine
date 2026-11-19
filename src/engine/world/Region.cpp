@@ -107,6 +107,7 @@ FrameSettings lerpSettings(const FrameSettings& a, const FrameSettings& b, float
     s.bloomIntensity = f(a.bloomIntensity, b.bloomIntensity);
     s.lift = v(a.lift, b.lift); s.gamma = v(a.gamma, b.gamma); s.gain = v(a.gain, b.gain);
     s.saturation = f(a.saturation, b.saturation); s.temperature = f(a.temperature, b.temperature);
+    s.fade = f(a.fade, b.fade);
     return s;
 }
 
