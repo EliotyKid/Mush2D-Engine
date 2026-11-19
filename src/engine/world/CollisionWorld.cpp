@@ -79,11 +79,11 @@ std::vector<Segment> segmentsFromIntGrid(const LdtkLayer& L, glm::ivec2 levelWor
             if (v == 2) { add({2, 2}, {0, 2}, true); continue; }
             const glm::ivec2 p = profile(v);
             if (p.x < 0) continue;
-            if (at(cx, cy + 1) != 1) add({0, 0}, {2, 0});                         // bottom
+            if (at(cx, cy + 1) != 1 && cy + 1 < ch) add({0, 0}, {2, 0});          // bottom (not on the room border)
             const glm::ivec2 pr = profile(at(cx + 1, cy)), pl = profile(at(cx - 1, cy));
             if (p.y > std::max(pr.x, 0) && (cx + 1) * g < levelPxSize.x) add({2, std::max(pr.x, 0)}, {2, p.y}); // right
             if (p.x > std::max(pl.y, 0) && cx > 0) add({0, p.x}, {0, std::max(pl.y, 0)});                      // left
-            if (!(p.x == 2 && p.y == 2 && solid(cx, cy - 1))) add({2, p.y}, {0, p.x}); // top / diagonal
+            if (!(p.x == 2 && p.y == 2 && (cy == 0 || solid(cx, cy - 1)))) add({2, p.y}, {0, p.x}); // top / diagonal (not on the room border)
         }
 
     std::vector<Segment> out;

@@ -1,4 +1,7 @@
-"""One-off (continuous world, task 5): appends 2 test rooms to assets/levels/showcase.ldtk.
+"""ALREADY RUN - DO NOT RUN AGAIN. The file layout has since changed to LDtk's own format, so this script
+no longer matches assets/levels/showcase.ldtk and would corrupt it.
+
+One-off (continuous world, task 5): appends 2 test rooms to assets/levels/showcase.ldtk.
 
 - Forest2: right of Showcase, region forest. Cave1: up and to the right of Forest2, region cave; its floor
   continues Forest2's high right ledge, so the player walks from one into the other.

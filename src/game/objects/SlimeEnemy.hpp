@@ -88,7 +88,7 @@ public:
         const MoveResult r = move(body, velocity, dt, query, grounded, false);
         transform.position = r.position - collider->offset;
         velocity = r.velocity;
-        grounded = r.grounded;
+        grounded = config.gravity != 0.0f && r.grounded; // top-down slimes are never grounded
 
         // Turn at a wall or a steep surface (they stop v.x) or at a ledge: a copy of the body walked one body
         // width ahead, 0.1 u at a time, loses the ground (the controller snaps it down slopes up to 0.3 u).

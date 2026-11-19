@@ -138,11 +138,11 @@ MoveResult move(Body& body, glm::vec2 velocity, float dt, const CollisionQuery& 
     const float inputX = velocity.x;
     bool groundedMode = false;
     glm::vec2 v = velocity;
-    for (const Support& g : supports(cands, P, pos, kGroundTol, body)) // on a steep slope, input only pulls away
+    const auto sup = supports(cands, P, pos, kGroundTol, body);
+    for (const Support& g : sup) // on a steep slope, input only pulls away
         if (!walkable(g.c->s->normal) && v.x * g.c->s->normal.x < 0.0f) v.x = 0.0f;
     if (wasGrounded && !jumpedThisFrame) {
         const Support* pick = nullptr;
-        auto sup = supports(cands, P, pos, kGroundTol, body);
         auto score = [&](const Support& g) { // prefer the surface rising most ahead: it never runs into the others
             const glm::vec2 n = g.c->s->normal;
             return inputX != 0.0f ? -n.x / n.y * (inputX > 0.0f ? 1.0f : -1.0f) : n.y;
@@ -160,7 +160,8 @@ MoveResult move(Body& body, glm::vec2 velocity, float dt, const CollisionQuery& 
     auto clip = [&](glm::vec2 n) {
         if (walkable(n)) {
             // v.x, not input: a wall that already stopped v.x must not be walked into again (wedge)
-            if (glm::dot(v, n) < 0.0f) v = groundedMode ? tangent(n) * (v.x / n.y) : v - glm::dot(v, n) * n;
+            // airborne landing keeps v.x (the walk then follows the slope), instead of deflecting sideways
+            if (glm::dot(v, n) < 0.0f) v = groundedMode ? tangent(n) * (v.x / n.y) : glm::vec2(v.x, -v.x * n.x / n.y);
             return;
         }
         if (n.y >= 0.0f && v.x * n.x < 0.0f) v.x = 0.0f; // steep or wall: input only moves away from it
@@ -258,7 +259,7 @@ bool touchesBox(glm::vec2 a, glm::vec2 b, glm::vec2 lo, glm::vec2 hi) {
 } // namespace
 
 bool depenetrate(Body& body, const CollisionQuery& query, float maxPush) {
-    constexpr float kSkin = 0.01f, kStep = 0.05f; // resting contact is not overlap
+    constexpr float kSkin = 0.035f, kStep = 0.05f; // resting contact is not overlap; skin covers the rounded corner a square box overlaps on a 45 deg ramp
     const glm::vec2 h = body.halfSize - kSkin;
     const glm::vec2 reach = body.halfSize + maxPush + 1.0f;
     std::vector<const Segment*> segs;

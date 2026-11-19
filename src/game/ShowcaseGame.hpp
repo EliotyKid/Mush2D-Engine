@@ -73,8 +73,13 @@ private:
     // keeping the WorldState and the player's place (pushed out up to 2 u, else the checkpoint).
     static constexpr float WatchSeconds = 0.5f;
     float watchTimer = 0.0f;
-    std::filesystem::file_time_type watchedStamp{};
-    std::filesystem::file_time_type levelFilesStamp() const;
+    struct Stamp {
+        std::filesystem::file_time_type ldtk{}, regions{};
+        bool operator==(const Stamp&) const = default;
+    };
+    Stamp watchedStamp;
+    bool keepRegions = false; // hot reload of the .ldtk alone keeps the in-memory regions (unsaved panel edits)
+    Stamp levelFilesStamp(const Stamp& previous) const;
     void hotReload(EngineServices& s);
     std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown
     void submitShowcaseExtras(EngineServices& s);

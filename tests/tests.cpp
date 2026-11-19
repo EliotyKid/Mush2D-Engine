@@ -1396,8 +1396,7 @@ TEST(intgrid_slopes_and_oneway) {
 
 TEST(intgrid_no_faces_on_room_border) {
     auto segs = gridSegs(gridLayer(2, 2, {{{0,0},1},{{1,0},1},{{0,1},1},{{1,1},1}}));
-    CHECK(segs.size() == 2); // top and bottom only, no side walls on the room border
-    CHECK(countIf(segs, [](auto& s) { return std::abs(s.normal.x) > 0.5f; }) == 0);
+    CHECK(segs.empty()); // no faces on the room border: sides, top and bottom
 }
 
 TEST(terrain_points_to_world) {
@@ -1741,7 +1740,7 @@ TEST(oneway_next_to_solid) {
     LdtkLayer L = gridLayer(10, 6, {});
     setCells(L, 5, 0, 9, 1); setCells(L, 2, 2, 4, 2); setCells(L, 2, 5, 6, 1);
     auto segs = gridSegs(L);
-    CHECK(segs.size() == 7); // floor top + bottom, one-way top, block top/bottom/left/right
+    CHECK(segs.size() == 6); // floor top (its bottom is on the room border), one-way top, block top/bottom/left/right
     CHECK(countIf(segs, [](auto& s) { return s.oneWay; }) == 1);
     CHECK(countIf(segs, [](auto& s) { return s.oneWay && std::abs(glm::length(s.b - s.a) - 1.5f) < 1e-4f; }) == 1);
     CollisionWorld w; w.addRoom("r", segs);
@@ -2020,7 +2019,7 @@ TEST(hot_reload_depenetrates_or_respawns) {
         LdtkLayer L = gridLayer(20, 10, {});
         setCells(L, 9, 0, 19, 1);
         if (v == 1) setCells(L, 8, 0, 19, 1);                      // floor raised by one cell: top y -4.0
-        if (v == 2) for (int y = 0; y < 10; ++y) setCells(L, y, 0, 19, 1); // the whole room solid
+        if (v == 2) for (int y = 2; y < 10; ++y) setCells(L, y, 0, 19, 1); // solid 3.5 u over the player (room-border faces are not generated)
         return L;
     };
     LdtkProject p = roomsInRow({320});
@@ -2046,6 +2045,55 @@ TEST(hot_reload_depenetrates_or_respawns) {
         if (v == 1) CHECK(placed && std::abs(b.position.y - 0.8f + 4.0f) < 0.02f && std::abs(b.position.x - 3.0f) < 1e-4f);
         else CHECK(!placed && b.position == standing); // nowhere within 2 u: the caller respawns at the checkpoint
     }
+}
+
+TEST(wall_across_bottom_border_has_no_shelf) {
+    // wall column x = 3 from the top to the room's bottom border; the player falls beside it pressing into it
+    LdtkLayer L = gridLayer(8, 8, {});
+    for (int y = 0; y < 8; ++y) setCells(L, y, 3, 3, 1);
+    CollisionWorld w; w.addRoom("r", gridSegs(L));
+    CHECK(countIf(gridSegs(L), [](auto& s) { return std::abs(s.normal.y) > 0.5f && std::abs(s.a.y - s.b.y) < 1e-4f && (s.a.y == -4.0f || s.a.y == 0.0f); }) == 0);
+    Sim s(&w, {1.2f, -0.5f});
+    float lastVy = 0.0f;
+    for (int i = 0; i < 90; ++i) {
+        s.step(1.0f);
+        CHECK(!s.grounded);
+        if (i > 0) CHECK(s.v.y <= lastVy + 1e-4f); // never reset upwards by a shelf
+        lastVy = s.v.y;
+    }
+}
+
+TEST(controller_airborne_landing_on_uphill_keeps_vx_sign) {
+    CollisionWorld w; w.addRoom("r", gridSegs(rampLayer()));
+    Sim s(&w, {3.2f, -0.5f});
+    bool landed = false;
+    for (int i = 0; i < 120 && !landed; ++i) {
+        s.step(1.0f);
+        CHECK(s.v.x > 0.0f);
+        landed = s.grounded;
+    }
+    CHECK(landed);
+}
+
+TEST(slime_lands_on_ramp_without_turning) {
+    Scene2D scene;
+    scene.collision.addRoom("r", gridSegs(rampLayer()));
+    SlimeEnemy::Config sc;
+    sc.patrolDistance = 20.0f;
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    slime.transform.position = {3.3f, -1.0f};
+    float x = slime.transform.position.x;
+    for (int i = 0; i < 60; ++i) { scene.step(kDt); CHECK(slime.transform.position.x >= x - 1e-4f); x = slime.transform.position.x; }
+    CHECK(x > 3.6f); // walked on to the right: no turn on landing
+}
+
+TEST(depenetrate_leaves_body_resting_on_ramp) {
+    CollisionWorld w; w.addRoom("r", gridSegs(rampLayer()));
+    Sim s(&w, {3.75f, -1.0f});
+    s.settle(1.0f);
+    CHECK(s.grounded);
+    Body b = s.body;
+    CHECK(depenetrate(b, s.q) && b.position == s.body.position); // resting contact is not overlap
 }
 
 TEST(terrain_style_falls_back_to_forest) {
