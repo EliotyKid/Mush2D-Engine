@@ -10,6 +10,7 @@
 #include "game/scenes/SceneId.hpp"
 
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <optional>
@@ -67,7 +68,14 @@ private:
     void setupInitialScene(EngineServices& s);
     void registerLevelEntities();
     void loadShowcaseLevel(EngineServices& s);
-    void tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData);
+    bool tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData);
+    // Debug hot reload: every WatchSeconds, a changed .ldtk or .region.json reloads the Showcase like F5,
+    // keeping the WorldState and the player's place (pushed out up to 2 u, else the checkpoint).
+    static constexpr float WatchSeconds = 0.5f;
+    float watchTimer = 0.0f;
+    std::filesystem::file_time_type watchedStamp{};
+    std::filesystem::file_time_type levelFilesStamp() const;
+    void hotReload(EngineServices& s);
     std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown
     void submitShowcaseExtras(EngineServices& s);
     Region& region(const std::string& name);

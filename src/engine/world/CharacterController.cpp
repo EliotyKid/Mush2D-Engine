@@ -87,13 +87,17 @@ bool isAbove(const Poly& P, glm::vec2 pos, const Segment& s) {
 
 struct Support { const Cand* c; float gap; };
 
+// Dropping through: every one-way is ignored, not only the one stood on (a Terrain branch is a chain of
+// segments; standing on a vertex touches two).
+bool dropping(const Body& body, const Segment& s) { return body.droppingThrough && s.oneWay; }
+
 // Surfaces facing up under the body with a vertical gap in [-kGroundTol, maxGap].
 std::vector<Support> supports(const std::vector<Cand>& cands, const Poly& P, glm::vec2 pos, float maxGap,
                               const Body& body) {
     std::vector<Support> out;
     for (const Cand& c : cands) {
         const Segment& s = *c.s;
-        if (s.normal.y <= 1e-3f || c.s == body.droppingThrough || glm::dot(s.normal, pos - s.a) <= 0.0f) continue;
+        if (s.normal.y <= 1e-3f || dropping(body, s) || glm::dot(s.normal, pos - s.a) <= 0.0f) continue;
         if (s.oneWay && !isAbove(P, pos, s)) continue;
         const auto pen = penetration(P, pos, s.a, s.b, {0.0f, 1.0f});
         if (pen && -*pen >= -kGroundTol && -*pen <= maxGap) out.push_back({&c, -*pen});
@@ -165,7 +169,7 @@ MoveResult move(Body& body, glm::vec2 velocity, float dt, const CollisionQuery& 
     };
     auto blocks = [&](const Cand& c) {
         const Segment& s = *c.s;
-        if (c.s == body.droppingThrough || glm::dot(s.normal, pos - s.a) <= 0.0f) return false; // centre behind: not ours
+        if (dropping(body, s) || glm::dot(s.normal, pos - s.a) <= 0.0f) return false; // centre behind: not ours
         return !s.oneWay || (s.normal.y > 0.0f && glm::dot(v, s.normal) <= 0.0f && c.startedAbove);
     };
 
@@ -231,4 +235,59 @@ bool requestDropThrough(Body& body, const MoveResult& last) {
     body.droppingThrough = last.groundSegment;
     body.dropThroughTimer = kDropTime;
     return true;
+}
+
+namespace {
+// Segment ab touches the closed box [lo, hi] (Liang-Barsky clip).
+bool touchesBox(glm::vec2 a, glm::vec2 b, glm::vec2 lo, glm::vec2 hi) {
+    float t0 = 0.0f, t1 = 1.0f;
+    const glm::vec2 d = b - a;
+    for (int axis = 0; axis < 2; ++axis) {
+        if (std::abs(d[axis]) < 1e-9f) {
+            if (a[axis] < lo[axis] || a[axis] > hi[axis]) return false;
+            continue;
+        }
+        float ta = (lo[axis] - a[axis]) / d[axis], tb = (hi[axis] - a[axis]) / d[axis];
+        if (ta > tb) std::swap(ta, tb);
+        t0 = std::max(t0, ta);
+        t1 = std::min(t1, tb);
+        if (t0 > t1) return false;
+    }
+    return true;
+}
+} // namespace
+
+bool depenetrate(Body& body, const CollisionQuery& query, float maxPush) {
+    constexpr float kSkin = 0.01f, kStep = 0.05f; // resting contact is not overlap
+    const glm::vec2 h = body.halfSize - kSkin;
+    const glm::vec2 reach = body.halfSize + maxPush + 1.0f;
+    std::vector<const Segment*> segs;
+    if (query.world) query.world->query({body.position - reach, body.position + reach}, segs);
+    std::erase_if(segs, [](const Segment* s) { return s->oneWay; }); // one-ways never trap a body
+
+    auto isFree = [&](glm::vec2 p) {
+        for (const Collision2D::AABB& s : query.solids)
+            if (s.min.x < p.x + h.x && s.max.x > p.x - h.x && s.min.y < p.y + h.y && s.max.y > p.y - h.y) return false;
+        const Segment* above = nullptr; // first surface straight above the centre
+        float aboveY = std::numeric_limits<float>::max();
+        for (const Segment* s : segs) {
+            if (touchesBox(s->a, s->b, p - h, p + h)) return false;
+            const float x0 = std::min(s->a.x, s->b.x), x1 = std::max(s->a.x, s->b.x);
+            if (x1 - x0 < 1e-6f || p.x < x0 || p.x > x1) continue;
+            const float y = s->a.y + (p.x - s->a.x) / (s->b.x - s->a.x) * (s->b.y - s->a.y);
+            if (y > p.y && y < aboveY) { aboveY = y; above = s; }
+        }
+        return !above || above->normal.y < 0.0f; // a top facing up over the centre: buried inside a solid
+    };
+
+    const glm::vec2 dirs[] = {{0, 1}, {-0.7071f, 0.7071f}, {0.7071f, 0.7071f}, {-1, 0}, {1, 0},
+                              {-0.7071f, -0.7071f}, {0.7071f, -0.7071f}, {0, -1}}; // up first
+    if (isFree(body.position)) return true;
+    for (float d = kStep; d <= maxPush + 1e-4f; d += kStep)
+        for (glm::vec2 dir : dirs)
+            if (isFree(body.position + dir * d)) {
+                body.position += dir * d;
+                return true;
+            }
+    return false;
 }

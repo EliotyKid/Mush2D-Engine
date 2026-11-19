@@ -38,6 +38,10 @@ MoveResult move(Body& body, glm::vec2 velocity, float dt, const CollisionQuery& 
 inline float nextVelocityX(const MoveResult& last, float inputVx) {
     return last.onSteep && inputVx * last.groundNormal.x <= 0.0f ? last.velocity.x : inputVx;
 }
-// Down + jump: ignore the one-way segment stood on for 0.25 s or until the body's base passes below
-// it. False (do a normal jump instead) unless the body stands only on one-way ground.
+// Down + jump: ignore one-way segments (all of them: a branch is a chain of segments) for 0.25 s or until
+// the body's base passes below the one stood on. False (do a normal jump instead) unless the body stands
+// only on one-way ground.
 bool requestDropThrough(Body& body, const MoveResult& last);
+// Hot reload (spec decision 8): a body that overlaps the reloaded geometry moves to the nearest free spot at
+// most maxPush away (straight up first); a free body stays. False (body unchanged) when there is none.
+bool depenetrate(Body& body, const CollisionQuery& query, float maxPush = 2.0f);

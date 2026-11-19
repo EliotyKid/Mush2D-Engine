@@ -193,8 +193,16 @@ public:
     }
 
     void respawnAtCheckpoint() {
-        transform.position = checkpointPosition;
+        teleport(checkpointPosition);
+    }
+
+    void teleport(const glm::vec2& position) {
+        // Any teleport (respawn, death, hot reload): no ground, slide or drop-through carried over.
+        transform.position = position;
         velocity = glm::vec2(0.0f);
+        lastMove = {};
+        grounded = false;
+        body.droppingThrough = nullptr;
     }
 
     bool isGrounded() const {

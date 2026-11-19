@@ -14,6 +14,9 @@ using EntityFactory = std::function<void(const LdtkEntity&, glm::vec2 worldPos, 
 
 constexpr float LdtkPixelsPerUnit = 32.0f;
 
+// terrainRoot/style when it has an edge.png, else terrainRoot/forest (warned once per style).
+std::filesystem::path terrainStyleDir(const std::filesystem::path& terrainRoot, const std::string& style);
+
 class LevelLoader {
 public:
     void registerEntity(std::string identifier, EntityFactory factory) { factories_[std::move(identifier)] = std::move(factory); }

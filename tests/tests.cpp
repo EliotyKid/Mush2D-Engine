@@ -116,6 +116,7 @@ TEST(intgrid_merges_rects) {
 TEST(layer_depth_from_suffix) {
     CHECK(parseLayerDepth("Mountains_d12", 0, 0) == 12.0f);
     CHECK(parseLayerDepth("Foreground_d-2", 0, 0) == -2.0f);
+    CHECK(parseLayerDepth("Foreground_d_2", 0, 0) == -2.0f); // LDtk identifiers cannot hold '-': it saves _d_2
     CHECK(parseLayerDepth("Plain", 3, 1) == 2.0f);   // behind gameplay = far
     CHECK(parseLayerDepth("Plain", 0, 1) == -1.0f);  // in front
     CHECK(parseLayerDepth("Bad_data", 2, 2) == 0.0f);
@@ -1509,6 +1510,12 @@ TEST(terrain_edge_follows_surface) {
         const glm::vec2 on = s.position + glm::vec2(-0.70710678f, 0.70710678f) * (0.25f - 0.0625f);
         CHECK(std::abs(on.y - (on.x - 2.0f)) < 1e-4f);
     }
+    // a thin open shape (a branch, 0.25 u) gets strips no deeper than itself, cropped in uv, not stretched
+    out.clear();
+    buildTerrainMesh(polyline({{0, 0}, {2, 0}}, false), false, 0.25f, meshStyle(), out);
+    for (int material : {1, 2})
+        for (auto& s : only(out, material))
+            CHECK(s.size.y <= 0.25f + 0.0625f + 1e-4f && std::abs(s.uvRect.w - s.size.y / 0.5f) < 1e-4f);
 }
 
 TEST(collision_world_add_query_remove) {
@@ -1712,6 +1719,21 @@ TEST(controller_oneway_from_below_and_drop) {
     int frames = 0;
     do { s.step(0.0f); } while (!s.grounded && ++frames < 200);
     CHECK(frames > 2 && std::abs(s.bottom() + 4.5f) < 0.01f);
+}
+
+TEST(controller_drops_through_branch_vertex) {
+    // A one-way Terrain branch is a chain of segments: standing on a vertex touches two of them.
+    CollisionWorld w;
+    w.addRoom("r", polySegs({{-10, -5}, {10, -5}, {10, -4}, {-10, -4}})); // floor top -4
+    auto oneWay = [](glm::vec2 a, glm::vec2 b) { const glm::vec2 d = b - a; return Segment{a, b, glm::normalize(glm::vec2(d.y, -d.x)), true, "o"}; };
+    w.addRoom("o", {oneWay({0.0f, -1.0f}, {-1.0f, -1.1f}), oneWay({1.0f, -1.1f}, {0.0f, -1.0f})}); // peak at x 0, right to left: normals up
+    Sim s(&w, {0.0f, -0.1f});
+    s.settle(0.3f);
+    CHECK(s.grounded && s.r.onOneWay && std::abs(s.bottom() + 1.0f) < 0.02f);
+    CHECK(requestDropThrough(s.body, s.r));
+    int frames = 0;
+    do { s.step(0.0f); } while (!s.grounded && ++frames < 200);
+    CHECK(std::abs(s.bottom() + 4.0f) < 0.01f); // through both segments, down to the floor
 }
 
 TEST(oneway_next_to_solid) {
@@ -1975,6 +1997,69 @@ TEST(slime_patrols_around_where_it_was_placed) {
         lo = std::min(lo, slime.transform.position.x); hi = std::max(hi, slime.transform.position.x);
     }
     CHECK(lo > 7.9f && hi < 12.1f && hi > 11.9f);
+}
+
+TEST(player_teleport_resets_controller_state) {
+    Scene2D scene;
+    LdtkLayer L = gridLayer(20, 10, {});
+    setCells(L, 9, 0, 19, 1); // floor top y = -4.5
+    scene.collision.addRoom("r", gridSegs(L));
+    PlayerObject& p = platformerPlayer(scene, {3.0f, -3.6f});
+    stepPlayer(scene, p, {}, 30);
+    CHECK(p.isGrounded());
+    p.teleport({8.0f, -4.5f + 0.8f + 0.25f}); // 0.25 above the floor: a kept `grounded` would snap it down
+    CHECK(!p.isGrounded() && p.velocity == glm::vec2(0.0f));
+    stepPlayer(scene, p, {});
+    CHECK(p.transform.position.y - 0.8f > -4.5f + 0.2f);
+}
+
+TEST(hot_reload_depenetrates_or_respawns) {
+    // One room 20 x 10 cells; version 0 = floor (top y -4.5); the reloaded versions bury the player's spot.
+    int version = 0;
+    auto layerFor = [](int v) {
+        LdtkLayer L = gridLayer(20, 10, {});
+        setCells(L, 9, 0, 19, 1);
+        if (v == 1) setCells(L, 8, 0, 19, 1);                      // floor raised by one cell: top y -4.0
+        if (v == 2) for (int y = 0; y < 10; ++y) setCells(L, y, 0, 19, 1); // the whole room solid
+        return L;
+    };
+    LdtkProject p = roomsInRow({320});
+    CollisionWorld cw;
+    World w;
+    w.onLoad = [&](int room) { cw.addRoom(p.levels[room].iid, gridSegs(layerFor(version))); };
+    w.onUnload = [&](int room) { cw.removeRoom(p.levels[room].iid); };
+    LevelLoader loader;
+    const CollisionQuery q{&cw, {}};
+    const glm::vec2 standing{3.0f, -4.5f + 0.8f};
+    w.open(p, loader, nullptr);
+    w.loadAround(0);
+    Body b; b.position = standing;
+    CHECK(depenetrate(b, q) && b.position == standing); // free: stays
+
+    for (int v : {1, 2}) { // F5 / hot reload: same World, project parsed again, the room reloaded
+        version = v;
+        cw.removeRoom(p.levels[0].iid);
+        w.open(p, loader, nullptr);
+        w.loadAround(0);
+        b.position = standing;
+        const bool placed = depenetrate(b, q);
+        if (v == 1) CHECK(placed && std::abs(b.position.y - 0.8f + 4.0f) < 0.02f && std::abs(b.position.x - 3.0f) < 1e-4f);
+        else CHECK(!placed && b.position == standing); // nowhere within 2 u: the caller respawns at the checkpoint
+    }
+}
+
+TEST(terrain_style_falls_back_to_forest) {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "mush2d_terrain_style_test";
+    fs::remove_all(root);
+    for (const char* style : {"forest", "cave"}) {
+        fs::create_directories(root / style);
+        std::ofstream(root / style / "edge.png") << "x";
+    }
+    CHECK(terrainStyleDir(root, "cave") == root / "cave");
+    CHECK(terrainStyleDir(root, "lava") == root / "forest"); // warned once, not thrown
+    CHECK(terrainStyleDir(root, "lava") == root / "forest");
+    fs::remove_all(root);
 }
 
 TEST(collides_at_position_sees_segments) {

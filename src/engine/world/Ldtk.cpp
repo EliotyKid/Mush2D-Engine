@@ -37,8 +37,10 @@ std::vector<IntRect> mergeIntGrid(const std::vector<int>& csv, int cw, int ch, i
 float parseLayerDepth(const std::string& id, int orderFromFront, int frontIndexOfGameplay) {
     size_t p = id.rfind("_d");
     if (p != std::string::npos && p + 2 < id.size()) {
+        std::string num = id.substr(p + 2);
+        if (num.size() > 1 && num[0] == '_') num[0] = '-'; // LDtk identifiers cannot hold '-': it saves _d_2
         char* end = nullptr;
-        float v = std::strtof(id.c_str() + p + 2, &end);
+        float v = std::strtof(num.c_str(), &end);
         if (end && *end == '\0') return v;
     }
     return float(orderFromFront - frontIndexOfGameplay);

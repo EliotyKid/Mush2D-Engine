@@ -43,6 +43,7 @@ void ShowcaseGame::init(EngineServices& s) {
     camera.boundsEnabled = true;
 
     loadScene(s, SceneId::Showcase);
+    watchedStamp = levelFilesStamp();
 
     // Debug (MUSH2D_CAMERA_X=<world x>): park the camera there, e.g. for parallax screenshots.
     if (const char* camX = std::getenv("MUSH2D_CAMERA_X")) {
@@ -54,6 +55,12 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
     Scene2D& scene = s.scene;
 
     handleGlobalInput(s, deltaTime);
+#ifndef NDEBUG
+    if (currentSceneId == SceneId::Showcase && (watchTimer += deltaTime) >= WatchSeconds) {
+        watchTimer = 0.0f;
+        if (levelFilesStamp() != watchedStamp) hotReload(s);
+    }
+#endif
     auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
     if (!player) {
         player = scene.findFirstObjectOfType<PlayerObject>();
@@ -167,12 +174,51 @@ void ShowcaseGame::shutdown(EngineServices& s) {
     s.scene.userData = nullptr;
 }
 
-void ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
+bool ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
     try {
         loadScene(s, sceneId, transitionData);
+        return true;
     } catch (const std::exception& e) { // bad level file: nothing was torn down yet, keep the current scene
         std::fprintf(stderr, "Scene load failed, keeping current scene: %s\n", e.what());
+        return false;
     }
+}
+
+std::filesystem::file_time_type ShowcaseGame::levelFilesStamp() const {
+    namespace fs = std::filesystem;
+    std::error_code ec; // a file mid-save may vanish for a moment: skip it this round
+    fs::file_time_type latest = fs::last_write_time(sourceAssetPath("assets/levels/showcase.ldtk"), ec);
+    for (const fs::directory_entry& f : fs::directory_iterator(sourceAssetPath("assets/regions"), ec)) {
+        const fs::file_time_type t = f.last_write_time(ec);
+        if (!ec && f.path().string().ends_with(".region.json")) latest = std::max(latest, t);
+    }
+    return latest;
+}
+
+void ShowcaseGame::hotReload(EngineServices& s) {
+    watchedStamp = levelFilesStamp(); // a half-saved file is tried once, then waits for the next save
+    const auto* old = s.scene.findObjectAs<PlayerObject>(playerObjectId);
+    const glm::vec2 at = old ? old->transform.position : glm::vec2(0.0f);
+    const bool hadPlayer = old != nullptr;
+    std::fprintf(stderr, "Hot reload: level files changed\n");
+    if (!tryLoadScene(s, SceneId::Showcase, currentSceneTransitionData) || !hadPlayer) return;
+    auto* player = s.scene.findObjectAs<PlayerObject>(playerObjectId);
+    if (!player || !player->collider) return;
+
+    // Spec decision 8: same place, pushed out of new geometry up to 2 u, else the checkpoint.
+    if (const int room = world.roomAt(at); room >= 0) world.loadAround(room);
+    s.scene.flush(); // doors spawned by the reload take part in the query
+    Body body;
+    body.position = at + player->collider->offset;
+    body.halfSize = player->collider->size * 0.5f;
+    const glm::vec2 reach = body.halfSize + 3.0f;
+    const CollisionQuery query{&s.scene.collision,
+                               Collision2D::solidBoxes(s.scene, player->id, {body.position - reach, body.position + reach})};
+    glm::vec2 target = respawnPoint();
+    if (depenetrate(body, query)) target = body.position - player->collider->offset;
+    else if (const int room = world.roomAt(target); room >= 0) world.loadAround(room);
+    player->teleport(target);
+    s.camera.position = target + s.camera.followOffset;
 }
 
 void ShowcaseGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
@@ -601,8 +647,7 @@ void ShowcaseGame::killPlayer(EngineServices& s, GameObjectId id) {
     world.killPlayer(respawnPoint(), [&scene = s.scene, &camera = s.camera, id](glm::vec2 at) {
         if (auto* p = scene.findObjectAs<PlayerObject>(id)) {
             p->active = true;
-            p->transform.position = at;
-            p->velocity = {0.0f, 0.0f};
+            p->teleport(at);
             camera.position = at + camera.followOffset;
         }
     });
@@ -657,6 +702,7 @@ void ShowcaseGame::saveRegions() {
         touched.insert(name);
     }
     for (const std::string& name : touched) saveRegion(sourceAssetPath("assets/regions/" + name + ".region.json"), region(name));
+    watchedStamp = levelFilesStamp(); // our own save is not an outside edit
 }
 
 void ShowcaseGame::onImGui(EngineServices& s) {

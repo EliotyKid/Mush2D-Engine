@@ -38,13 +38,13 @@ Pendente no PC Arch (RTX 2060 Super): build debug sem erros de validação, e so
 - [x] Modelo de entidades orientado a objetos revisto (hierarquia, componentes reutilizáveis, ciclo de vida, pai/filho) — [design](superpowers/specs/2026-11-19-modelo-entidades-design.md)
 - [x] Pixel art suave: zoom livre e câmera em subpixel sem pixels quebrados (modo padrão)
 
-## Fase 1.2 — Terreno e rampas (decidido em 2026-11-19, ainda sem design)
+## Fase 1.2 — Terreno e rampas — [design](superpowers/specs/2026-11-19-terreno-rampas-design.md)
 
-- [ ] Rampas em grade no IntGrid `Collision` (45° e 22,5° nos dois lados), com tiles pintados pelas auto-rules do LDtk — interiores e construções
-- [ ] Terreno livre por linhas: entidade com array de Points desenhada no LDtk; a colisão segue a linha em qualquer ângulo — florestas
-- [ ] Visual do terreno livre gerado a partir da linha (textura de borda ao longo da linha + preenchimento), com props e arte pintada por cima nos destaques
-- [ ] Controlador de personagem em superfícies inclinadas: grudar ao descer, não escorregar parado, velocidade conforme inclinação, inclinações íngremes (> ~50°) viram parede/deslize
-- [ ] Hot reload do `.ldtk` ao salvar (sem F5)
+- [x] Rampas em grade no IntGrid `Collision` (45° e 22,5° nos dois lados) e plataformas atravessáveis — interiores e construções (tiles de rampa colocados à mão; auto-rules ficam com o autor, ver README)
+- [x] Terreno livre por linhas: entidade com array de Points desenhada no LDtk; a colisão segue a linha em qualquer ângulo — florestas
+- [x] Visual do terreno livre gerado a partir da linha (textura de borda ao longo da linha + preenchimento), com props e arte pintada por cima nos destaques
+- [x] Controlador de personagem em superfícies inclinadas: grudar ao descer, não escorregar parado, velocidade conforme inclinação, inclinações íngremes (> ~50°) viram parede/deslize
+- [x] Hot reload do `.ldtk` ao salvar (sem F5)
 
 ## Fase 1.5 — Cinemática
 

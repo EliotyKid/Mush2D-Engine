@@ -3,6 +3,7 @@
 #include "engine/world/TerrainMesh.hpp"
 
 #include <cstdio>
+#include <set>
 
 namespace {
 struct SpawnRoom { // reset even if a factory throws
@@ -12,6 +13,15 @@ struct SpawnRoom { // reset even if a factory throws
 };
 }
 
+std::filesystem::path terrainStyleDir(const std::filesystem::path& terrainRoot, const std::string& style) {
+    if (std::filesystem::exists(terrainRoot / style / "edge.png")) return terrainRoot / style;
+    static std::set<std::string> warned;
+    if (warned.insert(style).second)
+        std::fprintf(stderr, "Terrain: style '%s' has no textures in %s, using 'forest'\n", style.c_str(),
+                     terrainRoot.string().c_str());
+    return terrainRoot / "forest";
+}
+
 // The terrain's look: assets/terrain/<style>/{edge,side,fill}.png next to the levels folder; style = entity
 // field "style" (default "forest"). Texture pixels / 32 = world size.
 void LevelLoader::appendTerrainSprites(const LdtkEntity& e, const LdtkLevel& level, int layerGridPx, int order,
@@ -19,7 +29,7 @@ void LevelLoader::appendTerrainSprites(const LdtkEntity& e, const LdtkLevel& lev
     const TerrainShape shape = terrainShape(e, level.worldPx, layerGridPx);
     std::string name = "forest";
     if (auto it = e.fields.find("style"); it != e.fields.end() && it->is_string()) name = it->get<std::string>();
-    const std::filesystem::path dir = level.baseDir.parent_path() / "terrain" / name;
+    const std::filesystem::path dir = terrainStyleDir(level.baseDir.parent_path() / "terrain", name);
     TerrainStyle style;
     style.edge = materials.load(dir / "edge.png");
     style.side = materials.load(dir / "side.png");

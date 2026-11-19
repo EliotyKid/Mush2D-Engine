@@ -79,6 +79,9 @@ void buildTerrainMesh(const std::vector<Segment>& polyline, bool closed, float t
     }
 
     // Edge: along each segment, from b towards a, so the sprite's up (left of its direction) is the normal.
+    // A thin open shape (a branch) gets strips no deeper than itself: the texture's top rows, not squashed.
+    const float depth = closed ? st.edgeSize.y : std::min(st.edgeSize.y, thickness + Lift);
+    const glm::vec4 uv{0.0f, 0.0f, 1.0f, depth / st.edgeSize.y};
     for (size_t i = 0; i < p.size(); ++i) {
         const glm::vec2 a = p[i], b = p[(i + 1) % p.size()];
         const float len = glm::length(b - a);
@@ -87,8 +90,8 @@ void buildTerrainMesh(const std::vector<Segment>& polyline, bool closed, float t
         const int count = std::max(1, int(std::ceil(len / st.edgeSize.x - Eps)));
         const float piece = (len + 2.0f * Overlap) / count, rot = std::atan2(t.y, t.x);
         for (int k = 0; k < count; ++k) {
-            const glm::vec2 centre = b + t * (-Overlap + (k + 0.5f) * piece) - n * (0.5f * st.edgeSize.y - Lift);
-            out.push_back(makeSprite(n.y > 0.3f ? st.edge : st.side, centre, {piece, st.edgeSize.y}, {0, 0, 1, 1}, rot));
+            const glm::vec2 centre = b + t * (-Overlap + (k + 0.5f) * piece) - n * (0.5f * depth - Lift);
+            out.push_back(makeSprite(n.y > 0.3f ? st.edge : st.side, centre, {piece, depth}, uv, rot));
         }
     }
 }
