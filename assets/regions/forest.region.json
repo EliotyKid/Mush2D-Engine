@@ -1,0 +1,192 @@
+{
+  "layers": [
+    {
+      "depth": 2.0,
+      "image": "assets/kaa/parallax/bg5.png",
+      "offset": [
+        -3.6,
+        -3.5875
+      ],
+      "parallax": [
+        0.85,
+        0.92
+      ],
+      "repeatX": true
+    },
+    {
+      "depth": 4.0,
+      "image": "assets/kaa/parallax/bg4.png",
+      "offset": [
+        -7.2,
+        -2.5
+      ],
+      "parallax": [
+        0.7,
+        0.85
+      ],
+      "repeatX": true
+    },
+    {
+      "depth": 7.0,
+      "image": "assets/kaa/parallax/bg3.png",
+      "offset": [
+        -10.8,
+        -1.46875
+      ],
+      "parallax": [
+        0.55,
+        0.75
+      ],
+      "repeatX": true
+    },
+    {
+      "depth": 11.0,
+      "image": "assets/kaa/parallax/bg2.png",
+      "offset": [
+        -14.4,
+        -0.03125
+      ],
+      "parallax": [
+        0.4,
+        0.65
+      ],
+      "repeatX": true
+    },
+    {
+      "depth": 18.0,
+      "image": "assets/kaa/parallax/bg1.png",
+      "offset": [
+        -18.72,
+        1.375
+      ],
+      "parallax": [
+        0.22,
+        0.55
+      ],
+      "repeatX": true
+    }
+  ],
+  "look": {
+    "ambient": {
+      "color": [
+        0.317762,
+        0.414249,
+        0.568627
+      ],
+      "intensity": 0.6
+    },
+    "bloom": {
+      "intensity": 0.7,
+      "knee": 0.5,
+      "threshold": 0.9
+    },
+    "exposure": 1.1,
+    "fog": {
+      "color": [
+        0.0735294,
+        0.174632,
+        0.220588
+      ],
+      "density": 0.0044,
+      "gradientEnd": 10.0,
+      "gradientStart": 0.0,
+      "gradientStrength": 0.0
+    },
+    "grading": {
+      "gain": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "gamma": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "lift": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "saturation": 1.109,
+      "temperature": 0.73
+    },
+    "layers": {
+      "Ground_d0": {
+        "depth": 0.0,
+        "parallax": [
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "lightHalfRes": false,
+    "lights": {
+      "1e2feb89-414c-443c-9027-c4d1c386bbc4": {
+        "color": [
+          1.0,
+          0.835294,
+          0.603922
+        ],
+        "depth": 0.0,
+        "flicker": 0.0,
+        "height": 2.5,
+        "intensity": 1.6,
+        "radius": 6.5
+      },
+      "35bf992d-c9e9-4616-a12e-7696a6cecc1b": {
+        "color": [
+          1.0,
+          0.690196,
+          0.439216
+        ],
+        "depth": 11.0,
+        "flicker": 0.0,
+        "height": 1.0,
+        "intensity": 1.0,
+        "radius": 10.0
+      },
+      "78e51061-7311-48a3-82ce-6f447ed4d57b": {
+        "color": [
+          1.0,
+          0.886275,
+          0.478431
+        ],
+        "depth": 0.0,
+        "flicker": 0.3,
+        "height": 0.6,
+        "intensity": 1.8,
+        "radius": 3.0
+      },
+      "9b810e76-6ec9-4286-a3ca-828dd5f4b3b2": {
+        "color": [
+          1.0,
+          0.619608,
+          0.368627
+        ],
+        "depth": 0.0,
+        "flicker": 0.12,
+        "height": 1.5,
+        "intensity": 2.2,
+        "radius": 6.5
+      },
+      "e4b06ce6-0741-47a8-bce4-2c8218072e8c": {
+        "color": [
+          1.0,
+          0.811765,
+          0.541176
+        ],
+        "depth": 0.0,
+        "flicker": 0.05,
+        "height": 2.0,
+        "intensity": 2.2,
+        "radius": 7.0
+      }
+    },
+    "pixelArt": {
+      "mode": "smooth",
+      "pixelateFactor": 2,
+      "pixelateLight": false
+    }
+  }
+}
