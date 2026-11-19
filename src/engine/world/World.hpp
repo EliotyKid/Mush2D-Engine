@@ -19,6 +19,9 @@ struct EngineServices;
 // is more than UnloadDistance from its rect, so standing on a border never thrashes.
 class World {
 public:
+    World() = default;
+    World(const World&) = delete;
+    World& operator=(const World&) = delete;
     static constexpr float UnloadDistance = 4.0f; // world units
     static constexpr double RespawnCheckInterval = 0.5; // seconds
 
@@ -49,6 +52,7 @@ public:
     // Death behind a fade: stepFade darkens over FadeSeconds, runs onPlayerDeath at black and lightens again.
     // Ignored while a death is fading.
     void killPlayer(glm::vec2 respawnPoint, std::function<void(glm::vec2)> teleportPlayer);
+    bool dying() const { return deathTime_ >= 0.0f; }
     float stepFade(float dt); // advances the death fade; returns FrameSettings::fade (1 = visible)
 
     int currentRoom() const { return current_; }

@@ -25,12 +25,20 @@ void World::open(const LdtkProject& project, LevelLoader& loader, EngineServices
         for (const LdtkLayer& L : project_.levels[r].layers)
             for (const LdtkEntity& e : L.entities) {
                 if (!e.iid.empty()) roomIids_[r].push_back(e.iid);
+                // A wired target (lever -> door) joins this room's death snapshot, even from another room.
+                for (const auto& f : e.fields)
+                    if (f.is_object() && f.contains("entityIid") && f["entityIid"].is_string()) {
+                        std::vector<std::string>& ids = roomIids_[r];
+                        const std::string t = f["entityIid"].get<std::string>();
+                        if (std::find(ids.begin(), ids.end(), t) == ids.end()) ids.push_back(t);
+                    }
                 const Persistence p = parsePersistence(e);
                 if (p != Persistence::None && !e.iid.empty()) tracked_[e.iid] = {r, &e, p, parseRespawnDistance(e)};
             }
 }
 
 void World::checkRespawns(glm::vec2 playerPos, glm::vec4 view, double time) {
+    if (dying()) return;
     if (time < nextRespawnCheck_) return;
     nextRespawnCheck_ = time + RespawnCheckInterval;
     for (const auto& [iid, t] : tracked_) {
@@ -113,6 +121,7 @@ glm::vec4 World::worldBounds() const {
 }
 
 void World::update(glm::vec2 focus) {
+    if (dying()) return; // the room and its snapshot are frozen until the fade ends
     // Spec decision 4: the current room holds while it contains the focus; in a gap the last one stays.
     bool keep = false;
     if (current_ >= 0) {

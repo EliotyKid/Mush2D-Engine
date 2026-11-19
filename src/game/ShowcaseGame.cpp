@@ -61,7 +61,7 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
             playerObjectId = player->id;
         }
     }
-    if (player) {
+    if (player && !world.dying()) { // a dying player stands still
         player->applyInput(s.input.getState());
     }
 
@@ -71,7 +71,7 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
         activeSceneDefinition->update(scene, deltaTime);
     }
 
-    processTriggerOverlaps(s);
+    if (!world.dying()) processTriggerOverlaps(s);
     scene.lateStep(deltaTime);
 
     if (currentSceneId == SceneId::Showcase) {
@@ -268,7 +268,9 @@ void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
         }
     }
 
-    if (state.respawn.pressed && player) {
+    if (state.respawn.pressed && player && currentSceneId == SceneId::Showcase) {
+        killPlayer(s, player->id); // through World: restore, stream, fade
+    } else if (state.respawn.pressed && player) {
         player->respawnAtCheckpoint();
 
         if (camera.followEnabled) {
@@ -555,6 +557,7 @@ void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
             for (const LdtkEntity& e : L.entities)
                 if (e.identifier == "PlayerStart") start = i;
     regions.clear(); // re-read the region files (F5)
+    for (const LdtkLevel& l : levels) region(l.region); // preload: no file read when a room first streams in
     currentRegion = levels.empty() ? "forest" : levels[start].region;
     if (!levels.empty()) world.loadAround(start);
 
@@ -591,8 +594,11 @@ void ShowcaseGame::applyNewLayerOverrides() {
 }
 
 void ShowcaseGame::killPlayer(EngineServices& s, GameObjectId id) {
+    if (world.dying()) return;
+    if (auto* p = s.scene.findObjectAs<PlayerObject>(id)) p->active = false; // frozen until the teleport
     world.killPlayer(respawnPoint(), [&scene = s.scene, &camera = s.camera, id](glm::vec2 at) {
         if (auto* p = scene.findObjectAs<PlayerObject>(id)) {
+            p->active = true;
             p->transform.position = at;
             p->velocity = {0.0f, 0.0f};
             camera.position = at + camera.followOffset;
@@ -629,7 +635,7 @@ void ShowcaseGame::updateRegion(EngineServices& s, float dt) {
         if (name != currentRegion) { // background swaps now, the look blends
             blendFrom = s.renderer.settings();
             currentRegion = name;
-            blendTime = 0.0f;
+            blendTime = world.dying() ? RegionBlendSeconds : 0.0f; // death teleport: the fade-in shows the new look
         }
     }
     blendTime = std::min(blendTime + dt, RegionBlendSeconds);

@@ -1,4 +1,4 @@
-#include "engine/assets/AtlasLoader.hpp"
+﻿#include "engine/assets/AtlasLoader.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
 #include "engine/render/Materials.hpp"
@@ -488,12 +488,43 @@ TEST(death_restores_room_snapshot) {
 
     glm::vec2 teleported{-1.0f};
     unloads.clear(); // room 2 left when room 0 became current
-    w.onPlayerDeath({5.0f, -9.0f},[&](glm::vec2 at) { teleported = at; });
+    w.onPlayerDeath({5.0f, -9.0f}, [&](glm::vec2 at) { teleported = at; });
     CHECK(!w.state.isGone("s1") && w.state.get("d1", "open", 0.0) == 1.0); // room 0 as it was on entry
     CHECK(w.state.get("c1", "activated", -1.0) == 3.0);                   // checkpoints are never rolled back
     CHECK(w.state.get("d2", "open", 1.0) == 0.0);                          // other rooms keep their state
     CHECK((unloads == std::vector<int>{0}) && c.n["s1"] == 2 && c.n["d1"] == 2); // room 0 reloaded
     CHECK(teleported == glm::vec2(5.0f, -9.0f) && w.currentRoom() == 0);
+}
+
+TEST(death_fade_freezes_world) {
+    LdtkProject p = roomsWith({entity("Door", "d1", {96, 288}, nlohmann::json::object())});
+    World w; SpawnCount c; c.hook(w);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    w.update({1.0f, -5.0f});
+    w.state.set("d1", "open", 1.0); // changed after entry: death must undo it
+    glm::vec2 teleported{-1.0f};
+    w.killPlayer({1.0f, -5.0f}, [&](glm::vec2 at) { teleported = at; });
+    CHECK(w.dying());
+    w.stepFade(0.1f);
+    w.update({15.0f, -5.0f}); // focus drifts into room 1 mid-fade: ignored
+    CHECK(w.currentRoom() == 0);
+    w.stepFade(0.1f); // black: dies
+    CHECK(w.currentRoom() == 0 && w.state.get("d1", "open", 0.0) == 0.0 && teleported == glm::vec2(1.0f, -5.0f));
+}
+
+TEST(death_snapshot_covers_cross_room_door) {
+    LdtkProject p = roomsWith({entity("Lever", "l1", {32, 288}, {{"door", {{"entityIid", "d2"}}}})});
+    p.levels[1].layers.push_back(LdtkLayer{});
+    p.levels[1].layers[0].entities = {entity("Door", "d2", {32, 288}, nlohmann::json::object())};
+    World w; SpawnCount c; c.hook(w);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    w.update({1.0f, -5.0f}); // enter room 0
+    w.state.set("l1", "on", 1.0);
+    w.state.set("d2", "open", 1.0); // the lever opens a door in room 1
+    w.onPlayerDeath({1.0f, -5.0f}, [](glm::vec2) {});
+    CHECK(w.state.get("l1", "on", 0.0) == 0.0 && w.state.get("d2", "open", 0.0) == 0.0);
 }
 
 TEST(teleport_streams_target_synchronously) {
