@@ -17,7 +17,8 @@ struct LdtkEntity {
     std::string identifier, iid;
     glm::vec2 px;    // top-left in level pixels (pivot already removed)
     glm::vec2 size;  // pixels
-    nlohmann::json fields; // {identifier: value}
+    nlohmann::json fields; // {identifier: value}; F_Point = {cx,cy} in layer cells, arrays of it are JSON lists
+    int layerGridPx = 16;            // grid size of the owning layer
     float depth = 0.0f;              // of the owning layer
     glm::vec2 parallax{1.0f, 1.0f};  // of the owning layer, engine convention
 };

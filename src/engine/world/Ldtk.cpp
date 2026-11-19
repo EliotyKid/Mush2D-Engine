@@ -131,6 +131,7 @@ LdtkProject loadLdtkProject(const std::filesystem::path& file) {
                 LdtkEntity E;
                 E.identifier = str(e, "__identifier");
                 E.iid = str(e, "iid");
+                E.layerGridPx = L.gridSize;
                 E.size = {e.value("width", 0.0f), e.value("height", 0.0f)};
                 glm::vec2 pivot{0.0f};
                 if (e.contains("__pivot")) pivot = {e["__pivot"][0].get<float>(), e["__pivot"][1].get<float>()};

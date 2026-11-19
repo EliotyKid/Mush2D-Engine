@@ -6,6 +6,7 @@
 #include "engine/render/SceneRenderer.hpp"
 #include "engine/tools/LookFile.hpp"
 #include "engine/world/Collision.hpp"
+#include "engine/world/CollisionWorld.hpp"
 #include "engine/world/Ldtk.hpp"
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/Region.hpp"
@@ -1325,6 +1326,122 @@ TEST(setParent_inside_onDestroy) {
     CHECK(scene.find(mover)->parent() == newParent);
     CHECK(scene.find(oldParent)->children().empty() && scene.find(newParent)->children().size() == 1);
     CHECK(scene.aliveCount() == 3);
+}
+
+namespace {
+LdtkLayer gridLayer(int cw, int ch, std::initializer_list<std::pair<glm::ivec2, int>> cells) {
+    LdtkLayer L; L.identifier = "Collision"; L.type = "IntGrid"; L.gridSize = 16; L.cells = {cw, ch};
+    L.intGrid.assign(size_t(cw) * ch, 0);
+    for (auto& [c, v] : cells) L.intGrid[size_t(c.y) * cw + c.x] = v;
+    return L;
+}
+std::vector<Segment> gridSegs(const LdtkLayer& L) {
+    return segmentsFromIntGrid(L, {0, 0}, L.cells * L.gridSize, "r");
+}
+bool hasNormal(const Segment& s, glm::vec2 n) { return glm::length(s.normal - n) < 1e-4f; }
+template <class P> int countIf(const std::vector<Segment>& v, P pred) { int n = 0; for (auto& s : v) n += pred(s) ? 1 : 0; return n; }
+bool isDiag(const Segment& s) { return std::abs(s.normal.x) > 0.01f && std::abs(s.normal.y) > 0.01f; }
+
+LdtkEntity terrainEntity(glm::vec2 px, std::initializer_list<glm::ivec2> pts, bool closed, float thickness, bool oneWay) {
+    LdtkEntity e; e.identifier = "Terrain"; e.px = px; e.layerGridPx = 4;
+    e.fields = nlohmann::json::object();
+    auto arr = nlohmann::json::array();
+    for (auto p : pts) arr.push_back({{"cx", p.x}, {"cy", p.y}});
+    e.fields["points"] = arr; e.fields["closed"] = closed; e.fields["thickness"] = thickness; e.fields["oneWay"] = oneWay;
+    return e;
+}
+}
+
+TEST(intgrid_segments_outer_edges_only) {
+    auto segs = gridSegs(gridLayer(6, 4, {{{1,1},1},{{2,1},1},{{3,1},1},{{1,2},1},{{2,2},1},{{3,2},1}}));
+    CHECK(segs.size() == 4);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {0, 1}); }) == 1);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {0, -1}); }) == 1);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {1, 0}); }) == 1);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {-1, 0}); }) == 1);
+    for (auto& s : segs) {
+        const float len = glm::length(s.b - s.a);
+        CHECK(std::abs(len - (std::abs(s.normal.y) > 0.5f ? 1.5f : 1.0f)) < 1e-4f);
+        CHECK(s.roomIid == "r" && !s.oneWay);
+    }
+}
+
+TEST(intgrid_slopes_and_oneway) {
+    // two 45 ramps up-right, diagonal neighbours, over a block -> one diagonal of 1 x 1 u
+    auto a = gridSegs(gridLayer(5, 4, {{{1,2},3},{{2,1},3},{{2,2},1}}));
+    CHECK(countIf(a, isDiag) == 1);
+    for (auto& s : a) if (isDiag(s)) {
+        CHECK(std::abs(glm::length(s.b - s.a) - std::sqrt(2.0f)) < 1e-4f);
+        CHECK(s.normal.x < 0 && s.normal.y > 0); // faces up-left, towards the air
+    }
+    // 5 + 7: one continuous 22.5 deg ramp over 2 cells (1.0 x 0.5 u)
+    auto b = gridSegs(gridLayer(5, 4, {{{1,2},5},{{2,2},7}}));
+    CHECK(countIf(b, isDiag) == 1);
+    for (auto& s : b) if (isDiag(s)) CHECK(std::abs(std::abs(s.b.x - s.a.x) - 1.0f) < 1e-4f && std::abs(std::abs(s.b.y - s.a.y) - 0.5f) < 1e-4f);
+    // mirrored 8 + 6 also merge; 5 next to 6 does not
+    CHECK(countIf(gridSegs(gridLayer(5, 4, {{{1,2},8},{{2,2},6}})), isDiag) == 1);
+    CHECK(countIf(gridSegs(gridLayer(5, 4, {{{1,2},5},{{2,2},6}})), isDiag) == 2);
+    // 2 next to 1: one-way top only, and the 1's own top stays solid
+    auto c = gridSegs(gridLayer(5, 4, {{{1,1},2},{{2,1},1}}));
+    CHECK(countIf(c, [](auto& s) { return s.oneWay; }) == 1);
+    for (auto& s : c) if (s.oneWay) CHECK(hasNormal(s, {0, 1}) && std::abs(glm::length(s.b - s.a) - 0.5f) < 1e-4f);
+    CHECK(countIf(c, [](auto& s) { return !s.oneWay && hasNormal(s, {0, 1}); }) == 1);
+}
+
+TEST(intgrid_no_faces_on_room_border) {
+    auto segs = gridSegs(gridLayer(2, 2, {{{0,0},1},{{1,0},1},{{0,1},1},{{1,1},1}}));
+    CHECK(segs.size() == 2); // top and bottom only, no side walls on the room border
+    CHECK(countIf(segs, [](auto& s) { return std::abs(s.normal.x) > 0.5f; }) == 0);
+}
+
+TEST(terrain_points_to_world) {
+    // entity at px (64,32) == cell (16,8): the duplicate first point is dropped
+    auto e = terrainEntity({64, 32}, {{16, 8}, {32, 8}}, false, 3.0f, false);
+    auto segs = segmentsFromTerrain(e, {320, -160}, 4, "r");
+    CHECK(segs.size() == 4);
+    // surface (12,4)->(14,4) with normal up; bottom 3 u below
+    CHECK(countIf(segs, [](auto& s) {
+        return hasNormal(s, {0, 1}) && std::min(s.a.x, s.b.x) == 12.0f && std::max(s.a.x, s.b.x) == 14.0f && s.a.y == 4.0f && s.b.y == 4.0f;
+    }) == 1);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {0, -1}) && s.a.y == 1.0f; }) == 1);
+}
+
+TEST(terrain_orientation_both_windings) {
+    // 32 px square (cells 0..8) in both windings; normals must point away from the centre
+    const glm::vec2 centre = ldtkToWorld({0, 0}, {16, 16});
+    auto cw = terrainEntity({0, 0}, {{8, 0}, {8, 8}, {0, 8}}, true, 3.0f, false);
+    auto ccw = terrainEntity({0, 0}, {{0, 8}, {8, 8}, {8, 0}}, true, 3.0f, false);
+    for (auto* e : {&cw, &ccw}) {
+        auto segs = segmentsFromTerrain(*e, {0, 0}, 4, "r");
+        CHECK(segs.size() == 4);
+        for (auto& s : segs) CHECK(glm::dot(s.normal, (s.a + s.b) * 0.5f - centre) > 0.0f);
+    }
+}
+
+TEST(terrain_open_surface_thickness) {
+    // drawn right to left: still solid below the line, normal up on top
+    auto e = terrainEntity({128, 0}, {{0, 0}}, false, 2.0f, false);
+    auto segs = segmentsFromTerrain(e, {0, 0}, 4, "r");
+    CHECK(segs.size() == 4);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {0, 1}) && s.a.y == 0.0f; }) == 1);
+    CHECK(countIf(segs, [](auto& s) { return hasNormal(s, {0, -1}) && s.a.y == -2.0f; }) == 1);
+    // one-way keeps only the upward-facing run
+    auto o = segmentsFromTerrain(terrainEntity({0, 0}, {{16, 0}, {32, 8}}, false, 2.0f, true), {0, 0}, 4, "r");
+    CHECK(!o.empty());
+    for (auto& s : o) CHECK(s.oneWay && s.normal.y > 0.7f);
+}
+
+TEST(collision_world_add_query_remove) {
+    CollisionWorld w;
+    w.addRoom("a", gridSegs(gridLayer(4, 4, {{{1,2},1}})));
+    std::vector<const Segment*> out;
+    w.query({{0.0f, -2.0f}, {4.0f, 0.0f}}, out);
+    CHECK(out.size() == 4);
+    w.query({{50.0f, 50.0f}, {51.0f, 51.0f}}, out);
+    CHECK(out.empty());
+    w.removeRoom("a");
+    w.query({{0.0f, -2.0f}, {4.0f, 0.0f}}, out);
+    CHECK(out.empty());
 }
 
 int main() {
