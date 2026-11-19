@@ -4,8 +4,9 @@ Usage: python tools/gen_terrain_textures.py   (needs assets/kaa/tilesets/grass.p
 
 Outputs assets/terrain/{forest,cave}/{edge,side,fill}.png (+ _n normal maps), read by LevelLoader:
   edge  32x16  grass strip, hangs under the surface line (top row = the line). Opaque for 12 rows, ragged below.
-  side  32x16  earth/stone strip for walls and undersides, same shape as edge.
+  side  32x16  earth/stone strip for walls and undersides, opaque over all 16 rows.
   fill  32x32  seamless earth, repeats every 1 x 1 u.
+Also assets/kaa/tilesets/grass_slopes{,_n,_m}.png: grass.png plus a row of 6 grid slope tiles (IntGrid 3..8).
 forest palette comes from the kaa grass (edge) and dirt (side, fill) tilesets; cave is the same, darker and bluer.
 """
 import random
@@ -30,22 +31,22 @@ def palette(path: Path, n: int = 4):
     return sorted(top, key=lambda c: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2])
 
 
-def strip(rng, ramp, cap_src=None):
-    """edge/side: CAP rows lit, then a dithered fall-off to the darkest tone, then ragged drips."""
+def strip(rng, ramp, cap_src=None, solid=SOLID):
+    """edge/side: CAP rows lit, then a dithered fall-off to the darkest tone, then ragged drips (when solid < H)."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     px = img.load()
     dark, mid, light = ramp[0], ramp[len(ramp) // 2], ramp[-1]
     for x in range(W):
-        for y in range(SOLID):
+        for y in range(solid):
             if y < CAP:
                 s = cap_src.getpixel((16 + x, y)) if cap_src else (0, 0, 0, 0)
                 c = s[:3] if s[3] == 255 else (light if rng.random() < 0.8 else mid)
             else:
-                t = (y - CAP) / (SOLID - CAP)  # 0 -> 1 down the fall-off
+                t = (y - CAP) / (SOLID - CAP)  # 0 -> 1 down the fall-off (dark beyond SOLID)
                 c = mid if rng.random() > t else dark
             px[x, y] = c + (255,)
         run = rng.randint(0, 3)
-        for y in range(SOLID, SOLID + run):
+        for y in range(solid, min(solid + run, H)):
             px[x, y] = dark + (255,)
     return img
 
@@ -86,14 +87,44 @@ def normal_for(img: Image.Image, wrap_x: bool, wrap_y: bool) -> Image.Image:
     return n.crop((ox, oy, ox + img.width, oy + img.height))
 
 
+def slope_height(value, x):
+    """Surface height in px above the cell bottom at pixel column x (centre) for IntGrid slope values 3-8."""
+    u = x + 0.5 if value % 2 else 16 - (x + 0.5)  # odd values rise to the right
+    return {3: u, 4: u, 5: u / 2, 6: u / 2, 7: 8 + u / 2, 8: 8 + u / 2}[value]
+
+
+def slope_sheet(src: Image.Image) -> Image.Image:
+    """grass.png (5x5 tiles, kept at the same src coords) + row 5: slope tiles for IntGrid values 3..8 (cols 0..5).
+    Each is cut along its diagonal: the top tile (2,0) follows the slope, the inner tile (2,1) fills below it."""
+    out = Image.new(src.mode, (6 * 16, 6 * 16), (0, 0, 0, 0))
+    out.paste(src, (0, 0))
+    top, inner = src.crop((32, 0, 48, 16)), src.crop((32, 16, 48, 32))
+    for value in range(3, 9):
+        tile = Image.new(src.mode, (16, 16), (0, 0, 0, 0))
+        for x in range(16):
+            surface = 16 - slope_height(value, x)  # px from the cell top
+            for y in range(16):
+                d = int(y - surface)  # px under the surface
+                if y + 0.5 >= surface:
+                    tile.putpixel((x, y), top.getpixel((x, d)) if d < 16 else inner.getpixel((x, y)))
+        out.paste(tile, ((value - 3) * 16, 5 * 16))
+    return out
+
+
 def main():
     rng = random.Random(1)
     grass = Image.open(TILESETS / "grass.png").convert("RGBA")
+    # Grid slope tiles: grass_slopes.png (+ the same cut of grass_n / grass_m), used by Cave1's Ground_d0.
+    for suffix in ("", "_n", "_m"):
+        src = TILESETS / f"grass{suffix}.png"
+        if src.exists():
+            slope_sheet(Image.open(src).convert("RGBA")).save(TILESETS / f"grass_slopes{suffix}.png")
+            print(f"assets/kaa/tilesets/grass_slopes{suffix}.png: 96x96")
     earth = palette(TILESETS / "dirt.png")
     greens = palette(TILESETS / "grass.png")
     textures = {
         "edge": (strip(rng, greens, grass), True, False),
-        "side": (strip(rng, earth), True, False),
+        "side": (strip(rng, earth, solid=H), True, False),  # fully opaque: no fill gaps on faces steeper than ~49 deg
         "fill": (seamless_fill(rng, earth), True, True),
     }
     for style, tint in (("forest", lambda i: i), ("cave", cave)):
