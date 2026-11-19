@@ -61,7 +61,9 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
             playerObjectId = player->id;
         }
     }
-    if (player && !world.dying()) { // a dying player stands still
+    // A death fade only exists in the Showcase world; leaving it mid-fade must not freeze other scenes.
+    const bool dying = currentSceneId == SceneId::Showcase && world.dying();
+    if (player && !dying) { // a dying player stands still
         player->applyInput(s.input.getState());
     }
 
@@ -71,7 +73,7 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
         activeSceneDefinition->update(scene, deltaTime);
     }
 
-    if (!world.dying()) processTriggerOverlaps(s);
+    if (!dying) processTriggerOverlaps(s);
     scene.lateStep(deltaTime);
 
     if (currentSceneId == SceneId::Showcase) {
