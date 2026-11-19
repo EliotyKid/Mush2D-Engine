@@ -8,6 +8,7 @@
 #include "engine/world/Collision.hpp"
 #include "engine/world/Ldtk.hpp"
 #include "engine/world/LevelLoader.hpp"
+#include "engine/world/Region.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/World.hpp"
 
@@ -233,6 +234,17 @@ TEST(world_room_at_keeps_current_on_overlap_and_gap) {
     w.update({31.0f, -5.0f}); CHECK(w.currentRoom() == 2);
 }
 
+TEST(world_failed_load_is_not_marked_loaded) {
+    LdtkProject p = roomsInRow({320, 320});
+    World w;
+    w.onLoad = [](int room) { if (room == 1) throw std::runtime_error("bad room"); };
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    bool threw = false;
+    try { w.update({1.0f, -5.0f}); } catch (const std::exception&) { threw = true; }
+    CHECK(threw && (w.loadedRooms() == std::vector<int>{0}));
+}
+
 TEST(world_unload_keeps_persistent_objects) {
     Scene2D scene;
     scene.spawnRoomIid = "A"; // what LevelLoader::loadRoom sets while a room loads
@@ -323,6 +335,54 @@ TEST(look_apply_skips_stale_ids) {
     CHECK(lights.size() == 1 && lights[0].value.radius == 5 && layers[0].value.depth == 0);
     LookFile out; captureLook(out, lights, layers);
     CHECK(out.lights.size() == 1 && out.layers.at("Far").parallax.x == 1);
+}
+
+TEST(region_roundtrip) {
+    Region a;
+    a.look.settings.fogDensity = 0.2f; a.look.lights["abc"] = {{1, 0.5f, 0}, 3, 6, 1.5f, 0, 0.1f};
+    a.layers.push_back({"assets/kaa/parallax/bg1.png", 18.0f, {0.22f, 0.55f}, {-18.72f, 1.375f}, true});
+    a.layers.push_back({"assets/x.png", 2.0f, {0.85f, 0.92f}, {0.0f, -3.5f}, false});
+    auto b = parseRegion(serializeRegion(a), FrameSettings{});
+    CHECK(b && b->look.settings.fogDensity == 0.2f && b->look.lights.at("abc").radius == 6);
+    CHECK(b && b->layers.size() == 2);
+    if (b && b->layers.size() == 2) {
+        const RegionLayer& l = b->layers[0];
+        CHECK(l.image == "assets/kaa/parallax/bg1.png" && l.depth == 18.0f && l.repeatX);
+        CHECK(l.parallax == glm::vec2(0.22f, 0.55f) && l.offset == glm::vec2(-18.72f, 1.375f));
+        CHECK(!b->layers[1].repeatX && b->layers[1].image == "assets/x.png");
+    }
+    CHECK(!parseRegion("{ nope", FrameSettings{}));
+}
+TEST(missing_region_falls_back) {
+    FrameSettings d; d.exposure = 2.5f;
+    Region r = loadRegionOrDefault(std::filesystem::temp_directory_path() / "mush2d_nowhere.region.json", d);
+    CHECK(r.name == "mush2d_nowhere" && r.layers.empty() && r.look.settings.exposure == 2.5f);
+}
+TEST(region_look_blend) {
+    FrameSettings a, b;
+    a.fogDensity = 0.0f; b.fogDensity = 0.2f;
+    a.ambientColor = {0, 0, 0}; b.ambientColor = {1, 0.5f, 0.25f};
+    a.pixelMode = PixelSharp; b.pixelMode = PixelHD;
+    a.lightHalfRes = false; b.lightHalfRes = true;
+    auto near = [](float x, float y) { return std::abs(x - y) < 1e-6f; };
+    const float duration = 1.5f;
+    FrameSettings s0 = lerpSettings(a, b, 0.0f / duration);
+    CHECK(s0.fogDensity == 0.0f && s0.ambientColor == a.ambientColor && s0.pixelMode == PixelSharp && !s0.lightHalfRes);
+    FrameSettings s1 = lerpSettings(a, b, duration / duration);
+    CHECK(s1.fogDensity == 0.2f && s1.ambientColor == b.ambientColor && s1.pixelMode == PixelHD && s1.lightHalfRes);
+    FrameSettings mid = lerpSettings(a, b, 0.75f / duration);
+    CHECK(near(mid.fogDensity, 0.1f) && near(mid.ambientColor.y, 0.25f) && mid.pixelMode == PixelHD && mid.lightHalfRes);
+    FrameSettings early = lerpSettings(a, b, 0.7f / duration); // ints and bools switch at t >= 0.5
+    CHECK(early.pixelMode == PixelSharp && !early.lightHalfRes && near(early.exposure, 1.0f));
+}
+TEST(region_repeat_copies_cover_only_the_view) {
+    // 18-unit image, copy 0 left edge at x = 2, parallax 0.5. View 10 units wide around camera x = 40 -> layer x 20 +- 5.
+    RegionLayer l{"x.png", 4.0f, {0.5f, 1.0f}, {2.0f, 0.0f}, true};
+    glm::ivec2 r = regionCopyRange(l, 18.0f, {40.0f, 0.0f}, 5.0f); // copies span [2+18k, 20+18k]
+    CHECK(r == glm::ivec2(0, 1));                                  // 15..25 touches copy 0 (2..20) and copy 1 (20..38)
+    CHECK(regionCopyRange(l, 18.0f, {0.0f, 0.0f}, 1.0f) == glm::ivec2(-1, -1)); // -1..1: only copy -1 (-16..2)
+    l.repeatX = false;
+    CHECK(regionCopyRange(l, 18.0f, {400.0f, 0.0f}, 5.0f) == glm::ivec2(0, 0)); // single copy, never culled here
 }
 
 // --- Entity model (Scene2D) ---

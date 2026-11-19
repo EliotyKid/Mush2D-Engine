@@ -6,8 +6,14 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
     constexpr float U = LdtkPixelsPerUnit;
     const int n = int(level.layers.size());
     auto toWorld = [&](glm::vec2 px) { return ldtkToWorld(level.worldPx, px); };
+    // Entities with parallax show at their authored place when the camera is at their room's centre, as in LDtk.
+    const glm::vec2 roomCentre = toWorld(glm::vec2(level.pxSize) * 0.5f);
     std::vector<StaticSprite>& sprites = rooms_[level.iid];
     sprites.clear(); // reload must not duplicate
+    struct SpawnRoom { // reset even if a factory throws
+        Scene2D& scene;
+        ~SpawnRoom() { scene.spawnRoomIid.clear(); }
+    } spawnRoom{services.scene};
     services.scene.spawnRoomIid = level.iid;
 
     for (int li = 0; li < n; ++li) {
@@ -23,8 +29,8 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
             const LayerState& state = layers_[layerIndex]; // panel edits also reach rooms streamed in later
             for (const LdtkTile& t : L.tiles) {
                 SpriteInstance s{};
-                const glm::vec2 authored = toWorld(glm::vec2(t.px) + g * 0.5f);
-                s.position = ldtkParallaxAnchor(authored, state.parallax, parallaxAnchor);
+                // Parallax tiles are anchored at the world origin (spec decision 6): seamless across rooms.
+                s.position = toWorld(glm::vec2(t.px) + g * 0.5f);
                 s.size = {g / U, g / U};
                 float u = t.src.x / float(L.tilesetPx.x), v = t.src.y / float(L.tilesetPx.y);
                 float w = g / L.tilesetPx.x, h = g / L.tilesetPx.y;
@@ -36,7 +42,7 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
                 s.parallax = state.parallax;
                 s.albedo = mat.albedo; s.normal = mat.normal; s.emissive = mat.emissive; s.mask = mat.mask;
                 s.flags = SpriteFlagNearest;
-                sprites.push_back({s, order, layerIndex, authored});
+                sprites.push_back({s, order, layerIndex});
             }
         }
 
@@ -59,10 +65,9 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
                 std::fprintf(stderr, "LDtk: no factory for entity '%s', ignored\n", e.identifier.c_str());
                 continue;
             }
-            f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, parallaxAnchor), services);
+            f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, roomCentre), services);
         }
     }
-    services.scene.spawnRoomIid.clear();
 }
 
 void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {
@@ -71,6 +76,7 @@ void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {
     scene.forEach([&](GameObject& o) {
         if (o.roomIid == roomIid && !o.persistent) scene.destroy(o.id);
     });
+    scene.flush(); // gone now: no object outlives its room's tiles for a frame
 }
 
 void LevelLoader::setLayer(const std::string& identifier, glm::vec2 parallax, float depth) {
@@ -82,7 +88,6 @@ void LevelLoader::setLayer(const std::string& identifier, glm::vec2 parallax, fl
         for (auto& [iid, sprites] : rooms_) {
             for (StaticSprite& s : sprites) {
                 if (s.layer != i) continue;
-                s.instance.position = ldtkParallaxAnchor(s.authoredPos, parallax, parallaxAnchor);
                 s.instance.parallax = parallax;
                 s.instance.depth = depth;
             }

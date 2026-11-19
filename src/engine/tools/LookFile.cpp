@@ -2,8 +2,6 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
-#include <sstream>
 
 #include <nlohmann/json.hpp>
 
@@ -115,27 +113,6 @@ std::string serializeLook(const LookFile& look) {
                             {"height", r6(o.height)}, {"depth", r6(o.depth)}, {"flicker", r6(o.flicker)}};
     }
     return j.dump(2) + "\n";
-}
-
-LookFile loadLookOrDefault(const std::filesystem::path& path, const FrameSettings& defaults) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "Look: %s not found, using defaults\n", path.string().c_str());
-    } else {
-        std::stringstream ss;
-        ss << in.rdbuf();
-        if (auto look = parseLook(ss.str(), defaults)) return *look;
-        std::fprintf(stderr, "Look: %s is corrupt, using defaults\n", path.string().c_str());
-    }
-    LookFile look;
-    look.settings = defaults;
-    return look;
-}
-
-void saveLook(const std::filesystem::path& path, const LookFile& look) {
-    std::ofstream out(path, std::ios::trunc);
-    out << serializeLook(look);
-    if (!out) std::fprintf(stderr, "Look: failed to write %s\n", path.string().c_str());
 }
 
 void applyLook(const LookFile& look, std::vector<EditableLight>& lights, std::vector<EditableLayer>& layers) {

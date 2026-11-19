@@ -127,6 +127,7 @@ Material MaterialLibrary::load(const std::filesystem::path& albedoPng) {
     m.normal = loadMap(paths.normal, aw, ah, neutralNormal_);
     m.emissive = loadMap(paths.emissive, aw, ah, neutralEmissive_);
     m.mask = loadMap(paths.mask, aw, ah, neutralMask_);
+    m.width = aw; m.height = ah;
     cache_[key] = m;
     return m;
 }

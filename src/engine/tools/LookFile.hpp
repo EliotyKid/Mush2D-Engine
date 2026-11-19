@@ -22,12 +22,9 @@ struct LookFile {
 // Missing keys keep `defaults`; unknown keys are ignored. nullopt if the text is not a JSON object.
 std::optional<LookFile> parseLook(const std::string& json, const FrameSettings& defaults);
 std::string serializeLook(const LookFile&);
-// Missing or corrupt file: warns on stderr and returns defaults.
-LookFile loadLookOrDefault(const std::filesystem::path&, const FrameSettings& defaults);
-void saveLook(const std::filesystem::path&, const LookFile&);
 
 // Live-editable state the panel works on (what the level actually contains right now).
-struct EditableLight { std::string iid; glm::vec2 pos; LightOverride value; };
+struct EditableLight { std::string iid; glm::vec2 pos; LightOverride value; std::string roomIid; };
 struct EditableLayer { std::string identifier; LayerOverride value; };
 
 // Copies overrides onto the editable lists; an iid or layer no longer in the level is skipped with a warning.

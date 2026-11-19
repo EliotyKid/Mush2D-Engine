@@ -12,6 +12,7 @@
 
 struct Material {
     uint32_t albedo = 0, normal = 0, emissive = 0, mask = 0; // bindless indices
+    int width = 0, height = 0;                                // albedo size, pixels
 };
 
 struct MaterialPaths {

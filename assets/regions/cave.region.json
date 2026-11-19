@@ -1,0 +1,92 @@
+{
+  "layers": [
+    {
+      "depth": 7.0,
+      "image": "assets/kaa/parallax/bg3.png",
+      "offset": [
+        -10.8,
+        -1.46875
+      ],
+      "parallax": [
+        0.55,
+        0.75
+      ],
+      "repeatX": true
+    },
+    {
+      "depth": 18.0,
+      "image": "assets/kaa/parallax/bg1.png",
+      "offset": [
+        -18.72,
+        1.375
+      ],
+      "parallax": [
+        0.22,
+        0.55
+      ],
+      "repeatX": true
+    }
+  ],
+  "look": {
+    "ambient": {
+      "color": [
+        0.2,
+        0.26,
+        0.42
+      ],
+      "intensity": 0.35
+    },
+    "bloom": {
+      "intensity": 0.7,
+      "knee": 0.5,
+      "threshold": 0.9
+    },
+    "exposure": 0.8,
+    "fog": {
+      "color": [
+        0.03,
+        0.06,
+        0.14
+      ],
+      "density": 0.02,
+      "gradientEnd": 10.0,
+      "gradientStart": 0.0,
+      "gradientStrength": 0.0
+    },
+    "grading": {
+      "gain": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "gamma": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "lift": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "saturation": 1.109,
+      "temperature": -0.2
+    },
+    "layers": {
+      "Ground_d0": {
+        "depth": 0.0,
+        "parallax": [
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "lightHalfRes": false,
+    "lights": {},
+    "pixelArt": {
+      "mode": "smooth",
+      "pixelateFactor": 2,
+      "pixelateLight": false
+    }
+  }
+}

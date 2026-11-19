@@ -31,7 +31,7 @@ Se o configure do Release travar baixando o imgui, passe `-DFETCHCONTENT_SOURCE_
 - `F`: liga/desliga a câmera que segue o player. Com ela desligada, `W` `A` `S` `D` movem a câmera. Botão do meio do mouse arrastando também move a câmera.
 - `Q` `E` (e a roda do mouse): zoom da câmera. Funciona nos modos pixel art (suave) (limitado a 1x-8x) e HD. Sem efeito no modo pixel art (nítido), que usa escala inteira fixa.
 - `F1`: painel de visual e desempenho (ImGui).
-- No Release, "Salvar" grava `showcase.look.json` ao lado do executável, e a cópia de assets do próximo build sobrescreve esse arquivo. Para persistir, use o Debug (grava no código-fonte).
+- "Salvar" grava a região atual (`assets/regions/<nome>.region.json`: look e camadas de fundo). No Release, grava ao lado do executável, e a cópia de assets do próximo build sobrescreve esse arquivo. Para persistir, use o Debug (grava no código-fonte).
 
 ## Variáveis de ambiente
 

@@ -4,9 +4,9 @@
 
 #include <string>
 
-void LookPanel::draw(LookFile& look, std::vector<EditableLight>& lights, std::vector<EditableLayer>& layers,
+void LookPanel::draw(Region& region, std::vector<EditableLight>& lights, std::vector<EditableLayer>& layers,
                      const GpuTimers& timers, bool& saveRequested) {
-    FrameSettings& s = look.settings;
+    FrameSettings& s = region.look.settings;
     ImGui::SetNextWindowPos({10, 10}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({380, 620}, ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Look (F1)")) {
@@ -14,6 +14,8 @@ void LookPanel::draw(LookFile& look, std::vector<EditableLight>& lights, std::ve
         return;
     }
     if (ImGui::Button("Salvar")) saveRequested = true;
+    ImGui::SameLine();
+    ImGui::Text("regiao: %s", region.name.c_str());
 
     if (ImGui::CollapsingHeader("Ambiente", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::ColorEdit3("cor##amb", &s.ambientColor.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
@@ -44,6 +46,17 @@ void LookPanel::draw(LookFile& look, std::vector<EditableLight>& lights, std::ve
         ImGui::Checkbox("pixelar luz", &s.pixelateLight);
         ImGui::SliderInt("fator", &s.pixelateFactor, 1, 8);
         ImGui::Checkbox("luz em meia resolucao", &s.lightHalfRes);
+    }
+    if (ImGui::CollapsingHeader("Fundo da regiao")) {
+        for (RegionLayer& l : region.layers) {
+            ImGui::PushID(&l);
+            ImGui::TextUnformatted(l.image.c_str());
+            ImGui::SliderFloat2("parallax", &l.parallax.x, 0.0f, 1.5f);
+            ImGui::SliderFloat("profundidade", &l.depth, -5.0f, 30.0f);
+            ImGui::DragFloat2("offset", &l.offset.x, 0.05f);
+            ImGui::Checkbox("repetir em X", &l.repeatX);
+            ImGui::PopID();
+        }
     }
     if (ImGui::CollapsingHeader("Camadas")) {
         for (EditableLayer& l : layers) {

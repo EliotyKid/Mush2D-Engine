@@ -68,10 +68,10 @@ void World::loadAround(int room) {
 
 void World::load(int room) {
     if (std::find(loaded_.begin(), loaded_.end(), room) != loaded_.end()) return;
-    loaded_.insert(std::upper_bound(loaded_.begin(), loaded_.end(), room), room);
     // shortcut: a whole room is built in one frame; slice by entities per frame if a room passes ~2 ms.
     if (onLoad) onLoad(room);
     else loader_->loadRoom(project_.levels[room], *services_, services_->materials);
+    loaded_.insert(std::upper_bound(loaded_.begin(), loaded_.end(), room), room); // only once it loaded
 }
 
 void World::unload(int room) {
