@@ -92,17 +92,17 @@ std::vector<Segment> segmentsFromIntGrid(const LdtkLayer& L, glm::ivec2 levelWor
     return out;
 }
 
-std::vector<Segment> segmentsFromTerrain(const LdtkEntity& e, glm::ivec2 levelWorldPx, int layerGridPx,
-                                         const std::string& roomIid) {
-    auto flag = [&](const char* key, bool def) {
+TerrainShape terrainShape(const LdtkEntity& e, glm::ivec2 levelWorldPx, int layerGridPx) {
+    auto flag = [&](const char* key) {
         auto it = e.fields.find(key);
-        return it != e.fields.end() && it->is_boolean() ? it->get<bool>() : def;
+        return it != e.fields.end() && it->is_boolean() && it->get<bool>();
     };
-    const bool closed = flag("closed", false), oneWay = flag("oneWay", false);
-    float thickness = 3.0f;
-    if (auto it = e.fields.find("thickness"); it != e.fields.end() && it->is_number()) thickness = it->get<float>();
+    TerrainShape t;
+    t.closed = flag("closed");
+    t.oneWay = flag("oneWay");
+    if (auto it = e.fields.find("thickness"); it != e.fields.end() && it->is_number()) t.thickness = it->get<float>();
 
-    std::vector<glm::vec2> pts{ldtkToWorld(levelWorldPx, e.px)};
+    t.points.push_back(ldtkToWorld(levelWorldPx, e.px));
     if (auto it = e.fields.find("points"); it != e.fields.end() && it->is_array()) {
         bool first = true;
         for (auto& p : *it) {
@@ -111,9 +111,18 @@ std::vector<Segment> segmentsFromTerrain(const LdtkEntity& e, glm::ivec2 levelWo
             // the entity sits on points[0]: drop the duplicate
             const bool dup = first && int(std::floor(e.px.x / layerGridPx)) == cx && int(std::floor(e.px.y / layerGridPx)) == cy;
             first = false;
-            if (!dup) pts.push_back(ldtkToWorld(levelWorldPx, glm::vec2(cx * layerGridPx, cy * layerGridPx)));
+            if (!dup) t.points.push_back(ldtkToWorld(levelWorldPx, glm::vec2(cx * layerGridPx, cy * layerGridPx)));
         }
     }
+    return t;
+}
+
+std::vector<Segment> segmentsFromTerrain(const LdtkEntity& e, glm::ivec2 levelWorldPx, int layerGridPx,
+                                         const std::string& roomIid) {
+    TerrainShape t = terrainShape(e, levelWorldPx, layerGridPx);
+    const bool closed = t.closed, oneWay = t.oneWay;
+    const float thickness = t.thickness;
+    std::vector<glm::vec2>& pts = t.points;
     // shortcut: an open terrain whose surface drops more than `thickness` self-intersects (the bottom
     // runs straight between the end points); upgrade by clipping the thickness offset under the surface.
     if (!closed && pts.size() >= 2) { // fill down by thickness

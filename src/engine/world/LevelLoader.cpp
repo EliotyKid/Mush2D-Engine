@@ -1,5 +1,7 @@
 #include "engine/world/LevelLoader.hpp"
 
+#include "engine/world/TerrainMesh.hpp"
+
 #include <cstdio>
 
 namespace {
@@ -8,6 +10,37 @@ struct SpawnRoom { // reset even if a factory throws
     SpawnRoom(Scene2D& s, const std::string& iid) : scene(s) { scene.spawnRoomIid = iid; }
     ~SpawnRoom() { scene.spawnRoomIid.clear(); }
 };
+}
+
+// The terrain's look: assets/terrain/<style>/{edge,side,fill}.png next to the levels folder; style = entity
+// field "style" (default "forest"). Texture pixels / 32 = world size.
+void LevelLoader::appendTerrainSprites(const LdtkEntity& e, const LdtkLevel& level, int layerGridPx, int order,
+                                       MaterialLibrary& materials, std::vector<StaticSprite>& sprites) {
+    const TerrainShape shape = terrainShape(e, level.worldPx, layerGridPx);
+    std::string name = "forest";
+    if (auto it = e.fields.find("style"); it != e.fields.end() && it->is_string()) name = it->get<std::string>();
+    const std::filesystem::path dir = level.baseDir.parent_path() / "terrain" / name;
+    TerrainStyle style;
+    style.edge = materials.load(dir / "edge.png");
+    style.side = materials.load(dir / "side.png");
+    style.fill = materials.load(dir / "fill.png");
+    style.edgeSize = {style.edge.width / LdtkPixelsPerUnit, style.edge.height / LdtkPixelsPerUnit};
+    style.fillTile = {style.fill.width / LdtkPixelsPerUnit, style.fill.height / LdtkPixelsPerUnit};
+
+    std::vector<Segment> line;
+    const std::vector<glm::vec2>& p = shape.points;
+    for (size_t i = 0; i + (shape.closed ? 0 : 1) < p.size(); ++i) {
+        Segment seg;
+        seg.a = p[i]; seg.b = p[(i + 1) % p.size()];
+        line.push_back(seg);
+    }
+    std::vector<SpriteInstance> mesh;
+    buildTerrainMesh(line, shape.closed, shape.thickness, style, mesh);
+    for (SpriteInstance& s : mesh) {
+        s.depth = e.depth;
+        s.parallax = e.parallax;
+        sprites.push_back({s, order, -1}); // -1: not an editable tile layer
+    }
 }
 
 void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials) {
@@ -60,6 +93,7 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
             if (e.identifier != "Terrain") continue;
             std::vector<Segment> s = segmentsFromTerrain(e, level.worldPx, L.gridSize, level.iid);
             segments.insert(segments.end(), s.begin(), s.end());
+            appendTerrainSprites(e, level, L.gridSize, order, materials, sprites);
         }
     }
     services.scene.collision.addRoom(level.iid, std::move(segments));

@@ -41,6 +41,8 @@ public:
 
 private:
     struct StaticSprite { SpriteInstance instance; int order; int layer; };
+    static void appendTerrainSprites(const LdtkEntity& e, const LdtkLevel& level, int layerGridPx, int order,
+                                     MaterialLibrary& materials, std::vector<StaticSprite>& sprites);
     std::map<std::string, EntityFactory> factories_;
     std::map<std::string, std::vector<StaticSprite>> rooms_; // by room iid
     std::vector<LayerState> layers_;

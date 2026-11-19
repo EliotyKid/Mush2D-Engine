@@ -12,6 +12,7 @@
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/Region.hpp"
 #include "engine/world/Scene2D.hpp"
+#include "engine/world/TerrainMesh.hpp"
 #include "engine/world/World.hpp"
 #include "engine/world/WorldState.hpp"
 #include "engine/graphics/Camera2D.hpp"
@@ -1433,6 +1434,81 @@ TEST(terrain_open_surface_thickness) {
     auto o = segmentsFromTerrain(terrainEntity({0, 0}, {{16, 0}, {32, 8}}, false, 2.0f, true), {0, 0}, 4, "r");
     CHECK(!o.empty());
     for (auto& s : o) CHECK(s.oneWay && s.normal.y > 0.7f);
+}
+
+namespace {
+// edge = albedo 1, side = 2, fill = 3
+TerrainStyle meshStyle() {
+    TerrainStyle s;
+    s.edge.albedo = 1; s.side.albedo = 2; s.fill.albedo = 3;
+    return s;
+}
+std::vector<Segment> polyline(std::initializer_list<glm::vec2> pts, bool closed) {
+    std::vector<glm::vec2> v(pts);
+    std::vector<Segment> out;
+    for (size_t i = 0; i + (closed ? 0 : 1) < v.size(); ++i) {
+        Segment s; s.a = v[i]; s.b = v[(i + 1) % v.size()];
+        out.push_back(s);
+    }
+    return out;
+}
+std::vector<SpriteInstance> only(const std::vector<SpriteInstance>& all, uint32_t albedo) {
+    std::vector<SpriteInstance> r;
+    for (auto& s : all) if (s.albedo == albedo) r.push_back(s);
+    return r;
+}
+}
+
+TEST(terrain_mesh_covers_columns) {
+    // flat open surface 4 u wide, 2.5 u thick: fill area = 10, down to y = -2.5, columns without holes
+    std::vector<SpriteInstance> out;
+    buildTerrainMesh(polyline({{0, 0}, {4, 0}}, false), false, 2.5f, meshStyle(), out);
+    auto fill = only(out, 3);
+    float area = 0.0f, bottom = 0.0f, top = -1e9f;
+    for (auto& s : fill) {
+        area += s.size.x * s.size.y;
+        bottom = std::min(bottom, s.position.y - s.size.y * 0.5f);
+        top = std::max(top, s.position.y + s.size.y * 0.5f);
+        CHECK(s.size.y <= 1.0f + 1e-4f && s.uvRect.w <= 1.0f + 1e-4f && s.uvRect.y >= 0.0f);
+        CHECK(s.uvRect.x >= 0.0f && s.uvRect.x + s.uvRect.z <= 1.0f + 1e-4f); // never leaves its tile
+    }
+    CHECK(std::abs(area - 10.0f) < 1e-3f && std::abs(bottom + 2.5f) < 1e-4f && std::abs(top) < 1e-4f);
+    // closed hill: per column, cells touch (no gaps) and stay under the surface
+    out.clear();
+    buildTerrainMesh(polyline({{0, 0}, {4, 0}, {2, 2}}, true), true, 0.0f, meshStyle(), out);
+    std::map<int, std::vector<SpriteInstance>> cols;
+    for (auto& s : only(out, 3)) cols[int(std::floor(s.position.x * 100))].push_back(s);
+    CHECK(cols.size() == 6); // the two base-corner columns shrink to nothing: the edge pieces cover those corners
+    for (auto& [x, v] : cols) {
+        std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.position.y > b.position.y; });
+        for (size_t i = 0; i + 1 < v.size(); ++i)
+            CHECK(std::abs((v[i].position.y - v[i].size.y * 0.5f) - (v[i + 1].position.y + v[i + 1].size.y * 0.5f)) < 1e-4f);
+        const float roof = 2.0f - std::abs(v[0].position.x - 2.0f); // triangle surface at this column
+        CHECK(v[0].position.y + v[0].size.y * 0.5f <= roof + 1e-3f);
+        CHECK(std::abs(v.back().position.y - v.back().size.y * 0.5f) < 1e-4f); // down to the base line
+    }
+}
+
+TEST(terrain_edge_follows_surface) {
+    // 2 u flat, then a 45 deg ramp 2.83 u long: pieces = ceil(length), rotated to the angle
+    std::vector<SpriteInstance> out;
+    buildTerrainMesh(polyline({{0, 0}, {2, 0}, {4, 2}}, false), false, 3.0f, meshStyle(), out);
+    auto edge = only(out, 1);
+    int flat = 0, ramp = 0;
+    float flatLen = 0.0f, rampLen = 0.0f;
+    for (auto& s : edge) {
+        if (s.rotation == 0.0f) { ++flat; flatLen += s.size.x; }
+        else if (std::abs(s.rotation - glm::quarter_pi<float>()) < 1e-4f) { ++ramp; rampLen += s.size.x; }
+        else CHECK(false);
+        CHECK(s.uvRect == glm::vec4(0, 0, 1, 1));
+    }
+    CHECK(flat == 2 && ramp == 3);
+    CHECK(flatLen >= 2.0f && flatLen < 2.2f && rampLen >= 2.828f && rampLen < 3.0f);
+    CHECK(!only(out, 2).empty()); // sides and bottom use the second edge
+    for (auto& s : edge) if (s.rotation != 0.0f) { // ramp pieces hang under the line, along its normal
+        const glm::vec2 on = s.position + glm::vec2(-0.70710678f, 0.70710678f) * (0.25f - 0.0625f);
+        CHECK(std::abs(on.y - (on.x - 2.0f)) < 1e-4f);
+    }
 }
 
 TEST(collision_world_add_query_remove) {

@@ -25,6 +25,8 @@ void main() {
 
     vec3 n = normalTex.xyz * 2 - 1;
     if (inst.size.x < 0) n.x = -n.x;
+    float rc = cos(inst.rotation), rs = sin(inst.rotation); // tangent-space xy turns with the sprite (as sprite.vert)
+    n.xy = vec2(rc * n.x - rs * n.y, rs * n.x + rc * n.y);
 
     outAlbedo = vec4(albedo.rgb, 1);
     outNormal = vec4(n.xy * 0.5 + 0.5, mask.r, mask.g);

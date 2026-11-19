@@ -24,6 +24,10 @@ struct Segment {
 // room border (x = 0 or x = levelPxSize.x) are not generated.
 std::vector<Segment> segmentsFromIntGrid(const LdtkLayer& collision, glm::ivec2 levelWorldPx, glm::ivec2 levelPxSize,
                                          const std::string& roomIid);
+// Terrain entity as authored: points = entity position, then fields["points"] (dup of the first dropped),
+// in world units; closed / oneWay / thickness (default 3 u) from the fields.
+struct TerrainShape { std::vector<glm::vec2> points; bool closed = false, oneWay = false; float thickness = 3.0f; };
+TerrainShape terrainShape(const LdtkEntity& e, glm::ivec2 levelWorldPx, int layerGridPx);
 // Terrain entity: points = entity position, then fields["points"] (F_Point array, cells of layerGridPx).
 // fields: closed (polygon; else a surface filled down by thickness, default 3 u), oneWay (keeps only
 // segments with normal.y > 0.7). Winding is corrected so normals point to the air.
