@@ -35,7 +35,8 @@ Pendente no PC Arch (RTX 2060 Super): build debug sem erros de validação, e so
 - [ ] Múltiplas câmeras com troca e mistura (blend) entre elas
 - [ ] Checkpoints e save (posição, habilidades, mapa explorado)
 - [ ] Mapa-múndi in-game
-- [ ] Modelo de entidades orientado a objetos revisto (hierarquia, componentes reutilizáveis, ciclo de vida, pai/filho)
+- [x] Modelo de entidades orientado a objetos revisto (hierarquia, componentes reutilizáveis, ciclo de vida, pai/filho) — [design](superpowers/specs/2026-11-19-modelo-entidades-design.md)
+- [x] Pixel art suave: zoom livre e câmera em subpixel sem pixels quebrados (modo padrão)
 
 ## Fase 1.5 — Cinemática
 
