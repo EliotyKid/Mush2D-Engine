@@ -417,6 +417,8 @@ def main():
         "__bgPos": None, "externalRelPath": None, "fieldInstances": [], "layerInstances": instances,
         "__neighbours": [],
     }
+    for li in instances:  # LDtk resolves each layer's level by uid; a wrong id crashes the editor on load
+        li["levelId"] = level["uid"]
 
     project = {
         "__header__": {"fileType": "LDtk Project JSON", "app": "LDtk", "doc": "https://ldtk.io/json",
