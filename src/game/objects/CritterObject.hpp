@@ -13,6 +13,8 @@ class CritterObject : public GameObject {
 public:
     MUSH2D_EXPORT(AssetRef, anim, "") // "idle" animation (name in the sprite's atlas); empty = the prefab's
 
+    void onCreate(Scene2D&) override { name = "Critter"; }
+
     void onPrefabApplied(Scene2D&) override {
         transform.position = ldtkBoxBottom(*this);
         if (anim.empty()) return;

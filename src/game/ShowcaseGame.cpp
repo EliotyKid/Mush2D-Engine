@@ -511,24 +511,6 @@ void ShowcaseGame::registerLevelEntities() {
         crystals.push_back({e.iid, s.scene.spawnRoomIid, variant, centre, uv, material});
     });
 
-    levelLoader.registerEntity("Prop", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        std::string frameName = stringField(e, "frame", "");
-        const TextureAtlas& atlas = gameAssets.getAtlasByTextureIndex(GameAtlasId::KaaProps);
-        if (!atlas.hasFrame(frameName)) {
-            std::fprintf(stderr, "Showcase: prop frame '%s' not found, ignored\n", frameName.c_str());
-            return;
-        }
-        float depth = e.fields.contains("depth") ? numberField(e, "depth", e.depth) : e.depth;
-        GameObject& prop = s.scene.createObject<GameObject>();
-        prop.name = "Prop";
-        prop.transform.position = bottomOf(e, pos);
-        // Foreground props read as dark silhouettes, as in Ori.
-        glm::vec4 color = depth < 0.0f ? glm::vec4(0.32f, 0.36f, 0.42f, 1.0f) : glm::vec4(1.0f);
-        prop.sprite = SpriteData{.atlasTextureIndex = GameAtlasId::KaaProps, .frameName = frameName, .layer = 1,
-                                 .color = color, .depth = depth, .parallax = e.parallax};
-        placeFrameAtPivot(prop, atlas.getFrame(frameName), {0.0f, 0.0f}, boolField(e, "flipX"));
-    });
-
     // Interactive objects (spec decision 1). Their state lives in world.state; trackEntity records the policy.
 }
 
