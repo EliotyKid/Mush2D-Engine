@@ -83,6 +83,7 @@ void SceneInspector::draw(Scene2D& scene, PrefabLibrary& prefabs, bool& pause) {
         ImGui::End();
         return;
     }
+    std::erase_if(edited_, [&](const auto& e) { return !scene.findObject(e.first); }); // objects gone (hot reload)
     ImGui::Checkbox("pausar o jogo", &pause);
     ImGui::InputText("filtro (nome ou tag)", filter_, sizeof filter_);
 
@@ -130,7 +131,7 @@ void SceneInspector::drawNode(Scene2D& scene, GameObject& o) {
 
 void SceneInspector::drawSelected(GameObject& o, PrefabLibrary& prefabs) {
     ImGui::SeparatorText(labelOf(o).c_str());
-    ImGui::Text("prefab: %s", o.prefab.empty() ? "(criado em codigo)" : o.prefab.c_str());
+    ImGui::Text("prefab: %s", o.prefab.empty() ? "(nenhum: criado em codigo ou filho inline)" : o.prefab.c_str());
     ImGui::Text("entityIid: %s", o.entityIid.empty() ? "-" : o.entityIid.c_str());
 
     std::set<std::string>& edited = edited_[o.id];
@@ -173,10 +174,12 @@ void SceneInspector::drawSelected(GameObject& o, PrefabLibrary& prefabs) {
         status_ = saveToSourcePrefab(prefabs, o, edited, error) ? "Salvo em " + o.prefab + ".prefab.json" : error;
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip(canSave ? "Grava no prefab de origem so os atributos editados que diferem da base.\n"
-                                    "Varias instancias do mesmo prefab editadas de forma diferente: cada uma grava\n"
-                                    "a propria diferenca no mesmo arquivo, e a ultima gravacao vence."
-                                  : "Objeto criado em codigo, sem prefab de origem: use 'Salvar como novo prefab'.");
+        ImGui::SetTooltip("%s%s", canSave ? "Grava no prefab de origem so os atributos editados que diferem da base.\n"
+                                            "Varias instancias do mesmo prefab editadas de forma diferente: cada uma grava\n"
+                                            "a propria diferenca no mesmo arquivo, e a ultima gravacao vence."
+                                          : "Sem prefab de origem (criado em codigo ou filho inline):\n"
+                                            "use 'Salvar como novo prefab'.",
+                          canSave && o.parent() ? "\nFilho: campos definidos na entrada do pai vencem o prefab." : "");
     ImGui::InputText("nome do novo prefab", newPrefab_, sizeof newPrefab_);
     if (ImGui::Button("Salvar como novo prefab"))
         status_ = saveAsNewPrefab(prefabs, o, newPrefab_, edited, error) ? std::string("Criado ") + newPrefab_ + ".prefab.json" : error;

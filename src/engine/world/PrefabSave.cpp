@@ -2,6 +2,7 @@
 
 #include <format>
 #include <fstream>
+#include <iterator>
 
 using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
@@ -18,14 +19,19 @@ json tidy(const json& v) {
     return out;
 }
 
-// The edited attributes in prefab form: the differing ones with their value, the others null (= remove).
+// The edited attributes in prefab form, with their current value; null (= remove) only for one equal to a value
+// the base chain sets. A field the base does not set keeps its value even when it equals the registry default:
+// onCreate may set something else, and the prefab is applied after it.
 json editedDiff(const GameObject& o, const json& base, const std::set<std::string>& edited) {
     const json diff = diffAgainstBase(o, base);
     json doc = json::object();
-    for (const std::string& name : edited) {
-        if (o.ldtkOverridden.count(name)) continue;
-        const auto [section, field] = prefabFieldOf(name);
-        doc[section][field] = diff.contains(section) && diff[section].contains(field) ? diff[section][field] : json();
+    const void* self = static_cast<const GameObject*>(&o);
+    for (const PropertyInfo* p : typeRegistry().allProps(typeOf(o).name)) {
+        if (!edited.count(p->name) || o.ldtkOverridden.count(p->name)) continue;
+        const auto [section, field] = prefabFieldOf(p->name);
+        const bool inBase = base.contains(section) && base[section].is_object() && base[section].contains(field);
+        const bool differs = diff.contains(section) && diff[section].contains(field);
+        doc[section][field] = inBase && !differs ? json() : tidy(p->get(self));
     }
     return doc;
 }
@@ -62,9 +68,12 @@ bool savePrefab(const std::filesystem::path& path, const json& doc, std::string&
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
     ordered_json out = ordered_json::object(); // ordered: the file keeps its key order
+    bool crlf = false;                         // the file's line endings are kept
     if (exists) {
-        std::ifstream in(path);
-        out = ordered_json::parse(in, nullptr, false);
+        std::ifstream in(path, std::ios::binary);
+        const std::string text(std::istreambuf_iterator<char>(in), {});
+        crlf = text.find("\r\n") != std::string::npos;
+        out = ordered_json::parse(text, nullptr, false);
         if (out.is_discarded() || !out.is_object()) {
             error = file + ": not a valid prefab, left unchanged";
             return false;
@@ -89,10 +98,25 @@ bool savePrefab(const std::filesystem::path& path, const json& doc, std::string&
             out[key] = value;
         }
     }
-    std::ofstream os(path);
-    os << out.dump(2, ' ', false, ordered_json::error_handler_t::replace) << '\n';
-    if (!os) {
-        error = file + ": could not write " + path.string();
+    std::string text = out.dump(2, ' ', false, ordered_json::error_handler_t::replace) + '\n';
+    if (crlf)
+        for (std::size_t i = text.find('\n'); i != std::string::npos; i = text.find('\n', i + 2)) text.insert(i, 1, '\r');
+    // Written beside it, then renamed over it: the prefab watcher never reads a half-written file
+    // (".tmp" does not match its ".prefab.json" filter).
+    std::filesystem::path tmp = path;
+    tmp += ".tmp";
+    {
+        std::ofstream os(tmp, std::ios::binary);
+        os << text;
+        if (!os) {
+            error = file + ": could not write " + tmp.string();
+            return false;
+        }
+    }
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        error = file + ": could not replace " + path.string() + ": " + ec.message();
+        std::filesystem::remove(tmp, ec);
         return false;
     }
     return true;
@@ -105,8 +129,7 @@ bool saveToSourcePrefab(PrefabLibrary& library, const GameObject& object, const 
         return false;
     }
     const std::filesystem::path path = library.dir() / (object.prefab + ".prefab.json");
-    std::ifstream in(path);
-    const json own = json::parse(in, nullptr, false);
+    const json own = json::parse(std::ifstream(path), nullptr, false); // closed at once: savePrefab renames over it
     if (own.is_discarded() || !own.is_object()) {
         error = path.filename().string() + ": not a valid prefab, left unchanged";
         return false;

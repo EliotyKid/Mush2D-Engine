@@ -29,7 +29,8 @@ bool savePrefab(const std::filesystem::path& path, const nlohmann::json& doc, st
 inline bool canSaveToPrefab(const GameObject& object) { return !object.prefab.empty(); }
 
 // Writes the edited attributes (names, as the inspector records them) into the object's source prefab: the
-// ones equal to the base are removed from the file. Clears the library's cache.
+// ones equal to a value the base chain sets are removed from the file; the others are written with their
+// current value, even when it equals the C++ default (onCreate may set another). Clears the library's cache.
 bool saveToSourcePrefab(PrefabLibrary& library, const GameObject& object, const std::set<std::string>& edited,
                         std::string& error);
 

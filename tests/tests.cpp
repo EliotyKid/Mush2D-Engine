@@ -2930,6 +2930,43 @@ TEST(save_as_new_prefab_sets_base) {
     CHECK(!saveAsNewPrefab(lib, *o, "bad name", {"speed"}, err) && !err.empty());
 }
 
+// onCreate sets a value other than the registry default (as SlimeEnemy does with scale and collider).
+class TestCreated : public GameObject {
+    MUSH2D_OBJECT(TestCreated, GameObject)
+public:
+    MUSH2D_EXPORT(float, speed, 1.0f)
+    void onCreate(Scene2D&) override { speed = 5.0f; }
+};
+
+TEST(inspector_save_keeps_edits_equal_to_defaults) {
+    const auto dir = prefabSaveDir("defaults", {});
+    std::ofstream(dir / "created.prefab.json") << R"({ "version": 1, "type": "TestCreated" })";
+    std::ofstream(dir / "created_set.prefab.json") << R"({ "version": 1, "type": "TestCreated", "props": { "speed": 1.0 } })";
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    auto* o = dynamic_cast<TestCreated*>(lib.instantiate(scene, "created"));
+    CHECK(o && o->speed == 5.0f);
+    if (!o) return;
+    // Edited back to the registry default: written (the base chain does not set it), so onCreate does not win.
+    std::string err;
+    CHECK(setProp(*o, "speed", 1.0f) && saveToSourcePrefab(lib, *o, {"speed"}, err));
+    CHECK(readJson(dir / "created.prefab.json").value("props", nlohmann::json()) == nlohmann::json({{"speed", 1.0}}));
+    auto* again = dynamic_cast<TestCreated*>(lib.instantiate(scene, "created"));
+    CHECK(again && again->speed == 1.0f);
+
+    // A leaf whose explicit override equals the default keeps it when that attribute is saved again.
+    GameObject* set = lib.instantiate(scene, "created_set");
+    CHECK(set && saveToSourcePrefab(lib, *set, {"speed"}, err));
+    CHECK(readJson(dir / "created_set.prefab.json").value("props", nlohmann::json()) == nlohmann::json({{"speed", 1.0}}));
+    auto* setAgain = dynamic_cast<TestCreated*>(lib.instantiate(scene, "created_set"));
+    CHECK(setAgain && setAgain->speed == 1.0f);
+
+    // Saved with LF and through a temporary file that does not stay behind.
+    std::ifstream raw(dir / "created_set.prefab.json", std::ios::binary);
+    const std::string text(std::istreambuf_iterator<char>(raw), {});
+    CHECK(text.find('\r') == std::string::npos && !std::filesystem::exists(dir / "created_set.prefab.json.tmp"));
+}
+
 TEST(save_disabled_without_source_prefab) {
     const auto dir = prefabSaveDir("no_source", {"test_base"});
     Scene2D scene;
