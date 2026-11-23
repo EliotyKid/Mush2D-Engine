@@ -1,0 +1,1 @@
+{ "version": 1, "type": "TestSlime", "props": { "speed": 2.0, "door": "default-door" } }

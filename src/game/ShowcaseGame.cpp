@@ -8,7 +8,7 @@
 #include "game/objects/DoorObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
-#include "game/objects/PivotSprite.hpp"
+#include "engine/world/SpriteAnimator.hpp"
 #include "game/objects/PlayerObject.hpp"
 #include "game/scenes/SceneRegistry.hpp"
 #include "game/spawners/Spawn.hpp"
@@ -28,11 +28,13 @@
 void ShowcaseGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
     s.scene.userData = &gameAssets;
+    s.scene.setService(&gameAssets.registry);
+    s.scene.setService(&prefabs);
     regions.init(s.materials, sourceAssetPath("assets/regions")); // Debug: the source tree, so panel saves survive rebuilds
 
     atlasMaterials.clear();
-    for (const char* path : GameAtlasId::ImagePaths) {
-        atlasMaterials.push_back(s.materials.load(assetPath(path)));
+    for (const AssetRegistry::Atlas& atlas : gameAssets.registry.atlases()) {
+        atlasMaterials.push_back(s.materials.load(atlas.image));
     }
     registerLevelEntities();
 #ifndef NDEBUG
@@ -56,6 +58,7 @@ void ShowcaseGame::init(EngineServices& s) {
 
     loadScene(s, SceneId::Showcase);
     levelFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), sourceAssetPath("assets/regions"), ".region.json");
+    prefabFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), prefabs.dir(), ".prefab.json"); // only .dir is used
 
     // Debug (MUSH2D_CAMERA_X=<world x>): park the camera there, e.g. for parallax screenshots.
     if (const char* camX = std::getenv("MUSH2D_CAMERA_X")) {
@@ -68,8 +71,14 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
 
     handleGlobalInput(s, deltaTime);
 #ifndef NDEBUG
-    if (currentSceneId == SceneId::Showcase)
+    if (currentSceneId == SceneId::Showcase) {
         if (const FileWatcher::Change change = levelFiles.poll(deltaTime)) hotReload(s, !change.dir);
+        // A saved prefab: reload the rooms like F5 (unsaved inspector edits are lost; the WorldState stays).
+        if (prefabFiles.poll(deltaTime).dir) {
+            prefabs.clear();
+            hotReload(s, true);
+        }
+    }
 #endif
     auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
     if (!player) {
@@ -175,6 +184,8 @@ void ShowcaseGame::submitRenderData(EngineServices& s) {
 void ShowcaseGame::shutdown(EngineServices& s) {
     s.scene.clear();
     s.scene.userData = nullptr;
+    s.scene.setService<AssetRegistry>(nullptr);
+    s.scene.setService<PrefabLibrary>(nullptr);
 }
 
 bool ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {

@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -22,9 +23,13 @@ public:
     // "Collision" and "Terrain" entities -> collision segments (scene.collision, room level.iid).
     // Entities: spawnEntity (World).
     void loadRoom(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials);
-    // Runs the entity's registered factory (unknown identifiers are warned about and ignored); every object
-    // created meanwhile gets roomIid = level.iid.
+    // Creates the entity from assets/prefabs/<snake_case identifier>.prefab.json (or the entity's `prefab`
+    // field) through the PrefabLibrary scene service: fields override attributes, position = box centre.
+    // Without that file, its registered factory. Terrain (collision only), Light and PlayerStart always use the
+    // factory. Neither: warned once per identifier and ignored. Objects created get roomIid = level.iid.
     void spawnEntity(const LdtkLevel& level, const LdtkEntity& entity, EngineServices& services);
+    // Warnings so far (also printed to stderr).
+    const std::vector<std::string>& warnings() const { return warnings_; }
     // Drops the room's static sprites and collision segments and destroys its objects that are not persistent (flushed before return).
     void unloadRoom(const std::string& roomIid, Scene2D& scene);
     // Static sprites of the loaded rooms only.
@@ -47,4 +52,6 @@ private:
     std::map<std::string, EntityFactory> factories_;
     std::map<std::string, std::vector<StaticSprite>> rooms_; // by room iid
     std::vector<LayerState> layers_;
+    std::set<std::string> warnedEntities_;
+    std::vector<std::string> warnings_;
 };

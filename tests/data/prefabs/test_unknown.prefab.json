@@ -1,0 +1,1 @@
+{ "version": 1, "type": "TestSlime", "props": { "bogus": 1, "speed": "fast", "maxHealth": 3000000000, "title": "ok" } }

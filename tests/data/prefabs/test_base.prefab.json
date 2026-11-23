@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "type": "TestSlime",
+  "props": { "speed": 2.5, "maxHealth": 20, "weakness": "Fire" },
+  "extra": { "lootChance": 0.3, "tier": 1 },
+  "sprite": { "atlas": "other_atlas", "frame": "dot", "layer": 2 },
+  "collider": { "size": [0.8, 0.8] },
+  "animations": { "idle": "walk", "hurt": "rest" },
+  "components": [
+    { "type": "TestGlow", "props": { "radius": 4.0 } },
+    { "type": "TestTint" }
+  ],
+  "children": [
+    { "name": "Glow", "type": "GameObject", "position": [0, 0.5], "sprite": { "atlas": "test_atlas", "frame": "b 0" } },
+    { "name": "Hitbox", "type": "GameObject", "collider": { "size": [1, 0.6], "isTrigger": true } }
+  ]
+}

@@ -33,9 +33,22 @@
 // - A class in src/game/objects/*.hpp is registered just by existing (the build includes every header).
 //
 // A new attribute type = one branch in propTypeOf, toJson and fromJson below (plus an inspector widget).
+//
+// WHERE VALUES COME FROM (prefabs, engine/world/Prefab.hpp), in this order, later wins:
+//   1. construction: the MUSH2D_EXPORT defaults;
+//   2. onCreate(scene): whatever the class sets in code (e.g. it assigns `sprite` or `collider` outright);
+//   3. the prefab's values (base chain first, then the prefab itself);
+//   4. the LDtk entity's fields with the same name as an attribute (listed in GameObject::ldtkOverridden);
+//   5. onPrefabApplied(scene): the object reacts to its final values;
+//   6. live edits (inspector).
+// Steps 3 and 4 set ONLY the keys present in the JSON: never loop over every prop to "apply the defaults".
+// The sprite and collider setters of GameObject create the sprite / collider when missing, so such a loop
+// would give every object a blocking collider.
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -120,6 +133,13 @@ namespace reflect {
 // "Fire, Ice, None" -> {"Fire", "Ice", "None"}
 std::vector<std::string> splitEnumNames(const char* list);
 
+// MUSH2D_ENUM names index a list, so `Fire = 5` would break the name <-> value mapping.
+constexpr bool enumListHasNoValues(const char* list) {
+    for (; *list; ++list)
+        if (*list == '=') return false;
+    return true;
+}
+
 template<class T>
 concept RegisteredEnum = std::is_enum_v<T> && requires(T e) { mush2dEnumName(e); mush2dEnumValues(e); };
 
@@ -163,8 +183,10 @@ bool vecFromJson(const nlohmann::json& j, V& out) {
 template<class T>
 bool fromJson(const nlohmann::json& j, T& out, std::string& error) {
     const PropType type = propTypeOf<T>();
+    // replace: a value with invalid UTF-8 must not throw while the error text is built
+    auto shown = [&] { return j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace); };
     auto wrong = [&] {
-        error = std::string("expected ") + propTypeName(type) + ", got " + j.dump();
+        error = std::string("expected ") + propTypeName(type) + ", got " + shown();
         return false;
     };
     if constexpr (std::is_same_v<T, float>) {
@@ -172,6 +194,13 @@ bool fromJson(const nlohmann::json& j, T& out, std::string& error) {
         out = j.get<float>();
     } else if constexpr (std::is_same_v<T, int>) {
         if (!j.is_number_integer()) return wrong();
+        const bool inRange = j.is_number_unsigned()
+            ? j.get<std::uint64_t>() <= std::uint64_t(std::numeric_limits<int>::max())
+            : j.get<std::int64_t>() >= std::numeric_limits<int>::min() && j.get<std::int64_t>() <= std::numeric_limits<int>::max();
+        if (!inRange) {
+            error = "Int out of range: " + shown();
+            return false;
+        }
         out = j.get<int>();
     } else if constexpr (std::is_same_v<T, bool>) {
         if (!j.is_boolean()) return wrong();
@@ -192,7 +221,7 @@ bool fromJson(const nlohmann::json& j, T& out, std::string& error) {
                 return true;
             }
         }
-        error = "unknown " + std::string(mush2dEnumName(out)) + " value " + j.dump();
+        error = "unknown " + std::string(mush2dEnumName(out)) + " value " + shown();
         return false;
     }
     return true;
@@ -289,6 +318,7 @@ public:                                                                         
 
 // Declares `enum class Enum { values... }` and registers the value names. Namespace scope only.
 #define MUSH2D_ENUM(Enum, ...)                                                                  \
+    static_assert(reflect::enumListHasNoValues(#__VA_ARGS__), "MUSH2D_ENUM: no `= value`, values are 0, 1, 2..."); \
     enum class Enum { __VA_ARGS__ };                                                            \
     inline const char* mush2dEnumName(Enum) { return #Enum; }                                   \
     inline const std::vector<std::string>& mush2dEnumValues(Enum) {                             \

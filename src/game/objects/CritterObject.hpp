@@ -1,7 +1,7 @@
 #pragma once
 
 #include "game/assets/GameAssets.hpp"
-#include "game/objects/PivotSprite.hpp"
+#include "engine/world/SpriteAnimator.hpp"
 
 #include "engine/world/GameObject.hpp"
 #include "engine/world/Scene2D.hpp"

@@ -2,6 +2,8 @@
 
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/IGame.hpp"
+#include "engine/core/Paths.hpp"
+#include "engine/world/Prefab.hpp"
 #include "engine/scenes/ISceneDefinition.hpp"
 #include "engine/tools/LookPanel.hpp"
 #include "engine/world/LevelLoader.hpp"
@@ -66,6 +68,8 @@ private:
     // Debug hot reload: a changed .ldtk or .region.json reloads the Showcase like F5, keeping the WorldState
     // and the player's place (pushed out up to 2 u, else the checkpoint).
     FileWatcher levelFiles; // showcase.ldtk and assets/regions/*.region.json
+    FileWatcher prefabFiles; // assets/prefabs/*.prefab.json
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")}; // Debug: the source tree, as the regions
     bool keepRegions = false; // hot reload of the .ldtk alone keeps the in-memory regions (unsaved panel edits)
     void hotReload(EngineServices& s, bool ldtkOnly);
     std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown

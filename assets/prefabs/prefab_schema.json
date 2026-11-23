@@ -104,6 +104,11 @@
         },
         {
           "default": false,
+          "name": "additive",
+          "type": "Bool"
+        },
+        {
+          "default": false,
           "name": "flipX",
           "type": "Bool"
         },
@@ -149,6 +154,17 @@
       "base": "GameObject",
       "component": false,
       "props": []
+    },
+    "SpriteAnimator": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": "idle",
+          "name": "state",
+          "type": "String"
+        }
+      ]
     },
     "TeleportObject": {
       "base": "GameObject",

@@ -29,6 +29,7 @@ void registerGameObject(TypeInfo& t) {
     addAccessor<G, Color>(t, "spriteColor", Color{1.0f}, [](const G& o) { return spriteOr(o).color; }, [](G& o, Color v) { spriteOf(o).color = v; });
     addAccessor<G, int>(t, "spriteLayer", 0, [](const G& o) { return spriteOr(o).layer; }, [](G& o, int v) { spriteOf(o).layer = v; });
     addAccessor<G, float>(t, "depth", 0.0f, [](const G& o) { return spriteOr(o).depth; }, [](G& o, float v) { spriteOf(o).depth = v; });
+    addAccessor<G, bool>(t, "additive", false, [](const G& o) { return spriteOr(o).additive; }, [](G& o, bool v) { spriteOf(o).additive = v; });
     addAccessor<G, bool>(t, "flipX", false, [](const G& o) { return o.flipX; }, [](G& o, bool v) { o.flipX = v; });
     addAccessor<G, glm::vec2>(t, "colliderSize", glm::vec2{1.0f}, [](const G& o) { return colliderOr(o).size; }, [](G& o, glm::vec2 v) { colliderOf(o).size = v; });
     addAccessor<G, glm::vec2>(t, "colliderOffset", glm::vec2{0.0f}, [](const G& o) { return colliderOr(o).offset; }, [](G& o, glm::vec2 v) { colliderOf(o).offset = v; });

@@ -3,7 +3,7 @@
 #include "game/assets/GameAnimationId.hpp"
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
-#include "game/objects/PivotSprite.hpp"
+#include "engine/world/SpriteAnimator.hpp"
 #include "game/objects/SlimeEnemy.hpp"
 
 #include "engine/world/CharacterController.hpp"

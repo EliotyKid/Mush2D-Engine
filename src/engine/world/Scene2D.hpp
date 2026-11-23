@@ -35,8 +35,12 @@ public:
         static_assert(std::is_base_of_v<GameObject, TObject>,
                       "TObject precisa herdar de GameObject.");
 
-        auto object = std::make_unique<TObject>(std::forward<Args>(args)...);
-        TObject& ref = *object;
+        return static_cast<TObject&>(addObject(std::make_unique<TObject>(std::forward<Args>(args)...)));
+    }
+
+    // Same, for an object created by name (TypeInfo::createObject, prefabs).
+    GameObject& addObject(std::unique_ptr<GameObject> object) {
+        GameObject& ref = *object;
         ref.roomIid = spawnRoomIid;
         insert(std::move(object));
         ref.onCreate(*this);
