@@ -46,6 +46,10 @@ public:
     // LdtkEntity) when its room is loaded, the player is farther than its respawnDistance from spawnPos and
     // spawnPos is outside view = (minX, minY, maxX, maxY).
     void checkRespawns(glm::vec2 playerPos, glm::vec4 view, double time);
+    // A persistent entity whose policy comes from its prefab (PersistentComponent), not from LDtk fields:
+    // LevelLoader calls it after the spawn so checkRespawns knows it. room = index of its level. Kept across
+    // open() (hot reload) while the iid still exists. An entity whose LDtk fields set a policy keeps that one.
+    void track(const std::string& iid, int room, Persistence policy, float respawnDistance);
 
     static constexpr float FadeSeconds = 0.2f; // each way: dark, die, light (spec decision 7)
     // Death: puts the current room's state back as it was on entry (the snapshot loadAround takes; values
@@ -82,6 +86,9 @@ private:
     std::vector<std::vector<int>> neighbours_;
     std::vector<int> loaded_;
     std::map<std::string, Tracked> tracked_; // by iid; entity points into project_
+    struct PrefabPolicy { Persistence policy; float respawnDistance; };
+    std::map<std::string, PrefabPolicy> prefabTracked_; // by iid; track() calls, re-applied by open()
+    void trackPrefab(const std::string& iid, const PrefabPolicy& p, int roomHint);
     std::vector<std::vector<std::string>> roomIids_; // per room, every entity iid (the snapshot's scope)
     std::map<std::string, EntityState> snapshot_;    // the current room's entries on entry
     float deathTime_ = -1.0f;                        // < 0: no death fading

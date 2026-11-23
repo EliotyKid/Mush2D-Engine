@@ -51,7 +51,8 @@ public:
     }
 
     void onStep(Scene2D& scene, float dt) override {
-        // Patrol centre and health: spawners place and tune the slime after onCreate, so take them at the first step.
+        // Patrol centre and health: spawners place and tune the slime after onCreate, so take them at the first
+        // step (`health` stays empty until then).
         if (!patrolAnchored) {
             spawnPosition = transform.position;
             health = HealthData{.current = maxHealth, .max = maxHealth};

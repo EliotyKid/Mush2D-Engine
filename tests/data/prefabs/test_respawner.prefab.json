@@ -1,0 +1,1 @@
+{ "version": 1, "type": "TestSlime", "components": [ { "type": "PersistentComponent", "props": { "policy": "Respawn", "respawnDistance": 3.0 } } ] }

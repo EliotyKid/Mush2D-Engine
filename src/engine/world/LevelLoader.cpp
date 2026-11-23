@@ -3,6 +3,7 @@
 #include "engine/world/PersistentComponent.hpp"
 #include "engine/world/Prefab.hpp"
 #include "engine/world/TerrainMesh.hpp"
+#include "engine/world/World.hpp"
 
 #include <cstdio>
 #include <set>
@@ -154,6 +155,9 @@ void LevelLoader::spawnEntity(const LdtkLevel& level, const LdtkEntity& e, Engin
     // As the old factories: persistence from the entity's fields, recorded where the object now stands.
     if (parsePersistence(e) != Persistence::None || o->getComponent<PersistentComponent>())
         trackEntity(*o, e, o->transform.position);
+    // A policy set only by the prefab: World must know it too, or a Respawn object never comes back.
+    if (const auto* p = o->getComponent<PersistentComponent>(); p && p->policy != Persistence::None)
+        if (World* world = services.scene.service<World>()) world->track(e.iid, world->roomOf(level.iid), p->policy, p->respawnDistance);
 }
 
 void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {

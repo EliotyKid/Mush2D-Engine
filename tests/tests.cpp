@@ -2699,6 +2699,44 @@ TEST(sprite_animator_plays_state) {
     CHECK(o.sprite->drawSize.x == -0.5f && o.transform.scale == glm::vec2(1.0f));
 }
 
+TEST(prefab_only_respawn_policy_respawns) {
+    // test_respawner.prefab.json: PersistentComponent{policy: Respawn, respawnDistance: 3}, no LDtk fields.
+    auto f = std::make_unique<FakeServices>();
+    Scene2D& scene = f->t.scene;
+    LevelLoader loader;
+    World w;
+    w.onLoad = [](int) {};
+    w.onUnload = [](int) {};
+    scene.setService(&w);
+    auto liveCount = [&](const std::string& iid) {
+        scene.flush();
+        int n = 0;
+        scene.forEach([&](GameObject& o) { n += o.entityIid == iid; });
+        return n;
+    };
+    w.open(roomsWith({entity("TestRespawner", "r1", {32, 288}, nlohmann::json::object()),
+                      entity("TestRespawner", "p1", {96, 288}, {{"respawn", false}})}), // LDtk wins: Permanent
+           loader, &f->s);
+    w.update({1.0f, -5.0f});
+    CHECK(liveCount("r1") == 1 && liveCount("p1") == 1);
+    scene.forEach([&](GameObject& o) { if (!o.entityIid.empty()) removeTracked(scene, w.state, o, 1.0); }); // killed
+    CHECK(liveCount("r1") == 0 && w.state.isGone("r1") && w.state.isGone("p1"));
+    w.checkRespawns(SpawnAt, FarView, 2.0); // player standing on the spawn point: not yet
+    CHECK(liveCount("r1") == 0);
+    for (double t = 3.0; t < 5.0; t += 0.5) w.checkRespawns({8.0f, -5.0f}, FarView, t); // moved away, spawn off screen
+    CHECK(liveCount("r1") == 1 && !w.state.isGone("r1"));
+    CHECK(liveCount("p1") == 0 && w.state.isGone("p1"));
+
+    // Kept across open() (hot reload): still respawns although it is not spawned again to re-register.
+    scene.forEach([&](GameObject& o) { if (o.entityIid == "r1") removeTracked(scene, w.state, o, 6.0); });
+    scene.clear();
+    w.open(roomsWith({entity("TestRespawner", "r1", {32, 288}, nlohmann::json::object())}), loader, &f->s);
+    w.update({1.0f, -5.0f});
+    CHECK(liveCount("r1") == 0);
+    for (double t = 7.0; t < 9.0; t += 0.5) w.checkRespawns({8.0f, -5.0f}, FarView, t);
+    CHECK(liveCount("r1") == 1);
+}
+
 TEST(scene_sprite_size_is_scale_times_draw_size) {
     Scene2D scene;
     GameObject& o = scene.createObject<GameObject>();
