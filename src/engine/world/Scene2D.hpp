@@ -23,7 +23,6 @@ struct ObjectDestroyed {
 // (start and end of step, end of lateStep, or an explicit flush()), so they are safe inside callbacks.
 class Scene2D {
 public:
-    void* userData = nullptr; // opaque, owned by the game
     std::string spawnRoomIid; // stamped as roomIid on every object created while set (LevelLoader::loadRoom)
     // Static level collision (segments per room; LevelLoader adds and removes rooms). Emptied by clear().
     CollisionWorld collision;

@@ -2673,8 +2673,9 @@ TEST(sprite_animator_plays_state) {
     scene.flush();
     scene.step(0.01f);
     CHECK(o.sprite->frameName == "a 0" && o.sprite->atlasTextureIndex == *testAssets().atlasIndex("test_atlas"));
-    // Pivot (16, 16) of a 32x16 frame: the frame's bottom centre stands on the position.
-    CHECK(o.transform.scale == glm::vec2(1.0f, 0.5f) && o.sprite->offset == glm::vec2(0.0f, 0.25f));
+    // Pivot (16, 16) of a 32x16 frame: the frame's bottom centre stands on the position. The scale is not touched.
+    CHECK(o.sprite->drawSize == glm::vec2(1.0f, 0.5f) && o.sprite->offset == glm::vec2(0.0f, 0.25f));
+    CHECK(o.transform.scale == glm::vec2(1.0f));
     scene.step(0.1f);
     CHECK(o.sprite->frameName == "a 1");
     scene.step(0.1f);
@@ -2684,7 +2685,59 @@ TEST(sprite_animator_plays_state) {
     CHECK(o.sprite->frameName == "b 0" && anim.state == "rest");
     o.flipX = true;
     scene.step(0.01f);
-    CHECK(o.transform.scale.x == -0.5f);
+    CHECK(o.sprite->drawSize.x == -0.5f && o.transform.scale == glm::vec2(1.0f));
+}
+
+TEST(scene_sprite_size_is_scale_times_draw_size) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    o.sprite = SpriteData{.frameName = "f"};
+    o.transform.position = {1.0f, 1.0f};
+    o.transform.scale = {2.0f, 3.0f};
+    GameObject& glow = scene.createObject<GameObject>();
+    glow.sprite = SpriteData{.frameName = "f", .additive = true};
+    scene.flush();
+    auto lookup = [](std::uint32_t, const std::string&) { return std::make_pair(Material{}, glm::vec4(0, 0, 1, 1)); };
+    auto first = [&] { SpriteBatch b; appendSceneSprites(scene, b, lookup); return b.sorted()[0]; };
+    CHECK(first().size == glm::vec2(2.0f, 3.0f) && first().position == glm::vec2(1.0f, 1.0f)); // no drawSize: the scale
+    o.sprite->drawSize = {-0.5f, 1.0f};
+    o.sprite->offset = {0.25f, 0.5f};
+    CHECK(first().size == glm::vec2(-1.0f, 3.0f) && first().position == glm::vec2(1.5f, 2.5f)); // offset scales too
+    SpriteBatch b;
+    appendSceneSprites(scene, b, lookup);
+    CHECK(b.sorted()[1].flags == SpriteFlagAdditive && b.sorted()[0].flags == SpriteFlagNearest); // glows are soft
+}
+
+TEST(prefab_child_containing_its_own_prefab_is_refused) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_self_child");
+    CHECK(o && o->children().empty() && t.scene.aliveCount() == 1);
+    CHECK(hasWarning(t.prefabs.warnings(), "contains itself") && t.prefabs.warnings().size() == 1);
+}
+
+TEST(ldtk_prefab_entity_tracking_parallax_and_missing_prefab) {
+    auto f = std::make_unique<FakeServices>();
+    LevelLoader loader;
+    LdtkLevel level;
+    level.pxSize = {320, 320};
+    LdtkEntity e = entityOf("TestSlime", "s-iid", {{"respawn", true}});
+    e.parallax = {0.5f, 0.8f};
+    loader.spawnEntity(level, e, f->s);
+    auto* s = f->t.scene.findFirstObjectOfType<TestSlime>();
+    auto* p = s ? s->getComponent<PersistentComponent>() : nullptr;
+    CHECK(p && p->iid == "s-iid" && p->policy == Persistence::Respawn && p->spawnPos == s->transform.position);
+    CHECK(s && s->sprite && s->sprite->parallax == glm::vec2(0.5f, 0.8f));
+    CHECK(loader.warnings().empty());
+
+    // No persistence field and no component in the prefab: nothing added.
+    loader.spawnEntity(level, entityOf("TestSlime", "plain"), f->s);
+    f->t.scene.flush();
+    f->t.scene.forEach([&](GameObject& o) { if (o.entityIid == "plain") CHECK(!o.getComponent<PersistentComponent>()); });
+
+    // An explicit `prefab` field naming a missing file: warned (once), then the usual "no prefab, no factory".
+    loader.spawnEntity(level, entityOf("TestSlime", "m1", {{"prefab", "nope_prefab"}}), f->s);
+    loader.spawnEntity(level, entityOf("TestSlime", "m2", {{"prefab", "nope_prefab"}}), f->s);
+    CHECK(loader.warnings().size() == 2 && hasWarning(loader.warnings(), "names prefab 'nope_prefab'"));
 }
 
 int main() {

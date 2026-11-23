@@ -15,7 +15,7 @@
 //
 // Inheritance: "props", "extra", "sprite", "collider" and "animations" merge key by key over the base;
 // "components" merge by "type" and "children" by "name" ("remove": true drops the inherited item). A cycle is
-// refused with a warning.
+// refused with a warning, and so is a child whose prefab is one of the prefabs it sits in (skipped).
 //
 // APPLICATION ORDER (same block in Reflect.hpp; later wins):
 //   construct -> onCreate (the C++ defaults, including a sprite / collider it assigns outright) -> the prefab's
@@ -41,6 +41,11 @@ class Scene2D;
 // Sets each key of `props` on obj (the GameObject* or Component* as void*, never the derived class). Only
 // those keys. Returns one warning per unknown key or bad value ("speed: expected Float, got \"fast\"").
 std::vector<std::string> applyProps(void* obj, const std::string& typeName, const nlohmann::json& props);
+
+// Where an object made from an LDtk entity stands on the entity box's base: its position (the box centre) moved
+// down by half extra()["ldtkSize"].y. The position itself when it has no ldtkSize (made in code or by
+// instantiate alone). Grounded objects use it in onPrefabApplied, as the old factories used bottomOf.
+glm::vec2 ldtkBoxBottom(const GameObject& o);
 
 // LDtk identifier -> prefab name: "SlimeFast" -> "slime_fast".
 std::string snakeCase(const std::string& identifier);
@@ -75,7 +80,8 @@ public:
 private:
     const nlohmann::json* resolveChain(const std::string& name, std::string& error, std::vector<std::string>& chain);
     GameObject* spawn(Scene2D& scene, const nlohmann::json& doc, const std::string& prefab, const std::string& where,
-                      int depth, GameObjectId parent, const nlohmann::json& overrides, const std::string& entityIid);
+                      int depth, GameObjectId parent, const nlohmann::json& overrides, const std::string& entityIid,
+                      std::vector<std::string>& lineage);
     void warn(std::string message);
 
     std::filesystem::path dir_;

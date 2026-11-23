@@ -24,8 +24,10 @@ public:
     // Entities: spawnEntity (World).
     void loadRoom(const LdtkLevel& level, EngineServices& services, MaterialLibrary& materials);
     // Creates the entity from assets/prefabs/<snake_case identifier>.prefab.json (or the entity's `prefab`
-    // field) through the PrefabLibrary scene service: fields override attributes, position = box centre.
-    // Without that file, its registered factory. Terrain (collision only), Light and PlayerStart always use the
+    // field) through the PrefabLibrary scene service: fields override attributes, position = box centre, the
+    // root sprite takes the entity layer's parallax, and the entity's persistence fields add a
+    // PersistentComponent (trackEntity). Without that file, its registered factory (a `prefab` field naming a
+    // missing file is warned). Terrain (collision only), Light and PlayerStart always use the
     // factory. Neither: warned once per identifier and ignored. Objects created get roomIid = level.iid.
     void spawnEntity(const LdtkLevel& level, const LdtkEntity& entity, EngineServices& services);
     // Warnings so far (also printed to stderr).

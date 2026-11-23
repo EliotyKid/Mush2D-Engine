@@ -57,7 +57,8 @@ public:
         name = "Player";
         addTag("player");
 
-        transform.scale = config.initialScale;
+        // Platformer: the frame sizes the sprite (placeFrameAtPivot -> sprite.drawSize), times this scale.
+        transform.scale = platformer() ? glm::vec2(1.0f) : config.initialScale;
 
         sprite = SpriteData{
             .atlasTextureIndex = 0,

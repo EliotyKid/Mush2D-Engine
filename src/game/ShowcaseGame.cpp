@@ -27,9 +27,12 @@
 
 void ShowcaseGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
-    s.scene.userData = &gameAssets;
+    // Objects reach the game's data through scene services (spec decision 5), not constructor arguments.
+    s.scene.setService(&gameAssets);
     s.scene.setService(&gameAssets.registry);
     s.scene.setService(&prefabs);
+    s.scene.setService(&world);
+    s.scene.setService(&world.state);
     regions.init(s.materials, sourceAssetPath("assets/regions")); // Debug: the source tree, so panel saves survive rebuilds
 
     atlasMaterials.clear();
@@ -183,9 +186,11 @@ void ShowcaseGame::submitRenderData(EngineServices& s) {
 }
 void ShowcaseGame::shutdown(EngineServices& s) {
     s.scene.clear();
-    s.scene.userData = nullptr;
+    s.scene.setService<GameAssets>(nullptr);
     s.scene.setService<AssetRegistry>(nullptr);
     s.scene.setService<PrefabLibrary>(nullptr);
+    s.scene.setService<World>(nullptr);
+    s.scene.setService<WorldState>(nullptr);
 }
 
 bool ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {

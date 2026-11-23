@@ -35,6 +35,7 @@ private:
     );
 };
 
+// The game's GameAssets scene service (nullptr in scenes without it, e.g. tests).
 inline GameAssets* gameAssetsOf(const Scene2D& scene) {
-    return static_cast<GameAssets*>(scene.userData);
+    return scene.service<GameAssets>();
 }

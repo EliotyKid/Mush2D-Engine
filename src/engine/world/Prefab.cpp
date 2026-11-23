@@ -100,6 +100,12 @@ std::vector<std::string> applyProps(void* obj, const std::string& typeName, cons
     return warnings;
 }
 
+glm::vec2 ldtkBoxBottom(const GameObject& o) {
+    glm::vec2 size{0.0f};
+    if (!o.extra().contains("ldtkSize") || !reflect::vecFromJson(o.extra()["ldtkSize"], size)) return o.transform.position;
+    return o.transform.position - glm::vec2(0.0f, 0.5f * size.y);
+}
+
 std::string snakeCase(const std::string& identifier) {
     std::string out;
     for (std::size_t i = 0; i < identifier.size(); ++i) {
@@ -195,11 +201,13 @@ GameObject* PrefabLibrary::instantiate(Scene2D& scene, const std::string& name, 
     const json* doc = resolved(name, error);
     if (!error.empty()) warn(error);
     if (!doc) return nullptr;
-    return spawn(scene, *doc, name, name + ".prefab.json", 0, InvalidGameObjectId, overrides, entityIid);
+    std::vector<std::string> lineage;
+    return spawn(scene, *doc, name, name + ".prefab.json", 0, InvalidGameObjectId, overrides, entityIid, lineage);
 }
 
 GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::string& prefab, const std::string& where,
-                                 int depth, GameObjectId parent, const json& overrides, const std::string& entityIid) {
+                                 int depth, GameObjectId parent, const json& overrides, const std::string& entityIid,
+                                 std::vector<std::string>& lineage) {
     if (depth > MaxDepth) {
         warn(where + ": children nested deeper than " + std::to_string(MaxDepth) + " (a prefab containing itself?)");
         return nullptr;
@@ -287,6 +295,7 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
         for (auto& [state, anim] : animations) animator->animations[state] = anim;
     }
 
+    if (!prefab.empty()) lineage.push_back(prefab); // the prefabs being spawned, root first
     if (doc.contains("children") && doc["children"].is_array()) {
         for (const json& child : doc["children"]) {
             if (!child.is_object() || removed(child)) continue;
@@ -296,6 +305,12 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
             std::string childPrefab;
             if (child.contains("prefab")) {
                 childPrefab = child["prefab"].is_string() ? child["prefab"].get<std::string>() : "";
+                if (std::find(lineage.begin(), lineage.end(), childPrefab) != lineage.end()) {
+                    std::string path;
+                    for (const std::string& n : lineage) path += n + " -> ";
+                    warn(childWhere + ": prefab '" + childPrefab + "' contains itself (" + path + childPrefab + "), child skipped");
+                    continue;
+                }
                 std::string error;
                 const json* base = depth < MaxDepth ? resolved(childPrefab, error) : nullptr;
                 if (!error.empty()) warn(childWhere + ": " + error);
@@ -306,9 +321,10 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
                 childDoc = mergePrefab(*base, child);
                 childDoc.erase("prefab");
             }
-            spawn(scene, childDoc, childPrefab, childWhere, depth + 1, o.id, json(), {});
+            spawn(scene, childDoc, childPrefab, childWhere, depth + 1, o.id, json(), {}, lineage);
         }
     }
+    if (!prefab.empty()) lineage.pop_back();
 
     if (parent) scene.setParent(o.id, parent, false); // before the hook, so the child sees its parent
 

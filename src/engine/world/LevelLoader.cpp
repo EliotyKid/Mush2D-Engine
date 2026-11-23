@@ -1,5 +1,6 @@
 #include "engine/world/LevelLoader.hpp"
 
+#include "engine/world/PersistentComponent.hpp"
 #include "engine/world/Prefab.hpp"
 #include "engine/world/TerrainMesh.hpp"
 
@@ -118,6 +119,12 @@ void LevelLoader::spawnEntity(const LdtkLevel& level, const LdtkEntity& e, Engin
     const std::string prefabName = stringField(e, "prefab", snakeCase(e.identifier));
     const bool usePrefab = !codeOnly && prefabs && prefabs->has(prefabName);
     auto f = factories_.find(e.identifier);
+    if (!codeOnly && prefabs && e.fields.contains("prefab") && !prefabs->has(prefabName) &&
+        warnedEntities_.insert("prefab:" + prefabName).second) {
+        warnings_.push_back("LDtk: entity '" + e.identifier + "' names prefab '" + prefabName + "', but " + prefabName +
+                            ".prefab.json does not exist");
+        std::fprintf(stderr, "%s\n", warnings_.back().c_str());
+    }
     if (!usePrefab && f == factories_.end()) {
         if (warnedEntities_.insert(e.identifier).second) {
             warnings_.push_back("LDtk: no prefab (" + prefabName + ".prefab.json) and no factory for entity '" +
@@ -141,7 +148,12 @@ void LevelLoader::spawnEntity(const LdtkLevel& level, const LdtkEntity& e, Engin
     fields.erase("prefab");
     fields["position"] = {pos.x, pos.y};
     fields["ldtkSize"] = {e.size.x / LdtkPixelsPerUnit, e.size.y / LdtkPixelsPerUnit};
-    prefabs->instantiate(services.scene, prefabName, fields, e.iid);
+    GameObject* o = prefabs->instantiate(services.scene, prefabName, fields, e.iid);
+    if (!o) return;
+    if (o->sprite) o->sprite->parallax = e.parallax; // drawn with its LDtk layer
+    // As the old factories: persistence from the entity's fields, recorded where the object now stands.
+    if (parsePersistence(e) != Persistence::None || o->getComponent<PersistentComponent>())
+        trackEntity(*o, e, o->transform.position);
 }
 
 void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {

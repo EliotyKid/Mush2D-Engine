@@ -8,7 +8,7 @@
 
 #include <glm/glm.hpp>
 
-enum class Persistence { None, Permanent, Respawn };
+MUSH2D_ENUM(Persistence, None, Permanent, Respawn)
 
 // Enemy field "respawn" (bool) wins: true -> Respawn, false -> Permanent. Else "persistence":
 // "permanent" | "respawn" | "none". Missing or unknown -> None.
@@ -16,20 +16,24 @@ Persistence parsePersistence(const LdtkEntity&);
 // Field "respawnDistance" (world units), 12 when missing.
 float parseRespawnDistance(const LdtkEntity&);
 
-// Attached by factories to objects made from an LDtk entity; the game's removeTracked records it on removal.
+// Attached to objects made from an LDtk entity (trackEntity); the game's removeTracked records it on removal.
+// A prefab may list it with a policy; the entity's fields "respawn" / "persistence" / "respawnDistance" win.
 struct PersistentComponent : Component {
+    MUSH2D_COMPONENT(PersistentComponent)
+    MUSH2D_EXPORT(Persistence, policy, Persistence::None)
+    MUSH2D_EXPORT(float, respawnDistance, 12.0f)
     std::string iid;
-    Persistence policy = Persistence::None;
-    float respawnDistance = 12;
-    glm::vec2 spawnPos{0.0f}; // where the factory placed it (respawn distance is measured from here)
+    glm::vec2 spawnPos{0.0f}; // where the object was placed (respawn distance is measured from here)
 };
 
-// Call from a factory, after createObject. No-op for entities without an iid.
+// Call after the object is created and placed (factories; LevelLoader for prefabs). Reuses a
+// PersistentComponent the object already has. No-op for entities without an iid.
 inline void trackEntity(GameObject& o, const LdtkEntity& e, glm::vec2 spawnPos) {
     if (e.iid.empty()) return;
-    PersistentComponent& p = o.addComponent<PersistentComponent>();
-    p.iid = e.iid;
-    p.policy = parsePersistence(e);
-    p.respawnDistance = parseRespawnDistance(e);
-    p.spawnPos = spawnPos;
+    PersistentComponent* p = o.getComponent<PersistentComponent>();
+    if (!p) p = &o.addComponent<PersistentComponent>();
+    p->iid = e.iid;
+    if (const Persistence policy = parsePersistence(e); policy != Persistence::None) p->policy = policy;
+    if (e.fields.contains("respawnDistance")) p->respawnDistance = parseRespawnDistance(e);
+    p->spawnPos = spawnPos;
 }
