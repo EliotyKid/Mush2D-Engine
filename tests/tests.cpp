@@ -390,13 +390,17 @@ TEST(interactive_state_survives_unload) {
     World w;
     LevelLoader loader;
     std::map<std::string, GameObjectId> live;
+    scene.setService(&w.state);
     w.onLoad = [](int) {};
     w.onUnload = [&](int room) { loader.unloadRoom(w.project().levels[room].iid, scene); };
     w.onSpawn = [&](int room, const LdtkEntity& e) {
         scene.spawnRoomIid = w.project().levels[room].iid;
         GameObject* o = nullptr;
-        if (e.identifier == "Door") o = &scene.createObject<DoorObject>(w.state, e.iid, glm::vec2(1.0f, 2.0f));
-        else o = &scene.createObject<LeverObject>(w.state, e.iid, e.fields.at("door").at("entityIid").get<std::string>());
+        if (e.identifier == "Door") {
+            o = &scene.createObject<DoorObject>();
+            o->entityIid = e.iid;
+            o->onPrefabApplied(scene); // as a prefab spawn: entityIid set, then the hook
+        } else o = &scene.createObject<LeverObject>(w.state, e.iid, e.fields.at("door").at("entityIid").get<std::string>());
         scene.spawnRoomIid.clear();
         live[e.iid] = o->id;
     };

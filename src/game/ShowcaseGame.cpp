@@ -543,12 +543,6 @@ void ShowcaseGame::registerLevelEntities() {
         trackEntity(item, e, pos);
     });
 
-    levelLoader.registerEntity("Door", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        DoorObject& door = s.scene.createObject<DoorObject>(world.state, e.iid, e.size / LdtkPixelsPerUnit);
-        door.transform.position = pos;
-        trackEntity(door, e, pos);
-    });
-
     levelLoader.registerEntity("Lever", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         LeverObject& lever = s.scene.createObject<LeverObject>(world.state, e.iid, entityRefField(e, "door"));
         lever.transform.position = pos;
