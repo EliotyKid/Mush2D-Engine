@@ -45,10 +45,9 @@ void ShowcaseGame::init(EngineServices& s) {
     std::filesystem::create_directories(schemaPath.parent_path());
     std::ofstream(schemaPath) << exportSchema().dump(2) << '\n';
 #endif
-    // Lights and crystals belong to their room: dropped when it unloads.
+    // Lights belong to their room: dropped when it unloads.
     world.onRoomUnloaded = [this](const std::string& roomIid) {
         std::erase_if(lightEdits, [&](const EditableLight& l) { return l.roomIid == roomIid; });
-        std::erase_if(crystals, [&](const Crystal& c) { return c.roomIid == roomIid; });
     };
 
     Camera2D& camera = s.camera;
@@ -445,7 +444,6 @@ void ShowcaseGame::setupInitialScene(EngineServices& s) {
     activeTriggerOverlaps.clear();
     levelLoader.clear();
     lightEdits.clear();
-    crystals.clear();
     s.renderer.settings() = FrameSettings{};
     s.camera.bounds = Camera2D::WorldBounds{-5.0f, 5.0f, -3.0f, 3.0f};
     s.camera.followOffset = {0.0f, 0.0f};
@@ -465,10 +463,6 @@ void ShowcaseGame::setupInitialScene(EngineServices& s) {
     playerObjectId = result.playerObjectId;
 }
 
-namespace {
-constexpr glm::vec3 CrystalGlow[4] = {{0.0f, 1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}, {0.0f, 0.9f, 1.0f}, {1.0f, 0.16f, 0.86f}};
-}
-
 void ShowcaseGame::registerLevelEntities() {
     levelLoader.registerEntity("PlayerStart", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         if (s.scene.findFirstObjectOfType<PlayerObject>()) return; // its room streamed in again
@@ -486,7 +480,7 @@ void ShowcaseGame::registerLevelEntities() {
         player.roomIid.clear();
     });
 
-    // Lights and crystals are not scene objects: kept per room (roomIid) and dropped when it unloads (world.onRoomUnloaded).
+    // Lights are not scene objects: kept per room (roomIid) and dropped when it unloads (world.onRoomUnloaded).
     // A light's values come from its room's region file when it overrides that iid, else from LDtk.
     levelLoader.registerEntity("Light", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         const std::string& room = s.scene.spawnRoomIid;
@@ -498,17 +492,6 @@ void ShowcaseGame::registerLevelEntities() {
         const auto& overrides = regions.ofRoom(room).look.lights;
         if (auto it = overrides.find(e.iid); it != overrides.end()) value = it->second;
         lightEdits.push_back({e.iid, pos, value, room});
-    });
-
-    levelLoader.registerEntity("Crystal", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        if (std::any_of(crystals.begin(), crystals.end(), [&](const Crystal& c) { return c.iid == e.iid; })) return; // as Light
-        const int variant = std::clamp(static_cast<int>(numberField(e, "variant", 0.0f)), 0, 3);
-        const std::string frameName = "crystal " + std::to_string(variant);
-        const auto [material, uv] = lookupAtlasFrame(GameAtlasId::Crystals, frameName);
-        if (uv.z <= 0.0f) return; // no such frame: not drawn
-        const AtlasFrame& f = gameAssets.getAtlasByTextureIndex(GameAtlasId::Crystals).getFrame(frameName);
-        const glm::vec2 centre = bottomOf(e, pos) + glm::vec2(0.0f, float(f.pivotY) - 0.5f * float(f.h)) / ArtPixelsPerUnit;
-        crystals.push_back({e.iid, s.scene.spawnRoomIid, variant, centre, uv, material});
     });
 
     // Interactive objects (spec decision 1). Their state lives in world.state; trackEntity records the policy.
@@ -590,38 +573,9 @@ void ShowcaseGame::onImGui(EngineServices& s) {
 }
 
 void ShowcaseGame::submitShowcaseExtras(EngineServices& s) {
-    SpriteBatch& batch = s.renderer.sprites();
     LightList& lights = s.renderer.lights();
     for (const EditableLight& l : lightEdits) {
         const LightOverride& v = l.value;
         lights.add(GpuLight{{l.pos.x, l.pos.y, v.height, v.radius}, {v.color, v.intensity}, {v.depth, v.flicker, 5.0f, 0.0f}});
-    }
-
-    const glm::vec4 haloUv = lookupAtlasFrame(GameAtlasId::Crystals, "halo 0").second; // black in crystals_e
-    for (const Crystal& c : crystals) {
-        const glm::vec3 glow = CrystalGlow[c.variant];
-        const Material& material = c.material;
-        SpriteInstance inst{};
-        inst.position = c.centre;
-        inst.size = {1.0f, 1.0f};
-        inst.uvRect = c.uv;
-        inst.color = glm::vec4(1.0f);
-        inst.depth = 0.1f; // just behind the player
-        inst.parallax = {1.0f, 1.0f};
-        inst.albedo = material.albedo; inst.normal = material.normal;
-        inst.emissive = material.emissive; inst.mask = material.mask;
-        inst.flags = SpriteFlagNearest;
-        batch.add(inst);
-
-        if (haloUv.z > 0.0f) {
-            SpriteInstance halo = inst;
-            halo.size = {2.8f, 2.8f};
-            halo.uvRect = haloUv;
-            halo.color = glm::vec4(glow * 0.45f, 1.0f);
-            halo.depth = 0.0f;
-            halo.flags = SpriteFlagAdditive; // LINEAR: soft
-            batch.add(halo);
-        }
-        lights.add(GpuLight{{c.centre.x, c.centre.y, 0.6f, 3.0f}, {glow, 1.4f}, {0.0f, 0.06f, 2.0f, 0.0f}});
     }
 }
