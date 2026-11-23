@@ -9,92 +9,42 @@
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/WorldState.hpp"
 
-#include <string>
-
+// Touching it sets the player's checkpoint and, for an LDtk checkpoint (entityIid), records its activation
+// time in the WorldState service: the latest activated one is the respawn point.
+// Prefab: assets/prefabs/checkpoint.prefab.json.
 class CheckpointObject : public GameObject {
     MUSH2D_OBJECT(CheckpointObject, GameObject)
 public:
-    struct Config {
-        int layer = 1;
-        int orderInLayer = 1;
-
-        glm::vec2 triggerSize{1.2f, 1.2f};
-        bool oneShot = false;
-
-        glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
-
-        WorldState* worldState = nullptr; // when set (and iid is), touching it records iid "activated" = clock
-        std::string iid;
-    };
-
-public:
-    CheckpointObject() = default;
-    explicit CheckpointObject(const Config& config)
-        : config(config) {}
+    MUSH2D_EXPORT(bool, oneShot, false)
 
     void onCreate(Scene2D& scene) override {
         name = "Checkpoint";
         addTag("trigger");
         addTag("checkpoint");
 
-        sprite = SpriteData{
-            .atlasTextureIndex = 0,
-            .frameName = "",
-            .layer = config.layer,
-            .orderInLayer = config.orderInLayer,
-            .color = config.color
-        };
+        sprite = SpriteData{.layer = 1, .orderInLayer = 1};
+        if (GameAssets* assets = gameAssetsOf(scene)) {
+            const auto& entry = assets->sprites.get(GameSpriteId::Checkpoint);
+            sprite->atlasTextureIndex = entry.atlasTextureIndex;
+            sprite->frameName = entry.frameName;
+        }
 
-        setSprite(scene, GameSpriteId::Checkpoint);
-
-        collider = ColliderData{
-            .size = config.triggerSize,
-            .offset = {0.0f, 0.0f},
-            .isTrigger = true,
-            .enabled = true
-        };
-
-        trigger = TriggerData{
-            .type = TriggerType::Checkpoint,
-            .targetPosition = {0.0f, 0.0f},
-            .oneShot = config.oneShot,
-            .consumed = false
-        };
+        collider = ColliderData{.size = {1.2f, 1.2f}, .isTrigger = true};
+        trigger = TriggerData{.type = TriggerType::Checkpoint};
     }
 
     void onTriggerEnter(Scene2D& scene, GameObject& other) override {
         auto* player = dynamic_cast<PlayerObject*>(&other);
-        if (!player) {
+        if (!player || !trigger.has_value() || (oneShot && trigger->consumed)) {
             return;
         }
 
-        if (trigger.has_value()) {
-            if (trigger->oneShot && trigger->consumed) {
-                return;
-            }
+        player->setCheckpointPosition(player->transform.position);
+        WorldState* state = scene.service<WorldState>();
+        if (state && !entityIid.empty()) state->set(entityIid, "activated", state->clock);
 
-            player->setCheckpointPosition(player->transform.position);
-            // Activation time: the latest activated checkpoint is the respawn point.
-            if (config.worldState && !config.iid.empty())
-                config.worldState->set(config.iid, "activated", config.worldState->clock);
-
-            if (trigger->oneShot) {
-                trigger->consumed = true;
-            }
+        if (oneShot) {
+            trigger->consumed = true;
         }
-    }
-
-private:
-    Config config{};
-
-private:
-    void setSprite(Scene2D& scene, GameSpriteId spriteId) {
-        if (!sprite.has_value() || !gameAssetsOf(scene)) {
-            return;
-        }
-
-        const auto& entry = gameAssetsOf(scene)->sprites.get(spriteId);
-        sprite->atlasTextureIndex = entry.atlasTextureIndex;
-        sprite->frameName = entry.frameName;
     }
 };

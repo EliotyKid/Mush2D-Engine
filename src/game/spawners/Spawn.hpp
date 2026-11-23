@@ -26,11 +26,7 @@ WallObject& wall(
     const WallObject::Config& config = {}
 );
 
-CheckpointObject& checkpoint(
-    Scene2D& scene,
-    const glm::vec2& position,
-    const CheckpointObject::Config& config = {}
-);
+CheckpointObject& checkpoint(Scene2D& scene, const glm::vec2& position);
 
 TeleportObject& teleport(
     Scene2D& scene,

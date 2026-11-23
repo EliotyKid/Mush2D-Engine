@@ -30,14 +30,9 @@ WallObject& wall(
     return object;
 }
 
-CheckpointObject& checkpoint(
-    Scene2D& scene,
-    const glm::vec2& position,
-    const CheckpointObject::Config& config
-) {
-    auto& object = scene.createObject<CheckpointObject>(config);
+CheckpointObject& checkpoint(Scene2D& scene, const glm::vec2& position) {
+    auto& object = scene.createObject<CheckpointObject>();
     object.transform.position = position;
-    object.transform.scale = {1.0f, 1.0f};
     return object;
 }
 

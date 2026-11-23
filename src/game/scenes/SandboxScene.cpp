@@ -74,16 +74,7 @@ ISceneDefinition::BuildResult SandboxScene::build(
     );
     centerBox.name = "CenterBox";
 
-    auto& checkpoint = Spawn::checkpoint(
-        scene,
-        {-1.5f, 1.2f},
-        CheckpointObject::Config{
-            .layer = 1,
-            .orderInLayer = 1,
-            .triggerSize = {1.2f, 1.2f},
-            .oneShot = false
-        }
-    );
+    auto& checkpoint = Spawn::checkpoint(scene, {-1.5f, 1.2f});
     checkpoint.name = "CheckpointTrigger";
 
     auto& teleport = Spawn::teleport(

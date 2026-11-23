@@ -80,16 +80,8 @@ ISceneDefinition::BuildResult TestScene::build(
 
     slimeB.name = "TestSlimeB";
 
-    auto& checkpoint = Spawn::checkpoint(
-        scene,
-        {0.0f, 1.8f},
-        CheckpointObject::Config{
-            .layer = 1,
-            .orderInLayer = 2,
-            .triggerSize = {1.2f, 1.2f},
-            .oneShot = false
-        }
-    );
+    auto& checkpoint = Spawn::checkpoint(scene, {0.0f, 1.8f});
+    checkpoint.sprite->orderInLayer = 2;
     checkpoint.name = "TestCheckpoint";
 
     auto& teleport = Spawn::teleport(

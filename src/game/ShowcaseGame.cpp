@@ -537,13 +537,6 @@ void ShowcaseGame::registerLevelEntities() {
     });
 
     // Interactive objects (spec decision 1). Their state lives in world.state; trackEntity records the policy.
-    levelLoader.registerEntity("Checkpoint", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        CheckpointObject::Config c{};
-        c.worldState = &world.state;
-        c.iid = e.iid;
-        CheckpointObject& checkpoint = Spawn::checkpoint(s.scene, pos, c);
-        trackEntity(checkpoint, e, pos);
-    });
 }
 
 void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {

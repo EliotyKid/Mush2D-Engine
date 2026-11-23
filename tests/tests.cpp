@@ -602,12 +602,12 @@ TEST(checkpoint_records_activation_time_only_with_iid) {
     WorldState state;
     state.clock = 7.0;
     PlayerObject& player = scene.createObject<PlayerObject>(PlayerObject::Config{});
-    CheckpointObject::Config cc;
-    cc.worldState = &state;
-    scene.createObject<CheckpointObject>(cc).onTriggerEnter(scene, player); // no iid
+    scene.setService(&state);
+    scene.createObject<CheckpointObject>().onTriggerEnter(scene, player); // no iid
     CHECK(state.find("") == nullptr);
-    cc.iid = "c1";
-    scene.createObject<CheckpointObject>(cc).onTriggerEnter(scene, player);
+    CheckpointObject& checkpoint = scene.createObject<CheckpointObject>();
+    checkpoint.entityIid = "c1";
+    checkpoint.onTriggerEnter(scene, player);
     CHECK(state.get("c1", "activated", -1.0) == 7.0); // activation time: the latest one is the respawn point
 }
 
