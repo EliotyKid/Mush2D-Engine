@@ -63,36 +63,21 @@ ISceneDefinition::BuildResult TestScene::build(
     );
     rightWall.name = "TestRightWall";
 
-    auto& slimeA = Spawn::slime(
-        scene,
-        {-2.5f, 0.0f},
-        SlimeEnemy::Config{
-            .moveSpeed = 1.0f,
-            .patrolDistance = 1.5f,
-            .maxHealth = 10,
-            .colliderSize = {0.8f, 0.8f},
-            .layer = 1,
-            .orderInLayer = 0,
-            .initialScale = {0.8f, 0.8f},
-            .gravity = 0.0f // top-down
-        }
-    );
+    auto& slimeA = Spawn::slime(scene, {-2.5f, 0.0f});
+    slimeA.patrolDistance = 1.5f;
+    slimeA.gravity = 0.0f; // top-down
+
     slimeA.name = "TestSlimeA";
 
-    auto& slimeB = Spawn::slime(
-        scene,
-        {2.5f, 0.0f},
-        SlimeEnemy::Config{
-            .moveSpeed = 1.8f,
-            .patrolDistance = 2.2f,
-            .maxHealth = 20,
-            .colliderSize = {0.9f, 0.9f},
-            .layer = 1,
-            .orderInLayer = 1,
-            .initialScale = {0.9f, 0.9f},
-            .gravity = 0.0f // top-down
-        }
-    );
+    auto& slimeB = Spawn::slime(scene, {2.5f, 0.0f});
+    slimeB.moveSpeed = 1.8f;
+    slimeB.patrolDistance = 2.2f;
+    slimeB.maxHealth = 20;
+    slimeB.collider->size = {0.9f, 0.9f};
+    slimeB.transform.scale = {0.9f, 0.9f};
+    slimeB.sprite->orderInLayer = 1;
+    slimeB.gravity = 0.0f; // top-down
+
     slimeB.name = "TestSlimeB";
 
     auto& checkpoint = Spawn::checkpoint(

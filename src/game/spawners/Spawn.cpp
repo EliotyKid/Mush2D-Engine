@@ -12,12 +12,8 @@ PlayerObject& player(
     return object;
 }
 
-SlimeEnemy& slime(
-    Scene2D& scene,
-    const glm::vec2& position,
-    const SlimeEnemy::Config& config
-) {
-    auto& object = scene.createObject<SlimeEnemy>(config);
+SlimeEnemy& slime(Scene2D& scene, const glm::vec2& position) {
+    auto& object = scene.createObject<SlimeEnemy>();
     object.transform.position = position;
     return object;
 }

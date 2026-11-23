@@ -601,10 +601,9 @@ TEST(checkpoint_records_activation_time_only_with_iid) {
 TEST(slime_stomp_kills_and_bounces) {
     Scene2D scene;
     WorldState state;
-    SlimeEnemy::Config sc;
-    sc.worldState = &state;
-    sc.moveSpeed = 0.0f;
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc); // collider 0.8 x 0.8 at (0, 0)
+    scene.setService(&state); // the kill is recorded in the WorldState service
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(); // collider 0.8 x 0.8 at (0, 0)
+    slime.moveSpeed = 0.0f;
     GameObject& ground = scene.createObject<GameObject>(); // the slime falls now: it stands on this
     ground.transform.position = {0.0f, -0.5f};
     ground.collider = ColliderData{.size = {2.0f, 0.2f}};
@@ -626,7 +625,8 @@ TEST(slime_stomp_kills_and_bounces) {
     CHECK(scene.findObject(slimeId) == nullptr && state.isGone("s1"));
 
     // From the side (feet below the slime's centre) nothing happens.
-    SlimeEnemy& other = scene.createObject<SlimeEnemy>(sc);
+    SlimeEnemy& other = scene.createObject<SlimeEnemy>();
+    other.moveSpeed = 0.0f;
     other.transform.position = {5.0f, 0.0f};
     GameObject& floor = scene.createObject<GameObject>();
     floor.transform.position = {5.0f, -0.5f};
@@ -2048,9 +2048,8 @@ TEST(slime_turns_at_ledge_on_slope) {
     setCells(L, 9, 0, 19, 1); setCells(L, 8, 0, 19, 1); setCells(L, 7, 6, 6, 5); setCells(L, 7, 7, 7, 7);
     Scene2D scene;
     scene.collision.addRoom("r", gridSegs(L));
-    SlimeEnemy::Config sc;
-    sc.patrolDistance = 20.0f;
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>();
+    slime.patrolDistance = 20.0f;
     slime.transform.position = {1.5f, -3.6f};
     float maxX = 0.0f, minBottom = 0.0f;
     for (int i = 0; i < 360; ++i) {
@@ -2065,9 +2064,8 @@ TEST(slime_turns_at_ledge_on_slope) {
 TEST(slime_walks_down_45_ramp) {
     Scene2D scene;
     scene.collision.addRoom("r", gridSegs(rampLayer())); // flat top -2 from x 4.5 to the room edge at 10
-    SlimeEnemy::Config sc;
-    sc.patrolDistance = 20.0f;
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>();
+    slime.patrolDistance = 20.0f;
     slime.transform.position = {6.0f, -1.6f};
     float minX = 10.0f;
     for (int i = 0; i < 720; ++i) { scene.step(kDt); minX = std::min(minX, slime.transform.position.x); }
@@ -2079,7 +2077,7 @@ TEST(slime_patrols_around_where_it_was_placed) {
     LdtkLayer L = gridLayer(40, 10, {});
     setCells(L, 9, 0, 39, 1); // floor top -4.5, x 0..20
     scene.collision.addRoom("r", gridSegs(L));
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(SlimeEnemy::Config{}); // patrol 2 u
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(); // patrol 2 u
     slime.transform.position = {10.0f, -4.1f}; // placed after onCreate, as Spawn::slime does
     float lo = 10.0f, hi = 10.0f;
     for (int i = 0; i < 600; ++i) {
@@ -2169,9 +2167,8 @@ TEST(controller_airborne_landing_on_uphill_keeps_vx_sign) {
 TEST(slime_lands_on_ramp_without_turning) {
     Scene2D scene;
     scene.collision.addRoom("r", gridSegs(rampLayer()));
-    SlimeEnemy::Config sc;
-    sc.patrolDistance = 20.0f;
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>();
+    slime.patrolDistance = 20.0f;
     slime.transform.position = {3.3f, -1.0f};
     float x = slime.transform.position.x;
     for (int i = 0; i < 60; ++i) { scene.step(kDt); CHECK(slime.transform.position.x >= x - 1e-4f); x = slime.transform.position.x; }

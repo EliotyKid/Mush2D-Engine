@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "type": "SlimeEnemy",
+  "props": { "moveSpeed": 1.0, "patrolDistance": 2.0 }
+}

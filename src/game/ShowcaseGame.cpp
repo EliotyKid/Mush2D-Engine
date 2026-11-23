@@ -537,13 +537,6 @@ void ShowcaseGame::registerLevelEntities() {
     });
 
     // Interactive objects (spec decision 1). Their state lives in world.state; trackEntity records the policy.
-    levelLoader.registerEntity("Slime", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        SlimeEnemy::Config c{};
-        c.worldState = &world.state;
-        SlimeEnemy& slime = Spawn::slime(s.scene, bottomOf(e, pos) + glm::vec2(0.0f, 0.5f * c.colliderSize.y), c);
-        trackEntity(slime, e, slime.transform.position);
-    });
-
     levelLoader.registerEntity("Item", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         ItemObject& item = s.scene.createObject<ItemObject>(world.state, stringField(e, "kind", ""));
         item.transform.position = pos;

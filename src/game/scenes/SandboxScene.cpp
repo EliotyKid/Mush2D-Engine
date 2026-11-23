@@ -99,20 +99,13 @@ ISceneDefinition::BuildResult SandboxScene::build(
     );
     teleport.name = "TeleportTrigger";
 
-    auto& slime = Spawn::slime(
-        scene,
-        {3.0f, 0.0f},
-        SlimeEnemy::Config{
-            .moveSpeed = 1.2f,
-            .patrolDistance = 2.5f,
-            .maxHealth = 20,
-            .colliderSize = {0.8f, 0.8f},
-            .layer = 1,
-            .orderInLayer = 3,
-            .initialScale = {0.8f, 0.8f},
-            .gravity = 0.0f // top-down
-        }
-    );
+    auto& slime = Spawn::slime(scene, {3.0f, 0.0f});
+    slime.moveSpeed = 1.2f;
+    slime.patrolDistance = 2.5f;
+    slime.maxHealth = 20;
+    slime.sprite->orderInLayer = 3;
+    slime.gravity = 0.0f; // top-down
+
     slime.name = "Slime01";
 
     auto& player = Spawn::player(

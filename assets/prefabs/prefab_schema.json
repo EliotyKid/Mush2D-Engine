@@ -1,5 +1,11 @@
 {
-  "enums": {},
+  "enums": {
+    "Persistence": [
+      "None",
+      "Permanent",
+      "Respawn"
+    ]
+  },
   "types": {
     "CheckpointObject": {
       "base": "GameObject",
@@ -145,6 +151,23 @@
       "component": false,
       "props": []
     },
+    "PersistentComponent": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": "None",
+          "enum": "Persistence",
+          "name": "policy",
+          "type": "Enum"
+        },
+        {
+          "default": 12.0,
+          "name": "respawnDistance",
+          "type": "Float"
+        }
+      ]
+    },
     "PlayerObject": {
       "base": "GameObject",
       "component": false,
@@ -153,7 +176,33 @@
     "SlimeEnemy": {
       "base": "GameObject",
       "component": false,
-      "props": []
+      "props": [
+        {
+          "default": 1.0,
+          "name": "moveSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 2.0,
+          "name": "patrolDistance",
+          "type": "Float"
+        },
+        {
+          "default": 10,
+          "name": "maxHealth",
+          "type": "Int"
+        },
+        {
+          "default": -32.0,
+          "name": "gravity",
+          "type": "Float"
+        },
+        {
+          "default": -18.0,
+          "name": "maxFallSpeed",
+          "type": "Float"
+        }
+      ]
     },
     "SpriteAnimator": {
       "base": "Component",
