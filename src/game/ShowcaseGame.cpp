@@ -19,6 +19,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -33,6 +35,12 @@ void ShowcaseGame::init(EngineServices& s) {
         atlasMaterials.push_back(s.materials.load(assetPath(path)));
     }
     registerLevelEntities();
+#ifndef NDEBUG
+    // Every registered type and attribute, for prefab validation and future editors.
+    const std::filesystem::path schemaPath = sourceAssetPath("assets/prefabs/prefab_schema.json");
+    std::filesystem::create_directories(schemaPath.parent_path());
+    std::ofstream(schemaPath) << exportSchema().dump(2) << '\n';
+#endif
     // Lights and crystals belong to their room: dropped when it unloads.
     world.onRoomUnloaded = [this](const std::string& roomIid) {
         std::erase_if(lightEdits, [&](const EditableLight& l) { return l.roomIid == roomIid; });

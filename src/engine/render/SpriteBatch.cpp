@@ -52,7 +52,7 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
         inst.normal = material.normal;
         inst.emissive = material.emissive;
         inst.mask = material.mask;
-        inst.flags = SpriteFlagNearest; // scene atlases are pixel art
+        inst.flags = SpriteFlagNearest | (sprite.additive ? SpriteFlagAdditive : 0u); // scene atlases are pixel art
 
         // Legacy `layer` only orders sprites that sit on the default depth.
         int order = sprite.depth == 0.0f ? sprite.layer * 1000 + sprite.orderInLayer : sprite.orderInLayer;

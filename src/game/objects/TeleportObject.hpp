@@ -9,6 +9,7 @@
 #include "engine/world/Scene2D.hpp"
 
 class TeleportObject : public GameObject {
+    MUSH2D_OBJECT(TeleportObject, GameObject)
 public:
     struct Config {
         int layer = 1;

@@ -12,6 +12,7 @@
 
 // Trigger: while the player stands on it, pressing down toggles the lever ("on") and its door ("open").
 class LeverObject : public GameObject {
+    MUSH2D_OBJECT(LeverObject, GameObject)
 public:
     LeverObject(WorldState& state, std::string iid, std::string doorIid)
         : state(state), iid(std::move(iid)), doorIid(std::move(doorIid)) {}

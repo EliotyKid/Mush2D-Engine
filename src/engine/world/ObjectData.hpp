@@ -19,6 +19,8 @@ struct SpriteData {
     float depth = 0.0f;           // 0 = gameplay layer, > 0 further back (fog), < 0 foreground
     glm::vec2 parallax{1.0f, 1.0f};
     glm::vec2 offset{0.0f, 0.0f}; // sprite centre relative to transform.position (e.g. pivot placement)
+    bool additive = false;        // drawn in the additive pass (glows, halos)
+    std::string atlasName;        // exported `spriteAtlas` (AssetRef); prefab spawn resolves it to atlasTextureIndex
 };
 
 struct ColliderData {

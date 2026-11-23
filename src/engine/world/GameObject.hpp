@@ -57,6 +57,9 @@ public:
     int updateOrder = 0; // lower runs first; changes apply at the next flush
     std::string roomIid;     // LDtk room that created it (empty = none); unloading that room destroys it
     bool persistent = false; // survives its room's unload (player, camera, carried items)
+    std::string entityIid;   // LDtk entity iid (empty = not made from an LDtk entity)
+    std::string prefab;      // prefab it was created from (empty = made in code)
+    bool flipX = false;      // exported shortcut: mirrors the sprite when it is placed at its pivot
 
     Transform2D transform{};
 
@@ -69,6 +72,10 @@ public:
 
 public:
     virtual ~GameObject() = default;
+
+    // Overridden by MUSH2D_OBJECT; use typeOf(object). The GameObject type exports name, transform,
+    // visible, updateOrder, persistent, sprite and collider fields (registered in Reflect.cpp).
+    virtual const TypeInfo& reflectType() const;
 
     virtual void onCreate(Scene2D& scene) {}
     virtual void onStep(Scene2D& scene, float deltaTime) {}

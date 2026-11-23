@@ -19,6 +19,8 @@
 #include "engine/world/WorldState.hpp"
 #include "engine/graphics/Camera2D.hpp"
 #include "engine/world/PersistentComponent.hpp"
+#include "engine/reflect/Reflect.hpp"
+#include "game/RegisterGameTypes.hpp"
 #include "game/objects/CheckpointObject.hpp"
 #include "game/objects/DoorObject.hpp"
 #include "game/objects/ItemObject.hpp"
@@ -2206,7 +2208,163 @@ TEST(collides_at_position_sees_segments) {
     CHECK(!Collision2D::collidesAtPosition(scene, m.id, {6.0f, 0.5f}));
 }
 
+// --- Reflection (D1) ---------------------------------------------------------------------------------
+
+MUSH2D_ENUM(TestElement, Fire, Ice, Combined, None)
+
+class TestEnemyBase : public GameObject {
+    MUSH2D_OBJECT(TestEnemyBase, GameObject)
+public:
+    MUSH2D_EXPORT(int, maxHealth, 10)
+};
+
+class TestSlime : public TestEnemyBase {
+    MUSH2D_OBJECT(TestSlime, TestEnemyBase)
+public:
+    MUSH2D_EXPORT(float, speed, 1.5f)
+    MUSH2D_EXPORT(bool, angry, true)
+    MUSH2D_EXPORT(std::string, title, "slimy")
+    MUSH2D_EXPORT(glm::vec2, patrol, glm::vec2{2.0f, 0.5f})
+    MUSH2D_EXPORT(Color, tint, Color{1.0f, 0.5f, 0.25f, 1.0f})
+    MUSH2D_EXPORT(TestElement, weakness, TestElement::Ice)
+    MUSH2D_EXPORT(PrefabRef, drop, "coin")
+    MUSH2D_EXPORT(EntityRef, door, "")
+    MUSH2D_EXPORT(AssetRef, idleAnim, "kaa_animals/fox_idle")
+};
+
+struct TestGlow : Component {
+    MUSH2D_COMPONENT(TestGlow)
+    MUSH2D_EXPORT(float, radius, 3.0f)
+};
+
+static const PropertyInfo* findProp(const std::vector<const PropertyInfo*>& props, const std::string& name) {
+    for (const PropertyInfo* p : props) if (p->name == name) return p;
+    return nullptr;
+}
+static int propIndex(const std::vector<const PropertyInfo*>& props, const std::string& name) {
+    for (std::size_t i = 0; i < props.size(); ++i) if (props[i]->name == name) return int(i);
+    return -1;
+}
+
+TEST(reflect_registers_class_and_props) {
+    const TypeRegistry& reg = typeRegistry();
+    const TypeInfo* slime = reg.find("TestSlime");
+    CHECK(slime && slime->base == "TestEnemyBase" && !slime->isComponent && slime->createObject);
+    if (!slime) return;
+    CHECK(slime->props.size() == 9);
+    CHECK(reg.find("TestEnemyBase") && reg.find("TestEnemyBase")->base == "GameObject");
+
+    auto own = [&](const std::string& n) { return findProp(reg.allProps("TestSlime"), n); };
+    CHECK(own("speed")->type == PropType::Float && own("speed")->defaultValue == 1.5f);
+    CHECK(own("angry")->type == PropType::Bool && own("angry")->defaultValue == true);
+    CHECK(own("title")->type == PropType::String && own("title")->defaultValue == "slimy");
+    CHECK(own("patrol")->type == PropType::Vec2 && own("patrol")->defaultValue == nlohmann::json({2.0f, 0.5f}));
+    CHECK(own("tint")->type == PropType::Color && own("tint")->defaultValue == nlohmann::json({1.0f, 0.5f, 0.25f, 1.0f}));
+    CHECK(own("weakness")->type == PropType::Enum && own("weakness")->enumName == "TestElement");
+    CHECK(own("weakness")->defaultValue == "Ice");
+    CHECK(own("drop")->type == PropType::PrefabRef && own("drop")->defaultValue == "coin");
+    CHECK(own("door")->type == PropType::EntityRef && own("idleAnim")->type == PropType::AssetRef);
+    CHECK(own("maxHealth")->type == PropType::Int && own("maxHealth")->defaultValue == 10);
+
+    // Base first: GameObject, then TestEnemyBase, then TestSlime.
+    auto all = reg.allProps("TestSlime");
+    CHECK(propIndex(all, "name") == 0);
+    CHECK(propIndex(all, "position") >= 0 && propIndex(all, "spriteAtlas") >= 0 && propIndex(all, "flipX") >= 0);
+    CHECK(propIndex(all, "position") < propIndex(all, "maxHealth"));
+    CHECK(propIndex(all, "maxHealth") < propIndex(all, "speed"));
+    CHECK(propIndex(all, "speed") < propIndex(all, "idleAnim"));
+
+    const std::vector<std::string>* values = reg.enumValues("TestElement");
+    CHECK(values && *values == std::vector<std::string>({"Fire", "Ice", "Combined", "None"}));
+
+    // Create by name; the virtual typeOf knows the real class; get/set reach the member.
+    std::unique_ptr<GameObject> obj = slime->createObject();
+    CHECK(obj && &typeOf(*obj) == slime);
+    auto* ts = dynamic_cast<TestSlime*>(obj.get());
+    CHECK(ts && ts->speed == 1.5f && ts->weakness == TestElement::Ice && ts->title == "slimy");
+    std::string err;
+    CHECK(own("speed")->set(obj.get(), 3, err) && ts->speed == 3.0f);
+    CHECK(own("weakness")->set(obj.get(), "Combined", err) && ts->weakness == TestElement::Combined);
+    CHECK(own("weakness")->get(obj.get()) == "Combined");
+    CHECK(own("patrol")->set(obj.get(), {4, 5}, err) && ts->patrol == glm::vec2(4.0f, 5.0f));
+    CHECK(own("door")->set(obj.get(), "abc-iid", err) && ts->door == "abc-iid");
+    CHECK(own("maxHealth")->set(obj.get(), 7, err) && ts->maxHealth == 7);
+
+    // GameObject base data and the sprite shortcuts (they create the sprite / collider when missing).
+    CHECK(findProp(all, "position")->set(obj.get(), {1, 2}, err) && obj->transform.position == glm::vec2(1.0f, 2.0f));
+    CHECK(!obj->sprite && findProp(all, "spriteFrame")->set(obj.get(), "fox_idle", err));
+    CHECK(obj->sprite && obj->sprite->frameName == "fox_idle");
+    CHECK(findProp(all, "depth")->set(obj.get(), 2.5f, err) && obj->sprite->depth == 2.5f);
+    CHECK(findProp(all, "isTrigger")->set(obj.get(), true, err) && obj->collider && obj->collider->isTrigger);
+    CHECK(findProp(all, "name")->get(obj.get()) == "");
+
+    // A plain GameObject reports the GameObject type.
+    GameObject plain;
+    CHECK(typeOf(plain).name == "GameObject" && typeOf(plain).base.empty());
+
+    // Components: same macros, created by name.
+    const TypeInfo* glow = reg.find("TestGlow");
+    CHECK(glow && glow->isComponent && glow->base == "Component" && glow->createComponent);
+    if (glow) {
+        auto c = glow->createComponent();
+        CHECK(c && &typeOf(*c) == glow);
+        auto cp = reg.allProps("TestGlow");
+        CHECK(propIndex(cp, "enabled") == 0 && propIndex(cp, "radius") == 1);
+        CHECK(findProp(cp, "radius")->set(c.get(), 5.0f, err) && static_cast<TestGlow*>(c.get())->radius == 5.0f);
+    }
+
+    // Game library types are registered by mush2dRegisterGameTypes() (called in main).
+    CHECK(reg.find("SlimeEnemy") && reg.find("SlimeEnemy")->createObject);
+}
+
+TEST(reflect_set_wrong_type_reports_error) {
+    auto all = typeRegistry().allProps("TestSlime");
+    TestSlime s;
+    std::string err;
+    CHECK(!findProp(all, "speed")->set(&s, "fast", err) && !err.empty() && s.speed == 1.5f);
+    err.clear();
+    CHECK(!findProp(all, "maxHealth")->set(&s, 1.5, err) && !err.empty() && s.maxHealth == 10);
+    err.clear();
+    CHECK(!findProp(all, "weakness")->set(&s, "Lava", err) && !err.empty() && s.weakness == TestElement::Ice);
+    err.clear();
+    CHECK(!findProp(all, "patrol")->set(&s, {1}, err) && !err.empty());
+    err.clear();
+    CHECK(!findProp(all, "angry")->set(&s, 1, err) && !err.empty() && s.angry);
+    err.clear();
+    CHECK(!findProp(all, "drop")->set(&s, 5, err) && !err.empty() && s.drop == "coin");
+}
+
+TEST(scene_services) {
+    Scene2D scene;
+    WorldState state;
+    CHECK(scene.service<WorldState>() == nullptr);
+    scene.setService(&state);
+    CHECK(scene.service<WorldState>() == &state);
+    CHECK(scene.service<World>() == nullptr);
+    scene.clear(); // services are not objects: they survive clear()
+    CHECK(scene.service<WorldState>() == &state);
+    scene.setService<WorldState>(nullptr);
+    CHECK(scene.service<WorldState>() == nullptr);
+}
+
+TEST(schema_export_lists_types) {
+    nlohmann::json schema = exportSchema();
+    CHECK(schema["version"] == 1);
+    const nlohmann::json& slime = schema["types"]["TestSlime"];
+    CHECK(slime["base"] == "TestEnemyBase" && slime["component"] == false);
+    CHECK(slime["props"].size() == 9);
+    bool foundWeakness = false;
+    for (const auto& p : slime["props"])
+        if (p["name"] == "weakness")
+            foundWeakness = p["type"] == "Enum" && p["enum"] == "TestElement" && p["default"] == "Ice";
+    CHECK(foundWeakness);
+    CHECK(schema["types"]["GameObject"]["props"].size() > 10);
+    CHECK(schema["types"]["TestGlow"]["component"] == true);
+    CHECK(schema["enums"]["TestElement"] == nlohmann::json({"Fire", "Ice", "Combined", "None"}));
+}
+
 int main() {
+    mush2dRegisterGameTypes();
     for (auto& [name, fn] : registry()) {
         std::printf("[ RUN ] %s\n", name);
         fn();

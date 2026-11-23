@@ -12,6 +12,7 @@
 #include <string>
 
 class CheckpointObject : public GameObject {
+    MUSH2D_OBJECT(CheckpointObject, GameObject)
 public:
     struct Config {
         int layer = 1;

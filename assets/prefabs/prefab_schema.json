@@ -1,0 +1,165 @@
+{
+  "enums": {},
+  "types": {
+    "CheckpointObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    },
+    "Component": {
+      "base": "",
+      "component": true,
+      "props": [
+        {
+          "default": true,
+          "name": "enabled",
+          "type": "Bool"
+        }
+      ]
+    },
+    "CritterObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    },
+    "DoorObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    },
+    "GameObject": {
+      "base": "",
+      "component": false,
+      "props": [
+        {
+          "default": "",
+          "name": "name",
+          "type": "String"
+        },
+        {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "name": "position",
+          "type": "Vec2"
+        },
+        {
+          "default": [
+            1.0,
+            1.0
+          ],
+          "name": "scale",
+          "type": "Vec2"
+        },
+        {
+          "default": 0.0,
+          "name": "rotation",
+          "type": "Float"
+        },
+        {
+          "default": true,
+          "name": "visible",
+          "type": "Bool"
+        },
+        {
+          "default": 0,
+          "name": "updateOrder",
+          "type": "Int"
+        },
+        {
+          "default": false,
+          "name": "persistent",
+          "type": "Bool"
+        },
+        {
+          "default": "",
+          "name": "spriteAtlas",
+          "type": "AssetRef"
+        },
+        {
+          "default": "",
+          "name": "spriteFrame",
+          "type": "String"
+        },
+        {
+          "default": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "name": "spriteColor",
+          "type": "Color"
+        },
+        {
+          "default": 0,
+          "name": "spriteLayer",
+          "type": "Int"
+        },
+        {
+          "default": 0.0,
+          "name": "depth",
+          "type": "Float"
+        },
+        {
+          "default": false,
+          "name": "flipX",
+          "type": "Bool"
+        },
+        {
+          "default": [
+            1.0,
+            1.0
+          ],
+          "name": "colliderSize",
+          "type": "Vec2"
+        },
+        {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "name": "colliderOffset",
+          "type": "Vec2"
+        },
+        {
+          "default": false,
+          "name": "isTrigger",
+          "type": "Bool"
+        }
+      ]
+    },
+    "ItemObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    },
+    "LeverObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    },
+    "PlayerObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    },
+    "SlimeEnemy": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    },
+    "TeleportObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    },
+    "WallObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": []
+    }
+  },
+  "version": 1
+}

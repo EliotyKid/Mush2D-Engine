@@ -15,6 +15,7 @@
 #include <cstddef>
 
 class SlimeEnemy : public GameObject {
+    MUSH2D_OBJECT(SlimeEnemy, GameObject)
 public:
     struct Config {
         float moveSpeed = 1.0f;

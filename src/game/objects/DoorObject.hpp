@@ -11,6 +11,7 @@
 
 // Solid while closed. Its "open" value lives in WorldState, so a lever can open it while its room is unloaded.
 class DoorObject : public GameObject {
+    MUSH2D_OBJECT(DoorObject, GameObject)
 public:
     DoorObject(WorldState& state, std::string iid, glm::vec2 size) : state(state), iid(std::move(iid)), size(size) {}
 

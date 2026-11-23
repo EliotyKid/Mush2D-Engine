@@ -1,8 +1,10 @@
 #include "engine/core/Engine.hpp"
+#include "game/RegisterGameTypes.hpp"
 #include "game/ShowcaseGame.hpp"
 #include <iostream>
 
 int main() {
+    mush2dRegisterGameTypes();
     try {
         ShowcaseGame game;
         Engine engine;

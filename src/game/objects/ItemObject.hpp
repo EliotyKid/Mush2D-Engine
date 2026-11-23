@@ -13,6 +13,7 @@
 
 // Collected on touch. No inventory yet: collecting only records the state (persistence policy).
 class ItemObject : public GameObject {
+    MUSH2D_OBJECT(ItemObject, GameObject)
 public:
     ItemObject(WorldState& state, std::string kind) : kind(std::move(kind)), state(state) {}
 

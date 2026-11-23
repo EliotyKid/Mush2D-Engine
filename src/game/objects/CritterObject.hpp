@@ -13,6 +13,7 @@
 
 // Decor animal: loops one atlas animation, standing with its pivot on transform.position.
 class CritterObject : public GameObject {
+    MUSH2D_OBJECT(CritterObject, GameObject)
 public:
     CritterObject(std::uint32_t atlasIndex, std::string animation, bool flip)
         : atlasIndex_(atlasIndex), animation_(std::move(animation)), flip_(flip) {}
