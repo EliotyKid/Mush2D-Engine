@@ -34,6 +34,6 @@ inline void trackEntity(GameObject& o, const LdtkEntity& e, glm::vec2 spawnPos) 
     if (!p) p = &o.addComponent<PersistentComponent>();
     p->iid = e.iid;
     if (const Persistence policy = parsePersistence(e); policy != Persistence::None) p->policy = policy;
-    if (e.fields.contains("respawnDistance")) p->respawnDistance = parseRespawnDistance(e);
+    if (e.fields.contains("respawnDistance") && e.fields["respawnDistance"].is_number()) p->respawnDistance = parseRespawnDistance(e);
     p->spawnPos = spawnPos;
 }
