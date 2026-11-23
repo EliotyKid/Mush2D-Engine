@@ -30,15 +30,16 @@ Este guia é para quem conhece o GameMaker e sabe pouco de C++. Ele está organi
 | Variáveis de criação da instância | **campos** da entidade no LDtk | — |
 | `persistent` | `persistent = true` | campo do objeto |
 | Sprite editor | Aseprite/GameMaker → atlas `.png` + `.json` | `assets/kaa/` |
-| Variável global | membro do jogo (`ShowcaseGame`) ou `WorldState` | — |
+| Variável global | membro do jogo (`IkigaiGame`) ou `WorldState` | — |
+| Objeto com valores editáveis | **prefab** (`assets/prefabs/<nome>.prefab.json`) | `MUSH2D_EXPORT` |
 | Luz | entidade `Light` no LDtk, ou `LightComponent` | — |
 
-**A diferença principal**: no GameMaker, o editor faz a ligação "objeto no room → código" sozinho. Aqui você faz essa ligação **uma vez por tipo**, registrando uma "fábrica" (Parte 5). Isso é um dos pontos para deixar a engine mais fácil (Parte 6).
+**Como uma entidade vira objeto**: cada entidade do LDtk cria o **prefab** de mesmo nome em `snake_case` (`Slime` → `assets/prefabs/slime.prefab.json`). O prefab diz a classe C++ (`"type"`) e os valores; os campos da entidade com o nome de um atributo exportado (`MUSH2D_EXPORT`) sobrescrevem o valor. Só as entidades especiais (`PlayerStart`, `Light`, `Terrain`) têm "fábrica" em código.
 
 ### O que acontece quando o jogo abre
 
 ```
-main.cpp ──► cria ShowcaseGame (o "jogo") e Engine (a "máquina")
+main.cpp ──► cria IkigaiGame (o "jogo") e Engine (a "máquina")
              engine.run(game)
                  │
                  ├─ abre a janela, liga a GPU (Vulkan), o renderer e o input
@@ -50,7 +51,7 @@ main.cpp ──► cria ShowcaseGame (o "jogo") e Engine (a "máquina")
                        4. o renderer desenha o frame (luz, névoa, bloom...)
 ```
 
-Dentro de `game.update` (o "Step" de todo o jogo), o `ShowcaseGame` faz, nesta ordem:
+Dentro de `game.update` (o "Step" de todo o jogo), o `IkigaiGame` faz, nesta ordem:
 
 1. teclas globais (TAB troca de cena, F5 recarrega) e hot reload;
 2. passa o input para o player;
@@ -139,22 +140,20 @@ class LeverObject : public GameObject {
 Cria o "objeto" `LeverObject`, que é filho de `GameObject`. Ele herda tudo o que o pai tem: posição, sprite, colisor, eventos.
 
 ```cpp
+    MUSH2D_OBJECT(LeverObject, GameObject)
 public:
-    LeverObject(WorldState& state, std::string iid, std::string doorIid)
-        : state(state), iid(std::move(iid)), doorIid(std::move(doorIid)) {}
+    MUSH2D_EXPORT(EntityRef, door, "")
 ```
-O **construtor**, que roda ao criar a instância, antes do `onCreate`. Ele recebe três coisas:
-- `state`: a memória do mundo, que lembra se a alavanca está ligada mesmo depois de você sair da sala;
-- `iid`: o id desta alavanca no LDtk;
-- `doorIid`: o id da porta ligada a ela.
+`MUSH2D_OBJECT` registra a classe pelo nome: é assim que o prefab (`"type": "LeverObject"`) sabe qual classe criar. `MUSH2D_EXPORT` declara uma variável da instância (`door`, vazia no começo) que o prefab, o campo `door` da entidade no LDtk e o inspetor podem mudar. `EntityRef` é um texto com o id de outra entidade do LDtk: a porta ligada a esta alavanca.
 
-A linha que começa com `:` guarda os três dentro do objeto. `std::move` só evita uma cópia do texto.
+O objeto não tem construtor com argumentos: quem o cria é o prefab. O id desta alavanca no LDtk já vem pronto em `entityIid`, uma variável de todo `GameObject`.
 
 ```cpp
     void onCreate(Scene2D& scene) override {
+        state = scene.service<WorldState>();
         name = "Lever";
 ```
-Create Event. Dá um nome à instância, útil para depurar.
+Create Event. Primeiro pega a memória do mundo (`WorldState`), que o jogo registrou como **serviço** da cena: ela lembra se a alavanca está ligada mesmo depois de você sair da sala. Depois dá um nome à instância, útil para depurar.
 
 ```cpp
         addTag("trigger");
@@ -220,14 +219,15 @@ Step Event, a cada frame:
 
 ```cpp
     void toggle() {
-        state.set(iid, "on", isOn() ? 0.0 : 1.0);
-        if (!doorIid.empty()) state.set(doorIid, "open", state.get(doorIid, "open", 0.0) != 0.0 ? 0.0 : 1.0);
+        if (!state) return;
+        state->set(entityIid, "on", isOn() ? 0.0 : 1.0);
+        if (!door.empty()) state->set(door, "open", state->get(door, "open", 0.0) != 0.0 ? 0.0 : 1.0);
     }
 ```
 Alterna a alavanca **e** a porta. `a ? b : c` significa "se a, então b, senão c". O estado fica no `WorldState`, a memória do mundo indexada pelo id do LDtk. Por isso ele sobrevive quando a sala é descarregada, e a porta lê o próprio estado de lá.
 
 ```cpp
-    bool isOn() const { return state.get(iid, "on", 0.0) != 0.0; }
+    bool isOn() const { return state && state->get(entityIid, "on", 0.0) != 0.0; }
 ```
 "Estou ligada?" Lê da memória do mundo, com 0 como padrão. `const` = esta função não altera nada.
 
@@ -238,21 +238,20 @@ private:
 Pinta o sprite de verde se estiver ligada, ou de vermelho se não. A cor é RGBA de 0 a 1 e multiplica a imagem, como o `image_blend` do GameMaker.
 
 ```cpp
-    WorldState& state;
-    std::string iid, doorIid;
+    WorldState* state = nullptr;
     GameObjectId playerId = InvalidGameObjectId;
 };
 ```
-As variáveis da instância, que só a classe enxerga.
+As variáveis da instância, que só a classe enxerga. `state` é um ponteiro: fica `nullptr` numa cena sem `WorldState` (os testes, por exemplo), e por isso as funções acima testam `state` antes de usar.
 
-**Como a alavanca nasce:** no `ShowcaseGame.cpp`, dentro de `registerLevelEntities`, existe uma fábrica `"Lever"`. Quando a sala carrega, cada entidade `Lever` do LDtk vira `scene.createObject<LeverObject>(world.state, e.iid, entityRefField(e, "door"))`.
+**Como a alavanca nasce:** quando a sala carrega, cada entidade `Lever` do LDtk cria o prefab `assets/prefabs/lever.prefab.json`, que diz `"type": "LeverObject"`. O campo `door` da entidade preenche o atributo `door`. Nenhuma linha de código registra a alavanca.
 
 ---
 
 ## Parte 4 — Cada sistema e cada arquivo
 
 ### `src/main.cpp` — o ponto de partida (14 linhas)
-Cria o jogo (`ShowcaseGame`) e a engine, e chama `engine.run(game)`. Se algo der errado, imprime o erro. **Para trocar de jogo, você troca esta linha.**
+Cria o jogo (`IkigaiGame`) e a engine, e chama `engine.run(game)`. Se algo der errado, imprime o erro. **Para trocar de jogo, você troca esta linha.**
 
 ### `src/engine/core/` — o coração
 | Arquivo | Papel |
@@ -319,8 +318,8 @@ Conversa direta com a placa de vídeo: criação do dispositivo, troca de imagen
 ### `src/game/` — **o seu jogo** (onde você trabalha)
 | Arquivo | Papel |
 |---|---|
-| `ShowcaseGame.hpp/.cpp` | O jogo de exemplo. Carrega os assets, **registra as fábricas das entidades do LDtk** (`registerLevelEntities`), trata TAB, F5 e a tecla K, e liga o mundo e as regiões. |
-| `objects/*.hpp` | Os objetos: player, slime, porta, alavanca, item, checkpoint, teleporte, parede e animal de decoração (`CritterObject`). |
+| `IkigaiGame.hpp/.cpp` | O jogo. Carrega os assets, registra os serviços da cena (`WorldState`, `World`, `GameAssets`, `AssetRegistry`, prefabs), as fábricas das entidades especiais (`PlayerStart`, `Light`), trata TAB, F5 e a tecla K, e liga o mundo e as regiões. |
+| `objects/*.hpp` | Os objetos: player, slime, porta, alavanca, item, checkpoint, teleporte, parede, animal de decoração (`CritterObject`), prop (`PropObject`) e cristal (`CrystalObject`). Toda classe daqui é registrada só por existir. |
 | `assets/GameAssets.*`, `Game*Id.hpp` | A lista de atlas, sprites e animações do jogo, com nomes. |
 | `scenes/*` | As cenas antigas montadas em código (Sandbox, Test). |
 | `spawners/Spawn.*` | Funções que criam objetos já configurados (`Spawn::player`, `Spawn::slime`). |
@@ -328,6 +327,7 @@ Conversa direta com a placa de vídeo: criação do dispositivo, troca de imagen
 ### `assets/` e `tools/`
 - `assets/kaa/`: a arte do kaa, já em atlas, com normal maps.
 - `assets/levels/showcase.ldtk`: as salas.
+- `assets/prefabs/*.prefab.json`: os prefabs (classe, atributos, sprite, filhos). `prefab_schema.json` lista todas as classes e atributos (gerado no Debug).
 - `assets/regions/*.region.json`: o look de cada região.
 - `assets/terrain/`: as texturas do terreno livre.
 - `tools/*.py`: scripts que geraram arte e conteúdo. `import_kaa.py` importa sprites do GameMaker.
@@ -340,23 +340,30 @@ Conversa direta com a placa de vídeo: criação do dispositivo, troca de imagen
 Abra o `.ldtk` no LDtk, crie um nível encostado nos outros, pinte a camada `Collision` (1 = sólido, 2 = plataforma, 3 a 8 = rampas), pinte os tiles e salve. Com o jogo rodando em Debug, ele recarrega sozinho. Ande até a sala nova.
 
 ### Um objeto novo (exemplo: uma moeda que gira e some ao ser tocada)
-1. Crie `src/game/objects/CoinObject.hpp` seguindo o modelo da alavanca: `onCreate` com sprite e collider trigger, `onStep` girando com `transform.rotation += 3.0f * dt;`, e `onTriggerEnter` com `if (dynamic_cast<PlayerObject*>(&other)) scene.destroy(id);`.
-2. No LDtk, crie a entidade `Coin`, com campos se quiser.
-3. Em `ShowcaseGame.cpp`, em `registerLevelEntities`, acrescente a fábrica:
-   ```cpp
-   levelLoader.registerEntity("Coin", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-       auto& coin = s.scene.createObject<CoinObject>();
-       coin.transform.position = pos;
-   });
+1. Crie `src/game/objects/CoinObject.hpp` seguindo o modelo da alavanca: `MUSH2D_OBJECT(CoinObject, GameObject)`, um atributo `MUSH2D_EXPORT(float, spin, 3.0f)`, `onCreate` com collider trigger, `onStep` girando com `transform.rotation += spin * dt;`, e `onTriggerEnter` com `if (dynamic_cast<PlayerObject*>(&other)) scene.destroy(id);`.
+2. Crie `assets/prefabs/coin.prefab.json`:
+   ```json
+   { "version": 1, "type": "CoinObject",
+     "props": { "spin": 4.0 },
+     "sprite": { "atlas": "environment", "frame": "teleport_0", "layer": 1 } }
    ```
-   e o `#include "game/objects/CoinObject.hpp"` no topo do arquivo.
-4. Compile e rode.
+3. No LDtk, crie a entidade `Coin`. Um campo `spin` nela sobrescreve o valor do prefab.
+4. Compile e rode. Nenhuma fábrica: a entidade `Coin` cria o prefab `coin` sozinha.
 
-### Herdar de outro objeto
+### Uma variação de um objeto (sem recompilar)
+Um prefab pode herdar de outro com `"base"` e mudar só o que quiser. O `slime_fast.prefab.json` é um slime mais rápido e avermelhado:
+```json
+{ "version": 1, "base": "slime",
+  "props": { "moveSpeed": 3.0, "patrolDistance": 3.0 },
+  "sprite": { "color": [1.0, 0.55, 0.55, 1.0] } }
+```
+Para usar, crie a entidade `SlimeFast` no LDtk (ou ponha o campo `prefab` = `slime_fast` numa entidade `Slime`).
+
+### Herdar de outro objeto em C++
 ```cpp
-class SlimeFast : public SlimeEnemy {          // filho do slime
+class SlimeBoss : public SlimeEnemy {          // filho do slime
+    MUSH2D_OBJECT(SlimeBoss, SlimeEnemy)
 public:
-    using SlimeEnemy::SlimeEnemy;              // usa o construtor do pai
     void onCreate(Scene2D& scene) override {
         SlimeEnemy::onCreate(scene);           // = event_inherited()
         // mudanças aqui
@@ -376,8 +383,8 @@ public:
 O que já é fácil: montar salas no LDtk, hot reload, o painel de look, criar e destruir com segurança, e eventos parecidos com os do GameMaker.
 
 O que ainda é trabalhoso, com a solução proposta:
-1. **Registrar cada objeto à mão** no `ShowcaseGame`. → Registro automático: a classe se registra com uma linha (`MUSH2D_OBJECT(CoinObject, "Coin")`), e os campos do LDtk preenchem as variáveis sozinhos.
+1. ~~**Registrar cada objeto à mão** no jogo.~~ Feito na D1: `MUSH2D_OBJECT` + prefabs, e os campos do LDtk preenchem os atributos sozinhos.
 2. **Recompilar e reabrir o jogo para testar código.** → Hot reload de código, ou scripts (Lua) para a lógica de gameplay.
-3. **Um jogo novo exige escrever um `ShowcaseGame` próprio.** → Um "jogo padrão" da engine que já faz salas, mundo, regiões, player e câmera. Você só escreve os objetos.
+3. **Um jogo novo exige escrever um `IkigaiGame` próprio.** → Um "jogo padrão" da engine que já faz salas, mundo, regiões, player e câmera. Você só escreve os objetos.
 4. **Nenhum inspetor ao vivo.** → No painel F1, uma lista de instâncias com as variáveis editáveis, como o debugger do GameMaker.
 5. **Sprites e animações registrados em código** (`GameAssets.cpp`). → Ler tudo automaticamente da pasta de atlas, pelo nome.

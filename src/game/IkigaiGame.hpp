@@ -20,7 +20,10 @@
 #include <utility>
 #include <vector>
 
-class ShowcaseGame : public IGame {
+// The Ikigai game: the LDtk world (showcase.ldtk until the D12 demo map) with objects from prefabs, plus the
+// older Sandbox and Test scenes (TAB). Registers the scene services the objects use: WorldState, World,
+// GameAssets, AssetRegistry and the PrefabLibrary.
+class IkigaiGame : public IGame {
 public:
     void init(EngineServices& s) override;
     void update(EngineServices& s, float dt) override;

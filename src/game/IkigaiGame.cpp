@@ -1,13 +1,8 @@
-#include "game/ShowcaseGame.hpp"
+#include "game/IkigaiGame.hpp"
 
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
 #include "engine/world/Collision.hpp"
-#include "game/assets/GameAtlasId.hpp"
-#include "game/objects/DoorObject.hpp"
-#include "game/objects/ItemObject.hpp"
-#include "game/objects/LeverObject.hpp"
-#include "engine/world/SpriteAnimator.hpp"
 #include "game/objects/PlayerObject.hpp"
 #include "game/scenes/SceneRegistry.hpp"
 #include "game/spawners/Spawn.hpp"
@@ -24,7 +19,7 @@
 #include <string>
 #include <utility>
 
-void ShowcaseGame::init(EngineServices& s) {
+void IkigaiGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
     // Objects reach the game's data through scene services (spec decision 5), not constructor arguments.
     s.scene.setService(&gameAssets);
@@ -67,7 +62,7 @@ void ShowcaseGame::init(EngineServices& s) {
         camera.position.x = static_cast<float>(std::atof(camX));
     }
 }
-void ShowcaseGame::update(EngineServices& s, float deltaTime) {
+void IkigaiGame::update(EngineServices& s, float deltaTime) {
     Scene2D& scene = s.scene;
 
     handleGlobalInput(s, deltaTime);
@@ -119,7 +114,7 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
     submitRenderData(s);
 }
 
-std::pair<Material, glm::vec4> ShowcaseGame::lookupAtlasFrame(std::uint32_t atlasIndex, const std::string& frameName) const {
+std::pair<Material, glm::vec4> IkigaiGame::lookupAtlasFrame(std::uint32_t atlasIndex, const std::string& frameName) const {
     if (atlasIndex >= atlasMaterials.size()) {
         return {};
     }
@@ -136,7 +131,7 @@ std::pair<Material, glm::vec4> ShowcaseGame::lookupAtlasFrame(std::uint32_t atla
                       static_cast<float>(frame.w) / w, static_cast<float>(frame.h) / h)};
 }
 
-void ShowcaseGame::submitRenderData(EngineServices& s) {
+void IkigaiGame::submitRenderData(EngineServices& s) {
     SpriteBatch& batch = s.renderer.sprites();
     batch.clear();
     levelLoader.appendStatic(batch);
@@ -182,7 +177,7 @@ void ShowcaseGame::submitRenderData(EngineServices& s) {
     }
     collectComponentLights(s.scene, lights);
 }
-void ShowcaseGame::shutdown(EngineServices& s) {
+void IkigaiGame::shutdown(EngineServices& s) {
     s.scene.clear();
     s.scene.setService<GameAssets>(nullptr);
     s.scene.setService<AssetRegistry>(nullptr);
@@ -191,7 +186,7 @@ void ShowcaseGame::shutdown(EngineServices& s) {
     s.scene.setService<WorldState>(nullptr);
 }
 
-bool ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
+bool IkigaiGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
     try {
         loadScene(s, sceneId, transitionData);
         return true;
@@ -201,7 +196,7 @@ bool ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneT
     }
 }
 
-void ShowcaseGame::hotReload(EngineServices& s, bool ldtkOnly) {
+void IkigaiGame::hotReload(EngineServices& s, bool ldtkOnly) {
     keepRegions = ldtkOnly; // only the .ldtk changed: keep the panel's unsaved look
     const bool wasDying = world.dying();
     const auto* old = s.scene.findObjectAs<PlayerObject>(playerObjectId);
@@ -230,7 +225,7 @@ void ShowcaseGame::hotReload(EngineServices& s, bool ldtkOnly) {
     s.camera.position = target + s.camera.followOffset;
 }
 
-void ShowcaseGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
+void IkigaiGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
     // Parse before touching any state, so a malformed level throws with the old scene intact.
     if (sceneId == SceneId::Showcase) {
         preparedProject = loadLdtkProject(sourceAssetPath("assets/levels/showcase.ldtk"));
@@ -272,7 +267,7 @@ void ShowcaseGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTran
     std::fprintf(stderr, "Scene: %s\n", activeSceneDefinition ? activeSceneDefinition->getSceneName() : "Showcase");
 }
 
-void ShowcaseGame::reloadCurrentScene(EngineServices& s) {
+void IkigaiGame::reloadCurrentScene(EngineServices& s) {
     Scene2D& scene = s.scene;
     if (activeSceneDefinition) {
         activeSceneDefinition->onReload(scene);
@@ -280,7 +275,7 @@ void ShowcaseGame::reloadCurrentScene(EngineServices& s) {
     tryLoadScene(s, currentSceneId, currentSceneTransitionData);
 }
 
-void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
+void IkigaiGame::handleGlobalInput(EngineServices& s, float deltaTime) {
     Scene2D& scene = s.scene;
     GlfwInput& input = s.input;
     Camera2D& camera = s.camera;
@@ -400,7 +395,7 @@ void ShowcaseGame::handleGlobalInput(EngineServices& s, float deltaTime) {
     camera.clampSize(s.gpu.swapchain().extent());
 }
 
-void ShowcaseGame::processTriggerOverlaps(EngineServices& s) {
+void IkigaiGame::processTriggerOverlaps(EngineServices& s) {
     Scene2D& scene = s.scene;
     GameObject* player = scene.findObject(playerObjectId);
     if (!player || !player->active || !player->collider.has_value() || !player->collider->enabled) {
@@ -439,7 +434,7 @@ void ShowcaseGame::processTriggerOverlaps(EngineServices& s) {
     activeTriggerOverlaps = std::move(currentOverlaps);
 }
 
-void ShowcaseGame::setupInitialScene(EngineServices& s) {
+void IkigaiGame::setupInitialScene(EngineServices& s) {
     Scene2D& scene = s.scene;
     activeTriggerOverlaps.clear();
     levelLoader.clear();
@@ -463,7 +458,9 @@ void ShowcaseGame::setupInitialScene(EngineServices& s) {
     playerObjectId = result.playerObjectId;
 }
 
-void ShowcaseGame::registerLevelEntities() {
+// Only the special entities have a code factory. Every other entity (Slime, Door, Lever, Item, Checkpoint,
+// Critter, Prop, Crystal, ...) creates assets/prefabs/<snake_case name>.prefab.json (LevelLoader::spawnEntity).
+void IkigaiGame::registerLevelEntities() {
     levelLoader.registerEntity("PlayerStart", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         if (s.scene.findFirstObjectOfType<PlayerObject>()) return; // its room streamed in again
         PlayerObject::Config c{};
@@ -493,11 +490,9 @@ void ShowcaseGame::registerLevelEntities() {
         if (auto it = overrides.find(e.iid); it != overrides.end()) value = it->second;
         lightEdits.push_back({e.iid, pos, value, room});
     });
-
-    // Interactive objects (spec decision 1). Their state lives in world.state; trackEntity records the policy.
 }
 
-void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
+void IkigaiGame::loadShowcaseLevel(EngineServices& s) {
     s.scene.clear();
     world.open(*preparedProject, levelLoader, &s);
     preparedProject.reset();
@@ -520,7 +515,7 @@ void ShowcaseGame::loadShowcaseLevel(EngineServices& s) {
     s.renderer.settings() = regions.current().look.settings;
 }
 
-void ShowcaseGame::killPlayer(EngineServices& s, GameObjectId id) {
+void IkigaiGame::killPlayer(EngineServices& s, GameObjectId id) {
     if (world.dying()) return;
     if (auto* p = s.scene.findObjectAs<PlayerObject>(id)) p->active = false; // frozen until the teleport
     world.killPlayer(respawnPoint(), [&scene = s.scene, &camera = s.camera, id](glm::vec2 at) {
@@ -534,7 +529,7 @@ void ShowcaseGame::killPlayer(EngineServices& s, GameObjectId id) {
 
 // Where the player stands after dying: the latest activated Checkpoint ("activated" = activation time), else
 // PlayerStart. Same placement as the PlayerStart factory: feet on the entity's base.
-glm::vec2 ShowcaseGame::respawnPoint() const {
+glm::vec2 IkigaiGame::respawnPoint() const {
     const LdtkLevel* bestLevel = nullptr;
     const LdtkEntity* best = nullptr;
     double bestTime = -1.0;
@@ -550,7 +545,7 @@ glm::vec2 ShowcaseGame::respawnPoint() const {
     return bottomOf(*best, centre) + glm::vec2(0.0f, 0.8f); // player collider is 1.6 tall
 }
 
-void ShowcaseGame::onImGui(EngineServices& s) {
+void IkigaiGame::onImGui(EngineServices& s) {
     if (currentSceneId != SceneId::Showcase) return;
     // The panel shows the current room's tile layers (they belong to its region, regions.current = room.region).
     std::vector<EditableLayer> roomLayers;
@@ -572,7 +567,7 @@ void ShowcaseGame::onImGui(EngineServices& s) {
     }
 }
 
-void ShowcaseGame::submitShowcaseExtras(EngineServices& s) {
+void IkigaiGame::submitShowcaseExtras(EngineServices& s) {
     LightList& lights = s.renderer.lights();
     for (const EditableLight& l : lightEdits) {
         const LightOverride& v = l.value;

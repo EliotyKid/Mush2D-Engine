@@ -25,6 +25,7 @@
 #include "engine/reflect/Reflect.hpp"
 #include "game/RegisterGameTypes.hpp"
 #include "game/objects/CheckpointObject.hpp"
+#include "game/objects/CrystalObject.hpp"
 #include "game/objects/DoorObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
@@ -2748,6 +2749,41 @@ TEST(ldtk_prefab_entity_tracking_parallax_and_missing_prefab) {
     loader.spawnEntity(level, entityOf("TestSlime", "m1", {{"prefab", "nope_prefab"}}), f->s);
     loader.spawnEntity(level, entityOf("TestSlime", "m2", {{"prefab", "nope_prefab"}}), f->s);
     CHECK(loader.warnings().size() == 2 && hasWarning(loader.warnings(), "names prefab 'nope_prefab'"));
+}
+
+TEST(game_prefabs_load_without_warnings) {
+    // The real assets/prefabs with the real atlases: a typo in a prefab file fails here, not at runtime.
+    AssetRegistry assets;
+    assets.scan(sourceAssetPath("assets"));
+    Scene2D scene;
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")};
+    scene.setService(&assets);
+    scene.setService(&prefabs);
+    int count = 0;
+    for (const auto& file : std::filesystem::directory_iterator(prefabs.dir())) {
+        const std::string fileName = file.path().filename().string();
+        const std::string suffix = ".prefab.json";
+        if (fileName.size() <= suffix.size() || fileName.compare(fileName.size() - suffix.size(), suffix.size(), suffix) != 0) continue;
+        const std::string name = fileName.substr(0, fileName.size() - suffix.size());
+        GameObject* o = prefabs.instantiate(scene, name, {{"frame", "bush 0"}}); // `frame`: the prop needs one
+        CHECK(o != nullptr);
+        CHECK(prefabs.warnings().empty());
+        for (const std::string& w : prefabs.warnings()) std::printf("    %s: %s\n", name.c_str(), w.c_str());
+        ++count;
+    }
+    CHECK(count >= 10);
+
+    // SlimeFast (criterion 3): only a prefab inheriting from the slime.
+    auto* fast = dynamic_cast<SlimeEnemy*>(prefabs.instantiate(scene, "slime_fast"));
+    CHECK(fast && fast->moveSpeed == 3.0f && fast->patrolDistance == 3.0f && fast->maxHealth == 10);
+    CHECK(fast && fast->sprite && fast->sprite->color == glm::vec4(1.0f, 0.55f, 0.55f, 1.0f) && fast->prefab == "slime_fast");
+
+    // The crystal: frame from its variant, a coloured additive halo child and a light.
+    auto* crystal = dynamic_cast<CrystalObject*>(prefabs.instantiate(scene, "crystal", {{"variant", 1}}));
+    CHECK(crystal && crystal->sprite && crystal->sprite->frameName == "crystal 1" && crystal->getComponent<LightComponent>());
+    GameObject* halo = crystal && crystal->children().size() == 1 ? scene.find(crystal->children()[0]) : nullptr;
+    CHECK(halo && halo->sprite && halo->sprite->additive && halo->transform.scale == glm::vec2(2.8f));
+    CHECK(halo && halo->sprite && halo->sprite->color == glm::vec4(0.45f, 0.0f, 0.45f, 1.0f));
 }
 
 int main() {

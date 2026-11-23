@@ -79,6 +79,12 @@ A engine gera a colisão e o visual (borda, lados e preenchimento) a partir da l
 
 `tools/add_terrain_content.py` escreve o `.ldtk` no mesmo layout do LDtk (`tools/ldtk_json.py`) e recusa rodar se o arquivo não fizer o caminho de ida e volta byte a byte.
 
+## Prefabs
+
+O jogo (`IkigaiGame`) cria os objetos a partir de prefabs: cada entidade do LDtk cria `assets/prefabs/<nome em snake_case>.prefab.json` (`Slime` → `slime.prefab.json`), ou o prefab do campo `prefab` da entidade. O prefab diz a classe (`"type"`), os atributos (`"props"`), o sprite, o collider, as animações, os componentes e os filhos, e pode herdar de outro com `"base"`. Um campo da entidade com o nome de um atributo sobrescreve o valor. Só `PlayerStart`, `Light` e `Terrain` têm fábrica em código.
+
+Prefabs atuais: `slime`, `slime_fast` (herda do slime: mais rápido, avermelhado), `door`, `lever`, `item`, `checkpoint`, `critter`, `prop`, `crystal` e `crystal_halo` (filho aditivo do cristal). No Debug, `assets/prefabs/prefab_schema.json` lista as classes e os atributos, e salvar um prefab recarrega as salas (o estado do mundo fica).
+
 ## Variáveis de ambiente
 
 - `MUSH2D_SCREENSHOT=<arquivo.png>`: salva a imagem do frame 60 e fecha.

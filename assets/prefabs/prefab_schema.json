@@ -4,6 +4,10 @@
       "None",
       "Permanent",
       "Respawn"
+    ],
+    "PlayerMovementMode": [
+      "TopDown",
+      "Platformer"
     ]
   },
   "types": {
@@ -37,6 +41,17 @@
           "default": "",
           "name": "anim",
           "type": "AssetRef"
+        }
+      ]
+    },
+    "CrystalObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": [
+        {
+          "default": 0,
+          "name": "variant",
+          "type": "Int"
         }
       ]
     },
@@ -195,7 +210,54 @@
     "PlayerObject": {
       "base": "GameObject",
       "component": false,
-      "props": []
+      "props": [
+        {
+          "default": 2.5,
+          "name": "moveSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 6.5,
+          "name": "dashSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 0.18000000715255737,
+          "name": "dashDuration",
+          "type": "Float"
+        },
+        {
+          "default": 0.3499999940395355,
+          "name": "hitDuration",
+          "type": "Float"
+        },
+        {
+          "default": "TopDown",
+          "enum": "PlayerMovementMode",
+          "name": "movementMode",
+          "type": "Enum"
+        },
+        {
+          "default": -30.0,
+          "name": "gravity",
+          "type": "Float"
+        },
+        {
+          "default": 11.0,
+          "name": "jumpSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 0.5,
+          "name": "jumpCutFactor",
+          "type": "Float"
+        },
+        {
+          "default": -18.0,
+          "name": "maxFallSpeed",
+          "type": "Float"
+        }
+      ]
     },
     "PropObject": {
       "base": "GameObject",
