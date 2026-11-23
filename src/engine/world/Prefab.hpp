@@ -50,6 +50,13 @@ glm::vec2 ldtkBoxBottom(const GameObject& o);
 // LDtk identifier -> prefab name: "SlimeFast" -> "slime_fast".
 std::string snakeCase(const std::string& identifier);
 
+// A usable prefab name: a plain file stem of letters, digits, '_' and '-'.
+bool validPrefabName(const std::string& name);
+
+// Where a prefab file holds an attribute: {"sprite", "color"} for spriteColor, {"collider", "size"} for
+// colliderSize, {"props", name} for the rest.
+std::pair<std::string, std::string> prefabFieldOf(const std::string& attribute);
+
 // Loads, merges and instantiates prefabs from one folder. Registered as a Scene2D service, so the LevelLoader
 // and nested prefab children find it. Not thread-safe.
 class PrefabLibrary {

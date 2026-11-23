@@ -1,6 +1,7 @@
-﻿#include "engine/assets/AssetRegistry.hpp"
+#include "engine/assets/AssetRegistry.hpp"
 #include "engine/assets/AtlasLoader.hpp"
 #include "engine/world/Prefab.hpp"
+#include "engine/world/PrefabSave.hpp"
 #include "engine/world/SpriteAnimator.hpp"
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/Paths.hpp"
@@ -2735,6 +2736,12 @@ TEST(prefab_only_respawn_policy_respawns) {
     CHECK(liveCount("r1") == 0);
     for (double t = 7.0; t < 9.0; t += 0.5) w.checkRespawns({8.0f, -5.0f}, FarView, t);
     CHECK(liveCount("r1") == 1);
+
+    // The prefab drops its policy (a reload spawns it with None): forgotten, so it no longer respawns.
+    w.track("r1", 0, Persistence::None, 0.0f);
+    scene.forEach([&](GameObject& o) { if (o.entityIid == "r1") removeTracked(scene, w.state, o, 10.0); });
+    for (double t = 11.0; t < 13.0; t += 0.5) w.checkRespawns({8.0f, -5.0f}, FarView, t);
+    CHECK(liveCount("r1") == 0);
 }
 
 TEST(scene_sprite_size_is_scale_times_draw_size) {
@@ -2824,7 +2831,141 @@ TEST(game_prefabs_load_without_warnings) {
     CHECK(halo && halo->sprite && halo->sprite->color == glm::vec4(0.45f, 0.0f, 0.45f, 1.0f));
 }
 
+// --- Inspector save (D1 Task 4) -------------------------------------------------------------------------
+
+namespace {
+// A writable copy of some test prefabs.
+std::filesystem::path prefabSaveDir(const char* test, std::initializer_list<const char*> names) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_prefab_save" / test;
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    for (const char* n : names) std::filesystem::copy_file(TestPrefabs / (std::string(n) + ".prefab.json"), dir / (std::string(n) + ".prefab.json"));
+    return dir;
+}
+nlohmann::json readJson(const std::filesystem::path& p) {
+    std::ifstream in(p);
+    return nlohmann::json::parse(in, nullptr, false);
+}
+bool setProp(GameObject& o, const std::string& name, const nlohmann::json& v) {
+    std::string err;
+    for (const PropertyInfo* p : typeRegistry().allProps(typeOf(o).name))
+        if (p->name == name) return p->set(static_cast<GameObject*>(&o), v, err);
+    return false;
+}
+}
+
+TEST(inspector_save_writes_only_diff) {
+    const auto dir = prefabSaveDir("only_diff", {"test_base", "test_child", "test_leaf"});
+    const nlohmann::json original = readJson(dir / "test_child.prefab.json");
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    scene.setService(&lib);
+    scene.setService(&testAssets());
+    GameObject* o = lib.instantiate(scene, "test_child");
+    CHECK(o && setProp(*o, "speed", 6.0f));
+    if (!o) return;
+    std::string err;
+    // Against the base chain: the new speed, plus what the leaf already set (its own atlas); nothing else.
+    const nlohmann::json diff = diffAgainstBase(*o, *lib.resolved("test_base", err));
+    CHECK(diff == nlohmann::json({{"props", {{"speed", 6.0}}}, {"sprite", {{"atlas", "test_atlas"}}}}));
+
+    CHECK(saveToSourcePrefab(lib, *o, {"speed"}, err));
+    nlohmann::json saved = readJson(dir / "test_child.prefab.json");
+    nlohmann::json expected = original;
+    expected["props"]["speed"] = 6.0;
+    CHECK(saved == expected); // only that value changed; version, base, children, components kept
+    auto* again = dynamic_cast<TestSlime*>(lib.instantiate(scene, "test_child"));
+    CHECK(again && again->speed == 6.0f);
+
+    // Back to the base's value: the leaf no longer needs it (an emptied section goes away).
+    CHECK(setProp(*o, "speed", 2.5f) && saveToSourcePrefab(lib, *o, {"speed"}, err));
+    saved = readJson(dir / "test_child.prefab.json");
+    expected.erase("props");
+    CHECK(saved == expected);
+
+    // A prefab without base: the diff is against the C++ defaults; savePrefab keeps the file's type.
+    GameObject* leaf = lib.instantiate(scene, "test_leaf");
+    CHECK(leaf && setProp(*leaf, "visible", false) && saveToSourcePrefab(lib, *leaf, {"visible"}, err));
+    CHECK(readJson(dir / "test_leaf.prefab.json") ==
+          nlohmann::json({{"version", 1}, {"type", "GameObject"}, {"props", {{"name", "LeafDefault"}, {"rotation", 0.5}, {"visible", false}}}}));
+    CHECK(savePrefab(dir / "test_leaf.prefab.json", {{"type", "TestSlime"}, {"children", nlohmann::json::array()}}, err));
+    CHECK(readJson(dir / "test_leaf.prefab.json")["type"] == "GameObject" && !readJson(dir / "test_leaf.prefab.json").contains("children"));
+}
+
+TEST(inspector_save_excludes_ldtk_values) {
+    const auto dir = prefabSaveDir("ldtk", {"test_base", "test_child", "test_leaf"});
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    scene.setService(&lib);
+    scene.setService(&testAssets());
+    auto* s = dynamic_cast<TestSlime*>(lib.instantiate(scene, "test_child", {{"speed", 9}, {"position", {3, 4}}}, "iid"));
+    CHECK(s && s->speed == 9.0f && s->ldtkOverridden.count("speed"));
+    if (!s) return;
+    CHECK(setProp(*s, "maxHealth", 30));
+    std::string err;
+    const nlohmann::json props = diffAgainstBase(*s, *lib.resolved("test_base", err)).value("props", nlohmann::json::object());
+    CHECK(!props.contains("speed") && !props.contains("position") && props.value("maxHealth", 0) == 30);
+    CHECK(saveToSourcePrefab(lib, *s, {"speed", "maxHealth"}, err));
+    const nlohmann::json saved = readJson(dir / "test_child.prefab.json");
+    CHECK(saved.value("props", nlohmann::json()) == nlohmann::json({{"speed", 4.0}, {"maxHealth", 30}})); // the leaf's own speed stays
+}
+
+TEST(save_as_new_prefab_sets_base) {
+    const auto dir = prefabSaveDir("as_new", {"test_base", "test_child", "test_leaf"});
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    scene.setService(&lib);
+    scene.setService(&testAssets());
+    GameObject* o = lib.instantiate(scene, "test_child");
+    CHECK(o && setProp(*o, "speed", 7.0f));
+    if (!o) return;
+    std::string err;
+    CHECK(saveAsNewPrefab(lib, *o, "test_new", {"speed"}, err));
+    CHECK(readJson(dir / "test_new.prefab.json") ==
+          nlohmann::json({{"version", 1}, {"base", "test_child"}, {"type", "TestSlime"}, {"props", {{"speed", 7.0}}}}));
+    auto* made = dynamic_cast<TestSlime*>(lib.instantiate(scene, "test_new"));
+    CHECK(made && made->speed == 7.0f && made->children().size() == 2 && made->prefab == "test_new");
+    CHECK(!saveAsNewPrefab(lib, *o, "test_child", {"speed"}, err) && !err.empty()); // never overwrites a prefab
+    err.clear();
+    CHECK(!saveAsNewPrefab(lib, *o, "bad name", {"speed"}, err) && !err.empty());
+}
+
+TEST(save_disabled_without_source_prefab) {
+    const auto dir = prefabSaveDir("no_source", {"test_base"});
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    TestSlime& code = scene.createObject<TestSlime>(); // made in code: no source prefab
+    CHECK(!canSaveToPrefab(code));
+    CHECK(setProp(code, "speed", 3.0f));
+    std::string err;
+    CHECK(!saveToSourcePrefab(lib, code, {"speed"}, err) && !err.empty());
+    err.clear();
+    // "Save as new prefab" still works: no base, the diff against the C++ defaults.
+    CHECK(saveAsNewPrefab(lib, code, "from_code", {"speed"}, err));
+    CHECK(readJson(dir / "from_code.prefab.json") ==
+          nlohmann::json({{"version", 1}, {"type", "TestSlime"}, {"props", {{"speed", 3.0}}}}));
+    GameObject* made = lib.instantiate(scene, "from_code");
+    CHECK(made && canSaveToPrefab(*made));
+}
+
+#ifdef _WIN32 // last in the file: windows.h macros reach nothing else
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <crtdbg.h>
+#include <cstdlib>
+#include <windows.h>
+#endif
+
 int main() {
+#ifdef _WIN32
+    // A failed assert or abort() prints to stderr instead of opening a modal dialog that blocks the run.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#endif
     mush2dRegisterGameTypes();
     for (auto& [name, fn] : registry()) {
         std::printf("[ RUN ] %s\n", name);

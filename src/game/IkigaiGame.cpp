@@ -8,6 +8,7 @@
 #include "game/spawners/Spawn.hpp"
 
 #include <GLFW/glfw3.h>
+#include <imgui.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -76,6 +77,13 @@ void IkigaiGame::update(EngineServices& s, float deltaTime) {
         }
     }
 #endif
+    // The inspector's pause holds only while the F1 panel is open.
+    const bool paused = inspectorPause && panelShown;
+    panelShown = false;
+    if (paused) {
+        submitRenderData(s);
+        return;
+    }
     auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
     if (!player) {
         player = scene.findFirstObjectOfType<PlayerObject>();
@@ -546,6 +554,23 @@ glm::vec2 IkigaiGame::respawnPoint() const {
 }
 
 void IkigaiGame::onImGui(EngineServices& s) {
+    panelShown = true;
+    inspector.draw(s.scene, prefabs, inspectorPause);
+    // Selection outline: the collider box (else the scale), drawn under the ImGui windows.
+    if (const GameObject* o = s.scene.findObject(inspector.selected())) {
+        const Transform2D w = o->world();
+        const glm::vec2 centre = w.position + (o->collider ? o->collider->offset : glm::vec2(0.0f));
+        const glm::vec2 half = o->collider ? o->collider->size * 0.5f : glm::abs(w.scale) * 0.5f;
+        const glm::vec2 view = s.camera.halfExtent(s.gpu.swapchain().extent());
+        const ImVec2 display = ImGui::GetIO().DisplaySize;
+        // shortcut: ignores the sprite's parallax, so objects on parallax layers are outlined off their place.
+        auto toScreen = [&](glm::vec2 p) {
+            const glm::vec2 n = (p - s.camera.position) / view;
+            return ImVec2((n.x + 1.0f) * 0.5f * display.x, (1.0f - n.y) * 0.5f * display.y);
+        };
+        ImGui::GetBackgroundDrawList()->AddRect(toScreen({centre.x - half.x, centre.y + half.y}),
+                                                toScreen({centre.x + half.x, centre.y - half.y}), IM_COL32(255, 220, 0, 255), 0.0f, 0, 2.0f);
+    }
     if (currentSceneId != SceneId::Showcase) return;
     // The panel shows the current room's tile layers (they belong to its region, regions.current = room.region).
     std::vector<EditableLayer> roomLayers;

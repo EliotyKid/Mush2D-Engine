@@ -49,6 +49,7 @@ public:
     // A persistent entity whose policy comes from its prefab (PersistentComponent), not from LDtk fields:
     // LevelLoader calls it after the spawn so checkRespawns knows it. room = index of its level. Kept across
     // open() (hot reload) while the iid still exists. An entity whose LDtk fields set a policy keeps that one.
+    // Policy None forgets a policy an earlier spawn (an older version of the prefab) recorded.
     void track(const std::string& iid, int room, Persistence policy, float respawnDistance);
 
     static constexpr float FadeSeconds = 0.2f; // each way: dark, die, light (spec decision 7)

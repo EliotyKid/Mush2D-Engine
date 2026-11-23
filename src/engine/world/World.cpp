@@ -39,7 +39,13 @@ void World::open(const LdtkProject& project, LevelLoader& loader, EngineServices
 }
 
 void World::track(const std::string& iid, int room, Persistence policy, float respawnDistance) {
-    if (iid.empty() || policy == Persistence::None) return;
+    if (iid.empty()) return;
+    if (policy == Persistence::None) { // e.g. a reloaded prefab dropped its policy: forget the old one
+        prefabTracked_.erase(iid);
+        auto it = tracked_.find(iid);
+        if (it != tracked_.end() && parsePersistence(*it->second.entity) == Persistence::None) tracked_.erase(it);
+        return;
+    }
     prefabTracked_[iid] = {policy, respawnDistance};
     trackPrefab(iid, prefabTracked_[iid], room);
 }

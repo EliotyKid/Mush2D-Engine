@@ -26,10 +26,6 @@ const std::map<std::string, std::string> SpriteFields = {{"atlas", "spriteAtlas"
 const std::map<std::string, std::string> ColliderFields = {
     {"size", "colliderSize"}, {"offset", "colliderOffset"}, {"isTrigger", "isTrigger"}};
 
-bool validName(const std::string& name) {
-    return !name.empty() && std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '-'; });
-}
-
 bool removed(const json& item) { return item.contains("remove") && item["remove"] == true; }
 
 json mergePrefab(const json& base, const json& own);
@@ -106,6 +102,17 @@ glm::vec2 ldtkBoxBottom(const GameObject& o) {
     return o.transform.position - glm::vec2(0.0f, 0.5f * size.y);
 }
 
+bool validPrefabName(const std::string& name) {
+    return !name.empty() && std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '-'; });
+}
+
+std::pair<std::string, std::string> prefabFieldOf(const std::string& attribute) {
+    for (const auto& [section, fields] : {std::pair{"sprite", &SpriteFields}, std::pair{"collider", &ColliderFields}})
+        for (const auto& [field, attr] : *fields)
+            if (attr == attribute) return {section, field};
+    return {"props", attribute};
+}
+
 std::string snakeCase(const std::string& identifier) {
     std::string out;
     for (std::size_t i = 0; i < identifier.size(); ++i) {
@@ -119,7 +126,7 @@ std::string snakeCase(const std::string& identifier) {
 
 bool PrefabLibrary::has(const std::string& name) const {
     std::error_code ec;
-    return validName(name) && std::filesystem::is_regular_file(dir_ / (name + ".prefab.json"), ec);
+    return validPrefabName(name) && std::filesystem::is_regular_file(dir_ / (name + ".prefab.json"), ec);
 }
 
 void PrefabLibrary::clear() {
@@ -144,7 +151,7 @@ const json* PrefabLibrary::resolved(const std::string& name, std::string& error)
 
 const json* PrefabLibrary::resolveChain(const std::string& name, std::string& error, std::vector<std::string>& chain) {
     if (auto it = cache_.find(name); it != cache_.end()) return &it->second;
-    if (!validName(name)) {
+    if (!validPrefabName(name)) {
         error = "invalid prefab name '" + name + "' (letters, digits, '_' and '-' only)";
         return nullptr;
     }
