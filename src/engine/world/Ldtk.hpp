@@ -7,6 +7,8 @@
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
+constexpr float LdtkPixelsPerUnit = 32.0f;
+
 struct IntRect { int x, y, w, h; }; // in cells
 
 // Greedy row-by-row merge of cells equal to solidValue. Order = scan order of each rect's first cell.
@@ -55,3 +57,14 @@ float ldtkParallaxToScroll(float ldtkFactor);
 // LDtk (parallaxScaling off) shows a parallax layer at its authored place when the camera is at the level centre.
 // The engine shows it there when the camera is at 0, so shift by (1 - scroll) * levelCentre (world units).
 glm::vec2 ldtkParallaxAnchor(glm::vec2 worldPos, glm::vec2 scroll, glm::vec2 levelCentre);
+
+// Entity field readers: the fallback when the field is absent or of another type.
+float numberField(const LdtkEntity& e, const char* key, float fallback);
+std::string stringField(const LdtkEntity& e, const char* key, const std::string& fallback);
+bool boolField(const LdtkEntity& e, const char* key); // false when absent
+// "#RRGGBB" -> linear-ish 0..1 (lights are HDR intensities, so plain /255 is fine).
+glm::vec3 colorField(const LdtkEntity& e, const char* key, glm::vec3 fallback);
+// F_EntityRef -> the referenced entity's iid ("" when unset).
+std::string entityRefField(const LdtkEntity& e, const char* key);
+// Entities use pivot (0.5, 1): the bottom-centre of the box (centre in world units) is where they stand.
+glm::vec2 bottomOf(const LdtkEntity& e, glm::vec2 centre);

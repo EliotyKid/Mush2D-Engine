@@ -466,42 +466,6 @@ void ShowcaseGame::setupInitialScene(EngineServices& s) {
 
 namespace {
 constexpr glm::vec3 CrystalGlow[4] = {{0.0f, 1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}, {0.0f, 0.9f, 1.0f}, {1.0f, 0.16f, 0.86f}};
-
-float numberField(const LdtkEntity& e, const char* key, float fallback) {
-    auto it = e.fields.find(key);
-    return it != e.fields.end() && it->is_number() ? it->get<float>() : fallback;
-}
-
-std::string stringField(const LdtkEntity& e, const char* key, const std::string& fallback) {
-    auto it = e.fields.find(key);
-    return it != e.fields.end() && it->is_string() ? it->get<std::string>() : fallback;
-}
-
-bool boolField(const LdtkEntity& e, const char* key) {
-    auto it = e.fields.find(key);
-    return it != e.fields.end() && it->is_boolean() && it->get<bool>();
-}
-
-// "#RRGGBB" -> linear-ish 0..1 (lights are HDR intensities, so plain /255 is fine).
-glm::vec3 colorField(const LdtkEntity& e, const char* key, glm::vec3 fallback) {
-    std::string hex = stringField(e, key, "");
-    unsigned rgb = 0;
-    if (hex.size() != 7 || hex[0] != '#' || std::sscanf(hex.c_str() + 1, "%6x", &rgb) != 1) return fallback;
-    return glm::vec3((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF) / 255.0f;
-}
-
-// F_EntityRef -> the referenced entity's iid ("" when unset).
-std::string entityRefField(const LdtkEntity& e, const char* key) {
-    auto it = e.fields.find(key);
-    if (it == e.fields.end() || !it->is_object()) return "";
-    auto ref = it->find("entityIid");
-    return ref != it->end() && ref->is_string() ? ref->get<std::string>() : "";
-}
-
-// Entities use pivot (0.5, 1): the bottom-centre of the box is where they stand.
-glm::vec2 bottomOf(const LdtkEntity& e, glm::vec2 centre) {
-    return centre - glm::vec2(0.0f, e.size.y / (2.0f * LdtkPixelsPerUnit));
-}
 }
 
 void ShowcaseGame::registerLevelEntities() {
