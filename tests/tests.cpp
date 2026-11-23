@@ -531,6 +531,24 @@ TEST(death_snapshot_covers_cross_room_door) {
     CHECK(w.state.get("l1", "on", 0.0) == 0.0 && w.state.get("d2", "open", 0.0) == 0.0);
 }
 
+TEST(world_on_room_unloaded_fires) {
+    LdtkProject p = roomsInRow({320, 64, 320, 320, 320}); // room0 x 0..10, room1 10..12, room2 12..22, ...
+    World w; StreamLog log; hookWorld(w, log);
+    std::vector<std::string> gone;
+    w.onRoomUnloaded = [&](const std::string& iid) { gone.push_back(iid); };
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    CHECK(w.roomOf("room2") == 2 && w.roomOf("nope") == -1 && w.room(2).iid == "room2");
+    w.update({1.0f, -5.0f});
+    w.update({14.5f, -5.0f}); // streaming: room0 4.5 away
+    CHECK((gone == std::vector<std::string>{"room0"}));
+    gone.clear();
+    w.onPlayerDeath({14.0f, -5.0f}, [](glm::vec2) {}); // the death room reloads within the call: not fired
+    CHECK(gone.empty() && log.unloads == 2);
+    w.onPlayerDeath({35.0f, -5.0f}, [](glm::vec2) {}); // respawn in room4: the death room stays unloaded
+    CHECK((gone == std::vector<std::string>{"room2"}));
+}
+
 TEST(teleport_streams_target_synchronously) {
     LdtkProject p = roomsInRow({320, 320, 320, 320, 320}); // x 0..50
     World w; StreamLog log; hookWorld(w, log);

@@ -28,6 +28,9 @@ public:
     // Tests (no GPU): when set, these replace LevelLoader::loadRoom / unloadRoom / spawnEntity. Argument = room index.
     std::function<void(int)> onLoad, onUnload;
     std::function<void(int room, const LdtkEntity&)> onSpawn;
+    // A room left the loaded set (streaming, or death when the respawn is far from it); a room the death
+    // reloads within the same call does not fire. Not a test hook: runs with or without onUnload.
+    std::function<void(const std::string& roomIid)> onRoomUnloaded;
 
     // Persistent state by iid. Survives open(): reloading the project keeps doors open and enemies dead.
     WorldState state;
@@ -59,6 +62,9 @@ public:
     const std::vector<int>& loadedRooms() const { return loaded_; } // ascending
     // First room containing pos (edges inclusive), or -1.
     int roomAt(glm::vec2 pos) const;
+    // Index of the room whose level iid is roomIid, or -1.
+    int roomOf(const std::string& roomIid) const;
+    const LdtkLevel& room(int i) const { return project_.levels[i]; }
     // Rect around all rooms: (minX, minY, maxX, maxY), world units.
     glm::vec4 worldBounds() const;
     const LdtkProject& project() const { return project_; }
@@ -69,7 +75,7 @@ private:
 
     glm::vec4 rect(int room) const; // (minX, minY, maxX, maxY)
     void load(int room);
-    void unload(int room);
+    void unload(int room, bool notify = true); // notify: fire onRoomUnloaded
     void spawn(int room, const LdtkEntity& e);
 
     LdtkProject project_;

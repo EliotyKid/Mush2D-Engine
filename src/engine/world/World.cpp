@@ -55,6 +55,8 @@ void World::checkRespawns(glm::vec2 playerPos, glm::vec4 view, double time) {
 }
 
 void World::onPlayerDeath(glm::vec2 respawnPoint, std::function<void(glm::vec2)> teleportPlayer) {
+    const int died = current_;
+    bool reloaded = false; // unloaded here: onRoomUnloaded only if loadAround does not bring it back
     if (current_ >= 0) {
         const std::vector<std::string>& iids = roomIids_[current_];
         std::map<std::string, double> activated; // checkpoints keep their activation (never rolled back)
@@ -63,11 +65,16 @@ void World::onPlayerDeath(glm::vec2 respawnPoint, std::function<void(glm::vec2)>
         state.restore(iids, snapshot_);
         for (const auto& [iid, a] : activated) state.set(iid, "activated", a);
         // Reloaded by loadAround below when it is near the respawn point; a far one stays unloaded.
-        if (std::find(loaded_.begin(), loaded_.end(), current_) != loaded_.end()) unload(current_);
+        if (std::find(loaded_.begin(), loaded_.end(), current_) != loaded_.end()) {
+            unload(current_, false);
+            reloaded = true;
+        }
     }
     const int target = roomAt(respawnPoint);
     if (target >= 0) loadAround(target);
     else if (current_ >= 0) loadAround(current_);
+    if (reloaded && !std::binary_search(loaded_.begin(), loaded_.end(), died) && onRoomUnloaded)
+        onRoomUnloaded(project_.levels[died].iid);
     teleportPlayer(respawnPoint);
 }
 
@@ -107,6 +114,12 @@ int World::roomAt(glm::vec2 pos) const {
         const glm::vec4 r = rect(i);
         if (pos.x >= r.x && pos.x <= r.z && pos.y >= r.y && pos.y <= r.w) return i;
     }
+    return -1;
+}
+
+int World::roomOf(const std::string& roomIid) const {
+    for (int i = 0; i < int(project_.levels.size()); ++i)
+        if (project_.levels[i].iid == roomIid) return i;
     return -1;
 }
 
@@ -167,8 +180,9 @@ void World::load(int room) {
                   << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() << std::endl;
 }
 
-void World::unload(int room) {
+void World::unload(int room, bool notify) {
     loaded_.erase(std::find(loaded_.begin(), loaded_.end(), room));
     if (onUnload) onUnload(room);
     else loader_->unloadRoom(project_.levels[room].iid, services_->scene);
+    if (notify && onRoomUnloaded) onRoomUnloaded(project_.levels[room].iid);
 }

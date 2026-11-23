@@ -34,6 +34,11 @@ void ShowcaseGame::init(EngineServices& s) {
         atlasMaterials.push_back(s.materials.load(assetPath(path)));
     }
     registerLevelEntities();
+    // Lights and crystals belong to their room: dropped when it unloads.
+    world.onRoomUnloaded = [this](const std::string& roomIid) {
+        std::erase_if(lightEdits, [&](const EditableLight& l) { return l.roomIid == roomIid; });
+        std::erase_if(crystals, [&](const Crystal& c) { return c.roomIid == roomIid; });
+    };
 
     Camera2D& camera = s.camera;
     camera.size = 2.0f;
@@ -92,13 +97,6 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
                                 glm::vec4(s.camera.position - half, s.camera.position + half), world.state.clock);
         }
         applyNewLayerOverrides();
-        // Lights and crystals belong to their room: drop those of rooms that just unloaded.
-        auto unloaded = [this](const std::string& roomIid) {
-            for (int r : world.loadedRooms()) if (world.project().levels[r].iid == roomIid) return false;
-            return true;
-        };
-        std::erase_if(lightEdits, [&](const EditableLight& l) { return unloaded(l.roomIid); });
-        std::erase_if(crystals, [&](const Crystal& c) { return unloaded(c.roomIid); });
         updateRegion(s, deltaTime);
         s.renderer.settings().fade = world.stepFade(deltaTime); // after updateRegion, which rewrites settings
     }
@@ -485,7 +483,7 @@ void ShowcaseGame::registerLevelEntities() {
         player.roomIid.clear();
     });
 
-    // Lights and crystals are not scene objects: kept per room (roomIid) and dropped when it unloads (update).
+    // Lights and crystals are not scene objects: kept per room (roomIid) and dropped when it unloads (world.onRoomUnloaded).
     // A light's values come from its room's region file when it overrides that iid, else from LDtk.
     levelLoader.registerEntity("Light", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         const std::string& room = s.scene.spawnRoomIid;
@@ -644,8 +642,8 @@ glm::vec2 ShowcaseGame::respawnPoint() const {
 }
 
 std::string ShowcaseGame::roomRegion(const std::string& roomIid) const {
-    for (const LdtkLevel& l : world.project().levels) if (l.iid == roomIid) return l.region;
-    return "forest";
+    const int room = world.roomOf(roomIid);
+    return room >= 0 ? world.room(room).region : "forest";
 }
 
 void ShowcaseGame::updateRegion(EngineServices& s, float dt) {
