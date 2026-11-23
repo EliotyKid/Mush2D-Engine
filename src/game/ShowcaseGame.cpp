@@ -543,12 +543,6 @@ void ShowcaseGame::registerLevelEntities() {
         trackEntity(item, e, pos);
     });
 
-    levelLoader.registerEntity("Lever", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        LeverObject& lever = s.scene.createObject<LeverObject>(world.state, e.iid, entityRefField(e, "door"));
-        lever.transform.position = pos;
-        trackEntity(lever, e, pos);
-    });
-
     levelLoader.registerEntity("Checkpoint", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         CheckpointObject::Config c{};
         c.worldState = &world.state;

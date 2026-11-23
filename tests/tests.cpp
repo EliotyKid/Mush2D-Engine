@@ -400,7 +400,12 @@ TEST(interactive_state_survives_unload) {
             o = &scene.createObject<DoorObject>();
             o->entityIid = e.iid;
             o->onPrefabApplied(scene); // as a prefab spawn: entityIid set, then the hook
-        } else o = &scene.createObject<LeverObject>(w.state, e.iid, e.fields.at("door").at("entityIid").get<std::string>());
+        } else {
+            auto& lever = scene.createObject<LeverObject>();
+            lever.entityIid = e.iid;
+            lever.door = e.fields.at("door").at("entityIid").get<std::string>();
+            o = &lever;
+        }
         scene.spawnRoomIid.clear();
         live[e.iid] = o->id;
     };
@@ -433,7 +438,10 @@ TEST(lever_toggles_on_down_and_item_is_collected) {
     pc.movementMode = PlayerObject::Config::MovementMode::Platformer;
     pc.gravity = 0.0f;
     PlayerObject& player = scene.createObject<PlayerObject>(pc);
-    LeverObject& lever = scene.createObject<LeverObject>(state, "l1", "d1");
+    scene.setService(&state);
+    LeverObject& lever = scene.createObject<LeverObject>();
+    lever.entityIid = "l1";
+    lever.door = "d1";
     InputState down;
     down.moveDown.pressed = down.moveDown.down = true;
     player.applyInput(down);
