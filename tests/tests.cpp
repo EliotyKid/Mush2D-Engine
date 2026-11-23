@@ -12,6 +12,7 @@
 #include "engine/world/Ldtk.hpp"
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/Region.hpp"
+#include "engine/world/RegionSet.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/TerrainMesh.hpp"
 #include "engine/world/World.hpp"
@@ -748,6 +749,43 @@ TEST(region_repeat_copies_cover_only_the_view) {
     CHECK(regionCopyRange(l, 18.0f, {0.0f, 0.0f}, 1.0f) == glm::ivec2(-1, -1)); // -1..1: only copy -1 (-16..2)
     l.repeatX = false;
     CHECK(regionCopyRange(l, 18.0f, {400.0f, 0.0f}, 5.0f) == glm::ivec2(0, 0)); // single copy, never culled here
+}
+TEST(region_set_keeps_regions_on_ldtk_only_change) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mush2d_region_set_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    Region forest; forest.look.settings.exposure = 2.0f;
+    saveRegion(dir / "forest.region.json", forest);
+    Region cave; cave.look.settings.exposure = 1.0f;
+    saveRegion(dir / "cave.region.json", cave);
+    LdtkProject p = roomsInRow({320, 320}); // room0 forest x 0..10, room1 cave x 10..20
+    p.levels[1].region = "cave";
+    World w; StreamLog log; hookWorld(w, log);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    MaterialLibrary lib; // regions without layers: no image to resolve
+    RegionSet rs;
+    rs.init(lib, dir);
+    rs.open(w, 0, false);
+    CHECK(rs.currentName() == "forest" && rs.current().look.settings.exposure == 2.0f);
+    CHECK(rs.ofRoom("room1").name == "cave" && rs.ofRoom("nope").name == "forest");
+    rs.current().look.settings.exposure = 3.0f; // unsaved panel edit
+    rs.open(w, 0, true);                        // hot reload of the .ldtk alone: kept
+    CHECK(rs.current().look.settings.exposure == 3.0f);
+    rs.open(w, 0, false);                       // F5 or a region file changed: read again
+    CHECK(rs.current().look.settings.exposure == 2.0f);
+
+    // Region change: the look blends over BlendSeconds from what was shown.
+    w.loadAround(0);
+    FrameSettings shown = rs.update(FrameSettings{}, 0.0f);
+    CHECK(shown.exposure == 2.0f);
+    w.update({15.0f, -5.0f});
+    shown = rs.update(shown, 0.5f * RegionSet::BlendSeconds);
+    CHECK(rs.currentName() == "cave" && std::abs(shown.exposure - 1.5f) < 1e-5f);
+    shown = rs.update(shown, RegionSet::BlendSeconds);
+    CHECK(shown.exposure == 1.0f);
+    fs::remove_all(dir);
 }
 TEST(file_watcher_separate_stamps) {
     namespace fs = std::filesystem;

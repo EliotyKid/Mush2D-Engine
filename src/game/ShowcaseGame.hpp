@@ -5,13 +5,12 @@
 #include "engine/scenes/ISceneDefinition.hpp"
 #include "engine/tools/LookPanel.hpp"
 #include "engine/world/LevelLoader.hpp"
-#include "engine/world/Region.hpp"
+#include "engine/world/RegionSet.hpp"
 #include "engine/world/World.hpp"
 #include "game/assets/GameAssets.hpp"
 #include "game/scenes/SceneId.hpp"
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,16 +33,10 @@ private:
     struct Crystal { std::string iid; glm::vec2 anchor; int variant; std::string roomIid; };
     LevelLoader levelLoader;
     World world;                         // streams the rooms of showcase.ldtk around the player
-    std::map<std::string, Region> regions; // assets/regions/<name>.region.json, loaded on first use
-    std::string currentRegion;           // region of the current room; the panel edits and saves it
-    FrameSettings blendFrom;             // look shown when the region changed
-    float blendTime = 0.0f;
-    static constexpr float RegionBlendSeconds = 1.5f;
+    RegionSet regions;                   // assets/regions/<name>.region.json; the current room's look
     LookPanel lookPanel;
     std::vector<EditableLight> lightEdits;   // one per LDtk Light entity of a loaded room
-    std::size_t layersApplied = 0;           // levelLoader.layers() that got their region's overrides
     std::vector<Crystal> crystals;           // of loaded rooms
-    MaterialLibrary* materials = nullptr;    // region images are resolved once, when a region loads
     GameObjectId playerObjectId = InvalidGameObjectId;
 
     float mouseZoomSensitivity = 0.15f;
@@ -76,13 +69,8 @@ private:
     void hotReload(EngineServices& s, bool ldtkOnly);
     std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown
     void submitShowcaseExtras(EngineServices& s);
-    Region& region(const std::string& name);
-    std::string roomRegion(const std::string& roomIid) const;
     glm::vec2 respawnPoint() const;
     void killPlayer(EngineServices& s, GameObjectId playerId); // death behind the fade (debug K)
-    void updateRegion(EngineServices& s, float dt);
-    void applyNewLayerOverrides();
-    void saveRegions();
     void reloadCurrentScene(EngineServices& s);
     void loadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData = {});
 };
