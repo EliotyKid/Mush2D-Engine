@@ -10,7 +10,13 @@
     "CheckpointObject": {
       "base": "GameObject",
       "component": false,
-      "props": []
+      "props": [
+        {
+          "default": false,
+          "name": "oneShot",
+          "type": "Bool"
+        }
+      ]
     },
     "Component": {
       "base": "",
@@ -26,7 +32,13 @@
     "CritterObject": {
       "base": "GameObject",
       "component": false,
-      "props": []
+      "props": [
+        {
+          "default": "",
+          "name": "anim",
+          "type": "AssetRef"
+        }
+      ]
     },
     "DoorObject": {
       "base": "GameObject",
@@ -144,12 +156,24 @@
     "ItemObject": {
       "base": "GameObject",
       "component": false,
-      "props": []
+      "props": [
+        {
+          "default": "",
+          "name": "kind",
+          "type": "String"
+        }
+      ]
     },
     "LeverObject": {
       "base": "GameObject",
       "component": false,
-      "props": []
+      "props": [
+        {
+          "default": "",
+          "name": "door",
+          "type": "EntityRef"
+        }
+      ]
     },
     "PersistentComponent": {
       "base": "Component",

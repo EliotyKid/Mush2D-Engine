@@ -4,7 +4,6 @@
 #include "engine/render/LightComponent.hpp"
 #include "engine/world/Collision.hpp"
 #include "game/assets/GameAtlasId.hpp"
-#include "game/objects/CritterObject.hpp"
 #include "game/objects/DoorObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
@@ -528,12 +527,6 @@ void ShowcaseGame::registerLevelEntities() {
         prop.sprite = SpriteData{.atlasTextureIndex = GameAtlasId::KaaProps, .frameName = frameName, .layer = 1,
                                  .color = color, .depth = depth, .parallax = e.parallax};
         placeFrameAtPivot(prop, atlas.getFrame(frameName), {0.0f, 0.0f}, boolField(e, "flipX"));
-    });
-
-    levelLoader.registerEntity("Critter", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        CritterObject& critter = s.scene.createObject<CritterObject>(
-            GameAtlasId::KaaAnimals, stringField(e, "anim", "fox_idle"), boolField(e, "flipX"));
-        critter.transform.position = bottomOf(e, pos);
     });
 
     // Interactive objects (spec decision 1). Their state lives in world.state; trackEntity records the policy.
