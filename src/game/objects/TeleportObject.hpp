@@ -67,7 +67,7 @@ public:
                 return;
             }
 
-            player->transform.position = trigger->targetPosition;
+            player->teleport(trigger->targetPosition); // no ground, slide or drop-through carried over
 
             if (trigger->oneShot) {
                 trigger->consumed = true;
