@@ -11,11 +11,12 @@
 
 #include <string>
 
-// Collected on touch. No inventory yet: collecting only records the state (persistence policy).
+// Collected on touch. No inventory yet: collecting only records the state (persistence policy) in the
+// WorldState service. Prefab: assets/prefabs/item.prefab.json; LDtk field `kind`.
 class ItemObject : public GameObject {
     MUSH2D_OBJECT(ItemObject, GameObject)
 public:
-    ItemObject(WorldState& state, std::string kind) : kind(std::move(kind)), state(state) {}
+    MUSH2D_EXPORT(std::string, kind, "")
 
     void onCreate(Scene2D& scene) override {
         name = "Item";
@@ -32,11 +33,8 @@ public:
     }
 
     void onTriggerEnter(Scene2D& scene, GameObject& other) override {
-        if (dynamic_cast<PlayerObject*>(&other)) removeTracked(scene, state, *this, state.clock);
+        if (!dynamic_cast<PlayerObject*>(&other)) return;
+        if (WorldState* state = scene.service<WorldState>()) removeTracked(scene, *state, *this, state->clock);
+        else scene.destroy(id);
     }
-
-    const std::string kind;
-
-private:
-    WorldState& state;
 };

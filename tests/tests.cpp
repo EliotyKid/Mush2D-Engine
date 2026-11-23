@@ -455,7 +455,8 @@ TEST(lever_toggles_on_down_and_item_is_collected) {
     scene.step(0.016f);
     CHECK(lever.isOn());
 
-    ItemObject& item = scene.createObject<ItemObject>(state, "coin");
+    ItemObject& item = scene.createObject<ItemObject>();
+    item.kind = "coin";
     trackEntity(item, entity("Item", "i1", {}, {{"persistence", "permanent"}}), {2.0f, 3.0f});
     const GameObjectId itemId = item.id;
     item.onTriggerEnter(scene, player);
