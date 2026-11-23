@@ -30,7 +30,8 @@ private:
     std::vector<Material> atlasMaterials; // by atlas texture index (GameAtlasId)
 
     // Showcase room (LDtk)
-    struct Crystal { std::string iid; glm::vec2 anchor; int variant; std::string roomIid; };
+    // Frame looked up once, at spawn. centre = sprite centre (the frame's pivot is its base centre).
+    struct Crystal { std::string iid; std::string roomIid; int variant; glm::vec2 centre; glm::vec4 uv; Material material; };
     LevelLoader levelLoader;
     World world;                         // streams the rooms of showcase.ldtk around the player
     RegionSet regions;                   // assets/regions/<name>.region.json; the current room's look

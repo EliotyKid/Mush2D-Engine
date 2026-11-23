@@ -479,8 +479,13 @@ void ShowcaseGame::registerLevelEntities() {
 
     levelLoader.registerEntity("Crystal", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         if (std::any_of(crystals.begin(), crystals.end(), [&](const Crystal& c) { return c.iid == e.iid; })) return; // as Light
-        int variant = static_cast<int>(numberField(e, "variant", 0.0f));
-        crystals.push_back({e.iid, bottomOf(e, pos), std::clamp(variant, 0, 3), s.scene.spawnRoomIid});
+        const int variant = std::clamp(static_cast<int>(numberField(e, "variant", 0.0f)), 0, 3);
+        const std::string frameName = "crystal " + std::to_string(variant);
+        const auto [material, uv] = lookupAtlasFrame(GameAtlasId::Crystals, frameName);
+        if (uv.z <= 0.0f) return; // no such frame: not drawn
+        const AtlasFrame& f = gameAssets.getAtlasByTextureIndex(GameAtlasId::Crystals).getFrame(frameName);
+        const glm::vec2 centre = bottomOf(e, pos) + glm::vec2(0.0f, float(f.pivotY) - 0.5f * float(f.h)) / ArtPixelsPerUnit;
+        crystals.push_back({e.iid, s.scene.spawnRoomIid, variant, centre, uv, material});
     });
 
     levelLoader.registerEntity("Prop", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
@@ -626,19 +631,13 @@ void ShowcaseGame::submitShowcaseExtras(EngineServices& s) {
     }
 
     const glm::vec4 haloUv = lookupAtlasFrame(GameAtlasId::Crystals, "halo 0").second; // black in crystals_e
-    const TextureAtlas& crystalAtlas = gameAssets.getAtlasByTextureIndex(GameAtlasId::Crystals);
     for (const Crystal& c : crystals) {
-        const std::string frameName = "crystal " + std::to_string(c.variant);
-        auto [material, uv] = lookupAtlasFrame(GameAtlasId::Crystals, frameName);
-        if (uv.z <= 0.0f) continue;
         const glm::vec3 glow = CrystalGlow[c.variant];
-        const AtlasFrame& f = crystalAtlas.getFrame(frameName); // pivot = base centre
-        const glm::vec2 centre = c.anchor + glm::vec2(0.0f, float(f.pivotY) - 0.5f * float(f.h)) / ArtPixelsPerUnit;
-
+        const Material& material = c.material;
         SpriteInstance inst{};
-        inst.position = centre;
+        inst.position = c.centre;
         inst.size = {1.0f, 1.0f};
-        inst.uvRect = uv;
+        inst.uvRect = c.uv;
         inst.color = glm::vec4(1.0f);
         inst.depth = 0.1f; // just behind the player
         inst.parallax = {1.0f, 1.0f};
@@ -656,6 +655,6 @@ void ShowcaseGame::submitShowcaseExtras(EngineServices& s) {
             halo.flags = SpriteFlagAdditive; // LINEAR: soft
             batch.add(halo);
         }
-        lights.add(GpuLight{{centre.x, centre.y, 0.6f, 3.0f}, {glow, 1.4f}, {0.0f, 0.06f, 2.0f, 0.0f}});
+        lights.add(GpuLight{{c.centre.x, c.centre.y, 0.6f, 3.0f}, {glow, 1.4f}, {0.0f, 0.06f, 2.0f, 0.0f}});
     }
 }
