@@ -48,7 +48,7 @@ void ShowcaseGame::init(EngineServices& s) {
     camera.boundsEnabled = true;
 
     loadScene(s, SceneId::Showcase);
-    watchedStamp = levelFilesStamp({});
+    levelFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), sourceAssetPath("assets/regions"), ".region.json");
 
     // Debug (MUSH2D_CAMERA_X=<world x>): park the camera there, e.g. for parallax screenshots.
     if (const char* camX = std::getenv("MUSH2D_CAMERA_X")) {
@@ -61,10 +61,8 @@ void ShowcaseGame::update(EngineServices& s, float deltaTime) {
 
     handleGlobalInput(s, deltaTime);
 #ifndef NDEBUG
-    if (currentSceneId == SceneId::Showcase && (watchTimer += deltaTime) >= WatchSeconds) {
-        watchTimer = 0.0f;
-        if (levelFilesStamp(watchedStamp) != watchedStamp) hotReload(s);
-    }
+    if (currentSceneId == SceneId::Showcase)
+        if (const FileWatcher::Change change = levelFiles.poll(deltaTime)) hotReload(s, !change.dir);
 #endif
     auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
     if (!player) {
@@ -182,24 +180,8 @@ bool ShowcaseGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneT
     }
 }
 
-ShowcaseGame::Stamp ShowcaseGame::levelFilesStamp(const Stamp& previous) const {
-    namespace fs = std::filesystem;
-    std::error_code ec; // a file mid-save may vanish for a moment: skip it this round
-    Stamp now{fs::last_write_time(sourceAssetPath("assets/levels/showcase.ldtk"), ec), {}};
-    if (ec) return previous;
-    try {
-        for (const fs::directory_entry& f : fs::directory_iterator(sourceAssetPath("assets/regions"), ec)) {
-            const fs::file_time_type t = f.last_write_time(ec);
-            if (!ec && f.path().string().ends_with(".region.json")) now.regions = std::max(now.regions, t);
-        }
-    } catch (const fs::filesystem_error&) { return previous; }
-    return now;
-}
-
-void ShowcaseGame::hotReload(EngineServices& s) {
-    const Stamp before = watchedStamp;
-    watchedStamp = levelFilesStamp(before); // a half-saved file is tried once, then waits for the next save
-    keepRegions = watchedStamp.regions == before.regions; // only the .ldtk changed: keep the panel's unsaved look
+void ShowcaseGame::hotReload(EngineServices& s, bool ldtkOnly) {
+    keepRegions = ldtkOnly; // only the .ldtk changed: keep the panel's unsaved look
     const bool wasDying = world.dying();
     const auto* old = s.scene.findObjectAs<PlayerObject>(playerObjectId);
     const glm::vec2 at = old ? old->transform.position : glm::vec2(0.0f);
@@ -672,7 +654,7 @@ void ShowcaseGame::saveRegions() {
         touched.insert(name);
     }
     for (const std::string& name : touched) saveRegion(sourceAssetPath("assets/regions/" + name + ".region.json"), region(name));
-    watchedStamp = levelFilesStamp(watchedStamp); // our own save is not an outside edit
+    levelFiles.sync(); // our own save is not an outside edit
 }
 
 void ShowcaseGame::onImGui(EngineServices& s) {

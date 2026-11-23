@@ -1,4 +1,5 @@
 ﻿#include "engine/assets/AtlasLoader.hpp"
+#include "engine/core/FileWatcher.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
 #include "engine/render/Materials.hpp"
@@ -27,6 +28,7 @@
 #include <map>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <glm/gtc/constants.hpp>
@@ -746,6 +748,33 @@ TEST(region_repeat_copies_cover_only_the_view) {
     CHECK(regionCopyRange(l, 18.0f, {0.0f, 0.0f}, 1.0f) == glm::ivec2(-1, -1)); // -1..1: only copy -1 (-16..2)
     l.repeatX = false;
     CHECK(regionCopyRange(l, 18.0f, {400.0f, 0.0f}, 5.0f) == glm::ivec2(0, 0)); // single copy, never culled here
+}
+TEST(file_watcher_separate_stamps) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mush2d_file_watcher_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir / "regions");
+    const fs::path ldtk = dir / "a.ldtk", region = dir / "regions" / "x.region.json", other = dir / "regions" / "x.txt";
+    for (const fs::path& f : {ldtk, region, other}) std::ofstream(f) << "{}";
+    FileWatcher w;
+    w.watch(ldtk, dir / "regions", ".region.json");
+    CHECK(!w.poll(FileWatcher::PollSeconds));
+    auto touch = [](const fs::path& f) { fs::last_write_time(f, fs::last_write_time(f) + std::chrono::seconds(5)); };
+    touch(region);
+    CHECK(!w.poll(0.1f)); // not yet time to poll
+    FileWatcher::Change c = w.poll(FileWatcher::PollSeconds);
+    CHECK(c && c.dir && !c.file);
+    touch(ldtk);
+    c = w.poll(FileWatcher::PollSeconds);
+    CHECK(c && c.file && !c.dir);
+    touch(other); // other suffix: ignored
+    CHECK(!w.poll(FileWatcher::PollSeconds));
+    touch(region);
+    w.sync(); // the caller's own save
+    CHECK(!w.poll(FileWatcher::PollSeconds));
+    fs::remove(ldtk); // mid-save: keeps the old stamps
+    CHECK(!w.poll(FileWatcher::PollSeconds));
+    fs::remove_all(dir);
 }
 TEST(region_bad_image_is_skipped) {
     Region r;

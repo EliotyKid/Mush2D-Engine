@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/core/FileWatcher.hpp"
 #include "engine/core/IGame.hpp"
 #include "engine/scenes/ISceneDefinition.hpp"
 #include "engine/tools/LookPanel.hpp"
@@ -10,7 +11,6 @@
 #include "game/scenes/SceneId.hpp"
 
 #include <cstdint>
-#include <filesystem>
 #include <map>
 #include <memory>
 #include <optional>
@@ -69,18 +69,11 @@ private:
     void registerLevelEntities();
     void loadShowcaseLevel(EngineServices& s);
     bool tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData);
-    // Debug hot reload: every WatchSeconds, a changed .ldtk or .region.json reloads the Showcase like F5,
-    // keeping the WorldState and the player's place (pushed out up to 2 u, else the checkpoint).
-    static constexpr float WatchSeconds = 0.5f;
-    float watchTimer = 0.0f;
-    struct Stamp {
-        std::filesystem::file_time_type ldtk{}, regions{};
-        bool operator==(const Stamp&) const = default;
-    };
-    Stamp watchedStamp;
+    // Debug hot reload: a changed .ldtk or .region.json reloads the Showcase like F5, keeping the WorldState
+    // and the player's place (pushed out up to 2 u, else the checkpoint).
+    FileWatcher levelFiles; // showcase.ldtk and assets/regions/*.region.json
     bool keepRegions = false; // hot reload of the .ldtk alone keeps the in-memory regions (unsaved panel edits)
-    Stamp levelFilesStamp(const Stamp& previous) const;
-    void hotReload(EngineServices& s);
+    void hotReload(EngineServices& s, bool ldtkOnly);
     std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown
     void submitShowcaseExtras(EngineServices& s);
     Region& region(const std::string& name);
