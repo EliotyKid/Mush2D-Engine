@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "type": "PropObject",
+  "sprite": { "atlas": "kaa_props", "layer": 1 }
+}

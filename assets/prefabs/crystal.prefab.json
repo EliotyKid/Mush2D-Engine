@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "type": "CrystalObject",
+  "sprite": { "atlas": "crystals", "depth": 0.1 },
+  "children": [ { "name": "Halo", "prefab": "crystal_halo" } ]
+}

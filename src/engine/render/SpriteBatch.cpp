@@ -39,10 +39,11 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
 
         SpriteInstance inst{};
         const Transform2D world = object->world();
-        // shortcut: sprite.offset is not rotated or scaled by the world transform; rotate/scale it here if
-        // an object with an offset ever needs to turn or grow.
-        inst.position = world.position + sprite.offset;
-        inst.size = world.scale;
+        // The offset grows and mirrors with the scale, so a pivot stays put on a scaled object.
+        // shortcut: sprite.offset is not rotated by the world transform; rotate it here if an object with an
+        // offset ever needs to turn.
+        inst.position = world.position + world.scale * sprite.offset;
+        inst.size = sprite.drawSize == glm::vec2(0.0f) ? world.scale : world.scale * sprite.drawSize;
         inst.uvRect = uvRect;
         inst.color = sprite.color;
         inst.rotation = world.rotation;
@@ -52,7 +53,8 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
         inst.normal = material.normal;
         inst.emissive = material.emissive;
         inst.mask = material.mask;
-        inst.flags = SpriteFlagNearest; // scene atlases are pixel art
+        // Scene atlases are pixel art (nearest); additive glows are soft (linear), as the old crystal halos.
+        inst.flags = sprite.additive ? SpriteFlagAdditive : SpriteFlagNearest;
 
         // Legacy `layer` only orders sprites that sit on the default depth.
         int order = sprite.depth == 0.0f ? sprite.layer * 1000 + sprite.orderInLayer : sprite.orderInLayer;

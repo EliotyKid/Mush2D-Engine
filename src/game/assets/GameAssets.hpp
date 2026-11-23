@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/assets/AssetRegistry.hpp"
 #include "engine/assets/TextureAtlas.hpp"
 #include "engine/graphics/AnimationCatalog.hpp"
 #include "engine/graphics/SpriteCatalog.hpp"
@@ -9,13 +10,11 @@
 
 #include <cstdint>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 struct GameAssets {
     SpriteCatalog<GameSpriteId> sprites;
     AnimationCatalog<GameAnimationId> animations;
-    std::unordered_map<std::string, TextureAtlas> atlases;
+    AssetRegistry registry; // every atlas under assets/, by name; index = atlas texture index
 
     void registerDefaults();
 
@@ -23,16 +22,6 @@ struct GameAssets {
     const TextureAtlas& getAtlasByTextureIndex(std::uint32_t textureIndex) const;
 
 private:
-    std::vector<std::string> atlasNamesByTextureIndex;
-
-private:
-    void registerAtlas(
-        std::uint32_t textureIndex,
-        const std::string& atlasName,
-        const std::string& jsonPath,
-        const std::string& imagePath
-    );
-
     void registerSprite(
         GameSpriteId spriteId,
         std::uint32_t atlasTextureIndex,
@@ -44,10 +33,9 @@ private:
         std::uint32_t atlasTextureIndex,
         const std::string& animationName
     );
-
-    void ensureAtlasIndexCapacity(std::uint32_t textureIndex);
 };
 
+// The game's GameAssets scene service (nullptr in scenes without it, e.g. tests).
 inline GameAssets* gameAssetsOf(const Scene2D& scene) {
-    return static_cast<GameAssets*>(scene.userData);
+    return scene.service<GameAssets>();
 }

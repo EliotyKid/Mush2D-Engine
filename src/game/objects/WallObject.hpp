@@ -7,6 +7,7 @@
 #include "engine/world/Scene2D.hpp"
 
 class WallObject : public GameObject {
+    MUSH2D_OBJECT(WallObject, GameObject)
 public:
     struct Config {
         int layer = 0;

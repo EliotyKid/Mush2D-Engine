@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "type": "GameObject",
+  "props": { "name": "Halo", "scale": [2.8, 2.8] },
+  "sprite": { "atlas": "crystals", "frame": "halo 0", "additive": true }
+}

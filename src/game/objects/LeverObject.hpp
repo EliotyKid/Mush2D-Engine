@@ -8,15 +8,15 @@
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/WorldState.hpp"
 
-#include <string>
-
-// Trigger: while the player stands on it, pressing down toggles the lever ("on") and its door ("open").
+// Trigger: while the player stands on it, pressing down toggles the lever ("on", under its entityIid) and its
+// door ("open"), in the WorldState service. Prefab: assets/prefabs/lever.prefab.json; LDtk field `door`.
 class LeverObject : public GameObject {
+    MUSH2D_OBJECT(LeverObject, GameObject)
 public:
-    LeverObject(WorldState& state, std::string iid, std::string doorIid)
-        : state(state), iid(std::move(iid)), doorIid(std::move(doorIid)) {}
+    MUSH2D_EXPORT(EntityRef, door, "") // the door it opens (LDtk entity iid)
 
     void onCreate(Scene2D& scene) override {
+        state = scene.service<WorldState>();
         name = "Lever";
         addTag("trigger");
         addTag("lever");
@@ -30,6 +30,8 @@ public:
         collider = ColliderData{.size = {1.0f, 1.0f}, .isTrigger = true};
         refresh();
     }
+
+    void onPrefabApplied(Scene2D&) override { refresh(); }
 
     void onStep(Scene2D& scene, float) override {
         auto* player = scene.findObjectAs<PlayerObject>(playerId);
@@ -45,15 +47,15 @@ public:
     }
 
     void toggle() {
-        state.set(iid, "on", isOn() ? 0.0 : 1.0);
-        if (!doorIid.empty()) state.set(doorIid, "open", state.get(doorIid, "open", 0.0) != 0.0 ? 0.0 : 1.0);
+        if (!state) return;
+        state->set(entityIid, "on", isOn() ? 0.0 : 1.0);
+        if (!door.empty()) state->set(door, "open", state->get(door, "open", 0.0) != 0.0 ? 0.0 : 1.0);
     }
-    bool isOn() const { return state.get(iid, "on", 0.0) != 0.0; }
+    bool isOn() const { return state && state->get(entityIid, "on", 0.0) != 0.0; }
 
 private:
     void refresh() { sprite->color = isOn() ? glm::vec4(0.4f, 1.0f, 0.4f, 1.0f) : glm::vec4(1.0f, 0.4f, 0.4f, 1.0f); }
 
-    WorldState& state;
-    std::string iid, doorIid;
+    WorldState* state = nullptr;
     GameObjectId playerId = InvalidGameObjectId;
 };

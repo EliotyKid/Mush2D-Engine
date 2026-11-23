@@ -49,5 +49,5 @@ private:
 // Returns the atlas material and the frame's uvRect (x, y, w, h in 0..1). A uvRect with w <= 0 = frame missing.
 using AtlasLookup = std::function<std::pair<Material, glm::vec4>(uint32_t atlasIndex, const std::string& frame)>;
 
-// Every active, visible object with a sprite becomes one instance (size = transform.scale, as the old Renderer2D).
+// Every active, visible object with a sprite becomes one instance (size = world scale, times sprite.drawSize when set).
 void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLookup& lookup);

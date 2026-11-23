@@ -3,7 +3,7 @@
 #include "game/assets/GameAnimationId.hpp"
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
-#include "game/objects/PivotSprite.hpp"
+#include "engine/world/SpriteAnimator.hpp"
 #include "game/objects/SlimeEnemy.hpp"
 
 #include "engine/world/CharacterController.hpp"
@@ -17,7 +17,12 @@
 #include <cstddef>
 #include <vector>
 
+MUSH2D_ENUM(PlayerMovementMode, TopDown, Platformer)
+
+// The player keeps its own animation code until D2; its movement values are exported attributes (the
+// inspector edits them live). Config is the code way to set them all at creation (scenes, PlayerStart).
 class PlayerObject : public GameObject {
+    MUSH2D_OBJECT(PlayerObject, GameObject)
 public:
     struct Config {
         float moveSpeed = 2.5f;
@@ -31,7 +36,7 @@ public:
 
         glm::vec2 initialScale{0.7f, 0.7f};
 
-        enum class MovementMode { TopDown, Platformer };
+        using MovementMode = PlayerMovementMode;
         MovementMode movementMode = MovementMode::TopDown;
         // Platformer only (world units / s). Releasing jump while rising multiplies velocity.y by jumpCutFactor.
         float gravity = -30.0f;
@@ -47,16 +52,39 @@ public:
         Hit
     };
 
+    // Movement (same names and defaults as Config).
+    MUSH2D_EXPORT(float, moveSpeed, 2.5f)
+    MUSH2D_EXPORT(float, dashSpeed, 6.5f)
+    MUSH2D_EXPORT(float, dashDuration, 0.18f)
+    MUSH2D_EXPORT(float, hitDuration, 0.35f)
+    MUSH2D_EXPORT(PlayerMovementMode, movementMode, PlayerMovementMode::TopDown)
+    // Platformer only (world units / s). Releasing jump while rising multiplies velocity.y by jumpCutFactor.
+    MUSH2D_EXPORT(float, gravity, -30.0f)
+    MUSH2D_EXPORT(float, jumpSpeed, 11.0f)
+    MUSH2D_EXPORT(float, jumpCutFactor, 0.5f)
+    MUSH2D_EXPORT(float, maxFallSpeed, -18.0f)
+
 public:
     PlayerObject() = default;
     explicit PlayerObject(const Config& config)
-        : config(config) {}
+        : config(config) {
+        moveSpeed = config.moveSpeed;
+        dashSpeed = config.dashSpeed;
+        dashDuration = config.dashDuration;
+        hitDuration = config.hitDuration;
+        movementMode = config.movementMode;
+        gravity = config.gravity;
+        jumpSpeed = config.jumpSpeed;
+        jumpCutFactor = config.jumpCutFactor;
+        maxFallSpeed = config.maxFallSpeed;
+    }
 
     void onCreate(Scene2D& scene) override {
         name = "Player";
         addTag("player");
 
-        transform.scale = config.initialScale;
+        // Platformer: the frame sizes the sprite (placeFrameAtPivot -> sprite.drawSize), times this scale.
+        transform.scale = platformer() ? glm::vec2(1.0f) : config.initialScale;
 
         sprite = SpriteData{
             .atlasTextureIndex = 0,
@@ -137,9 +165,9 @@ public:
         if (state == State::Hit) {
             velocity = glm::vec2(0.0f);
         } else if (state == State::Dash) {
-            velocity = facingDir * config.dashSpeed;
+            velocity = facingDir * dashSpeed;
         } else {
-            velocity = inputDir * config.moveSpeed;
+            velocity = inputDir * moveSpeed;
         }
 
         glm::vec2 currentPosition = transform.position;
@@ -237,7 +265,7 @@ private:
 
 private:
     bool platformer() const {
-        return config.movementMode == Config::MovementMode::Platformer;
+        return movementMode == PlayerMovementMode::Platformer;
     }
 
     GameAnimationId idleAnimation() const {
@@ -260,7 +288,7 @@ private:
             slime->stomp(scene);
             stomped = true;
         }
-        if (stomped) velocity.y = config.jumpSpeed * 0.6f;
+        if (stomped) velocity.y = jumpSpeed * 0.6f;
         return stomped;
     }
 
@@ -269,21 +297,21 @@ private:
         body.position = transform.position + collider->offset;
         body.halfSize = collider->size * 0.5f;
 
-        velocity.x = nextVelocityX(lastMove, inputDir.x * config.moveSpeed);
+        velocity.x = nextVelocityX(lastMove, inputDir.x * moveSpeed);
         bool jumped = false;
         if (jumpRequested && grounded) {
             // Down + jump on a one-way platform drops through it; anywhere else it is a normal jump.
             if (!(inputDir.y < 0.0f && requestDropThrough(body, lastMove))) {
-                velocity.y = config.jumpSpeed;
+                velocity.y = jumpSpeed;
                 jumped = true;
             }
         }
         jumpRequested = false;
         if (jumpWasHeld && !jumpHeld && velocity.y > 0.0f) {
-            velocity.y *= config.jumpCutFactor; // variable jump: once, on release
+            velocity.y *= jumpCutFactor; // variable jump: once, on release
         }
         jumpWasHeld = jumpHeld;
-        velocity.y = std::max(velocity.y + config.gravity * dt, config.maxFallSpeed);
+        velocity.y = std::max(velocity.y + gravity * dt, maxFallSpeed);
 
         const float reach = glm::length(velocity) * dt + 1.0f;
         const Collision2D::AABB area{body.position - body.halfSize - reach, body.position + body.halfSize + reach};
@@ -354,7 +382,7 @@ private:
             }
 
             case State::Dash: {
-                if (stateTime >= config.dashDuration) {
+                if (stateTime >= dashDuration) {
                     if (glm::length(inputDir) > 0.001f) {
                         changeState(State::Walk);
                     } else {
@@ -365,7 +393,7 @@ private:
             }
 
             case State::Hit: {
-                if (stateTime >= config.hitDuration) {
+                if (stateTime >= hitDuration) {
                     changeState(State::Idle);
                 }
                 break;
@@ -414,7 +442,7 @@ private:
 
         if (platformer()) {
             // Frame pivot (feet) on the collider bottom; size from the frame.
-            placeFrameAtPivot(*this, atlas.getFrame(frame.frameName), {0.0f, -0.5f * config.colliderSize.y},
+            placeFrameAtPivot(*this, atlas.getFrame(frame.frameName), {0.0f, -0.5f * collider->size.y},
                               facingDir.x < 0.0f);
         }
     }

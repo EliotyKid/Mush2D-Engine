@@ -8,63 +8,34 @@
 #include "engine/world/CharacterController.hpp"
 #include "engine/world/Collision.hpp"
 #include "engine/world/GameObject.hpp"
+#include "engine/world/Prefab.hpp"
 #include "engine/world/Scene2D.hpp"
+#include "engine/world/WorldState.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 
+// Patrols around where it was placed, turning at walls and ledges. Prefab: assets/prefabs/slime.prefab.json.
+// Sprite, collider (0.8 x 0.8) and scale (0.8) are set in onCreate; the prefab or the spawning code may change
+// them (scale, colliderSize, ... attributes).
 class SlimeEnemy : public GameObject {
+    MUSH2D_OBJECT(SlimeEnemy, GameObject)
 public:
-    struct Config {
-        float moveSpeed = 1.0f;
-        float patrolDistance = 2.0f;
-        int maxHealth = 10;
-
-        glm::vec2 colliderSize{0.8f, 0.8f};
-        int layer = 1;
-        int orderInLayer = 0;
-
-        glm::vec2 initialScale{0.8f, 0.8f};
-        WorldState* worldState = nullptr; // records the kill (PersistentComponent) when set
-        float gravity = -32.0f; // 0 in top-down scenes
-        float maxFallSpeed = -18.0f;
-    };
-
-public:
-    SlimeEnemy() = default;
-    explicit SlimeEnemy(const Config& config)
-        : config(config) {}
+    MUSH2D_EXPORT(float, moveSpeed, 1.0f)
+    MUSH2D_EXPORT(float, patrolDistance, 2.0f)
+    MUSH2D_EXPORT(int, maxHealth, 10)
+    MUSH2D_EXPORT(float, gravity, -32.0f) // 0 in top-down scenes
+    MUSH2D_EXPORT(float, maxFallSpeed, -18.0f)
 
     void onCreate(Scene2D& scene) override {
         name = "SlimeEnemy";
         addTag("enemy");
         addTag("slime");
 
-        transform.scale = config.initialScale;
-
-        sprite = SpriteData{
-            .atlasTextureIndex = 0,
-            .frameName = "",
-            .layer = config.layer,
-            .orderInLayer = config.orderInLayer,
-            .color = glm::vec4(1.0f)
-        };
-
-        collider = ColliderData{
-            .size = config.colliderSize,
-            .offset = {0.0f, 0.0f},
-            .isTrigger = false,
-            .enabled = true
-        };
-
-        health = HealthData{
-            .current = config.maxHealth,
-            .max = config.maxHealth
-        };
-
-        moveSpeed = config.moveSpeed;
-        patrolDistance = config.patrolDistance;
+        transform.scale = {0.8f, 0.8f};
+        sprite = SpriteData{.layer = 1};
+        collider = ColliderData{.size = {0.8f, 0.8f}};
 
         currentAnimation = GameAnimationId::SlimeIdle;
         currentFrameIndex = 0;
@@ -74,21 +45,31 @@ public:
         applyCurrentAnimationFrame(scene);
     }
 
+    // From an LDtk entity: feet on the entity box's base, as the old factory.
+    void onPrefabApplied(Scene2D&) override {
+        if (extra().contains("ldtkSize")) transform.position = ldtkBoxBottom(*this) + glm::vec2(0.0f, 0.5f * collider->size.y);
+    }
+
     void onStep(Scene2D& scene, float dt) override {
-        // The patrol centre: spawners place the slime after onCreate, so take it at the first step.
-        if (!patrolAnchored) { spawnPosition = transform.position; patrolAnchored = true; }
+        // Patrol centre and health: spawners place and tune the slime after onCreate, so take them at the first
+        // step (`health` stays empty until then).
+        if (!patrolAnchored) {
+            spawnPosition = transform.position;
+            health = HealthData{.current = maxHealth, .max = maxHealth};
+            patrolAnchored = true;
+        }
         // Walks with the controller, ignoring the player (contact is a trigger, plus the stomp).
         body.position = transform.position + collider->offset;
         body.halfSize = collider->size * 0.5f;
         velocity.x = direction * moveSpeed;
-        velocity.y = std::max(velocity.y + config.gravity * dt, config.maxFallSpeed);
+        velocity.y = std::max(velocity.y + gravity * dt, maxFallSpeed);
         const float reach = glm::length(velocity) * dt + 1.0f;
         const Collision2D::AABB area{body.position - body.halfSize - reach, body.position + body.halfSize + reach};
         const CollisionQuery query{&scene.collision, Collision2D::solidBoxes(scene, id, area, "player")};
         const MoveResult r = move(body, velocity, dt, query, grounded, false);
         transform.position = r.position - collider->offset;
         velocity = r.velocity;
-        grounded = config.gravity != 0.0f && r.grounded; // top-down slimes are never grounded
+        grounded = gravity != 0.0f && r.grounded; // top-down slimes are never grounded
 
         // Turn at a wall or a steep surface (they stop v.x) or at a ledge: a copy of the body walked one body
         // width ahead, 0.1 u at a time, loses the ground (the controller snaps it down slopes up to 0.3 u).
@@ -117,17 +98,13 @@ public:
         updateVisuals(scene, dt);
     }
 
-    // The player landed on it (PlayerObject decides when): dies.
+    // The player landed on it (PlayerObject decides when): dies, recorded in the WorldState service if any.
     void stomp(Scene2D& scene) {
-        if (config.worldState) removeTracked(scene, *config.worldState, *this, config.worldState->clock);
+        if (WorldState* state = scene.service<WorldState>()) removeTracked(scene, *state, *this, state->clock);
         else scene.destroy(id);
     }
 
 private:
-    Config config{};
-
-    float moveSpeed = 1.0f;
-    float patrolDistance = 2.0f;
     glm::vec2 spawnPosition{0.0f, 0.0f};
     bool patrolAnchored = false;
     int direction = 1;

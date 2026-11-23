@@ -35,6 +35,33 @@ void World::open(const LdtkProject& project, LevelLoader& loader, EngineServices
                 const Persistence p = parsePersistence(e);
                 if (p != Persistence::None && !e.iid.empty()) tracked_[e.iid] = {r, &e, p, parseRespawnDistance(e)};
             }
+    for (const auto& [iid, p] : prefabTracked_) trackPrefab(iid, p, -1); // a gone one is not spawned again to re-register
+}
+
+void World::track(const std::string& iid, int room, Persistence policy, float respawnDistance) {
+    if (iid.empty()) return;
+    if (policy == Persistence::None) { // e.g. a reloaded prefab dropped its policy: forget the old one
+        prefabTracked_.erase(iid);
+        auto it = tracked_.find(iid);
+        if (it != tracked_.end() && parsePersistence(*it->second.entity) == Persistence::None) tracked_.erase(it);
+        return;
+    }
+    prefabTracked_[iid] = {policy, respawnDistance};
+    trackPrefab(iid, prefabTracked_[iid], room);
+}
+
+void World::trackPrefab(const std::string& iid, const PrefabPolicy& p, int roomHint) {
+    auto it = tracked_.find(iid);
+    if (it != tracked_.end() && parsePersistence(*it->second.entity) != Persistence::None) return; // LDtk wins
+    for (int r = 0; r < int(project_.levels.size()); ++r) {
+        if (roomHint >= 0 && r != roomHint) continue;
+        for (const LdtkLayer& L : project_.levels[r].layers)
+            for (const LdtkEntity& e : L.entities)
+                if (e.iid == iid) {
+                    tracked_[iid] = {r, &e, p.policy, p.respawnDistance};
+                    return;
+                }
+    }
 }
 
 void World::checkRespawns(glm::vec2 playerPos, glm::vec4 view, double time) {

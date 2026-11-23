@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <type_traits>
 #include <unordered_set>
@@ -57,6 +58,9 @@ public:
     int updateOrder = 0; // lower runs first; changes apply at the next flush
     std::string roomIid;     // LDtk room that created it (empty = none); unloading that room destroys it
     bool persistent = false; // survives its room's unload (player, camera, carried items)
+    std::string entityIid;   // LDtk entity iid (empty = not made from an LDtk entity)
+    std::string prefab;      // prefab it was created from (empty = made in code)
+    bool flipX = false;      // exported shortcut: mirrors the sprite when it is placed at its pivot
 
     Transform2D transform{};
 
@@ -67,10 +71,24 @@ public:
 
     std::unordered_set<std::string> tags;
 
+    // Attributes whose value came from an LDtk entity field (the inspector does not save them to the prefab).
+    std::set<std::string> ldtkOverridden;
+
+    // Free values from the prefab's "extra" block and LDtk fields that match no attribute.
+    const nlohmann::json& extra() const { return extra_; }
+    nlohmann::json& extra() { return extra_; }
+
 public:
     virtual ~GameObject() = default;
 
+    // Overridden by MUSH2D_OBJECT; use typeOf(object). The GameObject type exports name, transform,
+    // visible, updateOrder, persistent, sprite and collider fields (registered in Reflect.cpp).
+    virtual const TypeInfo& reflectType() const;
+
     virtual void onCreate(Scene2D& scene) {}
+    // Objects made from a prefab: runs after onCreate, the prefab values and the LDtk fields were applied
+    // (order in Reflect.hpp), so the object can react to its final values. Not called for objects made in code.
+    virtual void onPrefabApplied(Scene2D& scene) {}
     virtual void onStep(Scene2D& scene, float deltaTime) {}
     virtual void onLateStep(Scene2D& scene, float deltaTime) {}
     virtual void onTriggerEnter(Scene2D& scene, GameObject& other) {}
@@ -98,6 +116,13 @@ public:
         static_assert(std::is_base_of_v<Component, T>, "T precisa herdar de Component.");
         auto component = std::make_unique<T>(std::forward<Args>(args)...);
         T& ref = *component;
+        attach(std::move(component));
+        return ref;
+    }
+
+    // Same, for a component created by name (TypeInfo::createComponent).
+    Component& addComponent(std::unique_ptr<Component> component) {
+        Component& ref = *component;
         attach(std::move(component));
         return ref;
     }
@@ -146,4 +171,5 @@ private:
     GameObjectId parent_ = InvalidGameObjectId;
     std::vector<GameObjectId> children_;
     Transform2D world_{};
+    nlohmann::json extra_ = nlohmann::json::object();
 };

@@ -179,23 +179,11 @@ std::string stringField(const LdtkEntity& e, const char* key, const std::string&
     return it != e.fields.end() && it->is_string() ? it->get<std::string>() : fallback;
 }
 
-bool boolField(const LdtkEntity& e, const char* key) {
-    auto it = e.fields.find(key);
-    return it != e.fields.end() && it->is_boolean() && it->get<bool>();
-}
-
 glm::vec3 colorField(const LdtkEntity& e, const char* key, glm::vec3 fallback) {
     std::string hex = stringField(e, key, "");
     unsigned rgb = 0;
     if (hex.size() != 7 || hex[0] != '#' || std::sscanf(hex.c_str() + 1, "%6x", &rgb) != 1) return fallback;
     return glm::vec3((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF) / 255.0f;
-}
-
-std::string entityRefField(const LdtkEntity& e, const char* key) {
-    auto it = e.fields.find(key);
-    if (it == e.fields.end() || !it->is_object()) return "";
-    auto ref = it->find("entityIid");
-    return ref != it->end() && ref->is_string() ? ref->get<std::string>() : "";
 }
 
 glm::vec2 bottomOf(const LdtkEntity& e, glm::vec2 centre) {

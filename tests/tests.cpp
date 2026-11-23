@@ -1,4 +1,8 @@
-﻿#include "engine/assets/AtlasLoader.hpp"
+#include "engine/assets/AssetRegistry.hpp"
+#include "engine/assets/AtlasLoader.hpp"
+#include "engine/world/Prefab.hpp"
+#include "engine/world/PrefabSave.hpp"
+#include "engine/world/SpriteAnimator.hpp"
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
@@ -19,7 +23,10 @@
 #include "engine/world/WorldState.hpp"
 #include "engine/graphics/Camera2D.hpp"
 #include "engine/world/PersistentComponent.hpp"
+#include "engine/reflect/Reflect.hpp"
+#include "game/RegisterGameTypes.hpp"
 #include "game/objects/CheckpointObject.hpp"
+#include "game/objects/CrystalObject.hpp"
 #include "game/objects/DoorObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
@@ -27,6 +34,7 @@
 #include "game/objects/SlimeEnemy.hpp"
 
 #include <map>
+#include <set>
 
 #include <algorithm>
 #include <chrono>
@@ -384,13 +392,22 @@ TEST(interactive_state_survives_unload) {
     World w;
     LevelLoader loader;
     std::map<std::string, GameObjectId> live;
+    scene.setService(&w.state);
     w.onLoad = [](int) {};
     w.onUnload = [&](int room) { loader.unloadRoom(w.project().levels[room].iid, scene); };
     w.onSpawn = [&](int room, const LdtkEntity& e) {
         scene.spawnRoomIid = w.project().levels[room].iid;
         GameObject* o = nullptr;
-        if (e.identifier == "Door") o = &scene.createObject<DoorObject>(w.state, e.iid, glm::vec2(1.0f, 2.0f));
-        else o = &scene.createObject<LeverObject>(w.state, e.iid, e.fields.at("door").at("entityIid").get<std::string>());
+        if (e.identifier == "Door") {
+            o = &scene.createObject<DoorObject>();
+            o->entityIid = e.iid;
+            o->onPrefabApplied(scene); // as a prefab spawn: entityIid set, then the hook
+        } else {
+            auto& lever = scene.createObject<LeverObject>();
+            lever.entityIid = e.iid;
+            lever.door = e.fields.at("door").at("entityIid").get<std::string>();
+            o = &lever;
+        }
         scene.spawnRoomIid.clear();
         live[e.iid] = o->id;
     };
@@ -423,7 +440,10 @@ TEST(lever_toggles_on_down_and_item_is_collected) {
     pc.movementMode = PlayerObject::Config::MovementMode::Platformer;
     pc.gravity = 0.0f;
     PlayerObject& player = scene.createObject<PlayerObject>(pc);
-    LeverObject& lever = scene.createObject<LeverObject>(state, "l1", "d1");
+    scene.setService(&state);
+    LeverObject& lever = scene.createObject<LeverObject>();
+    lever.entityIid = "l1";
+    lever.door = "d1";
     InputState down;
     down.moveDown.pressed = down.moveDown.down = true;
     player.applyInput(down);
@@ -437,7 +457,8 @@ TEST(lever_toggles_on_down_and_item_is_collected) {
     scene.step(0.016f);
     CHECK(lever.isOn());
 
-    ItemObject& item = scene.createObject<ItemObject>(state, "coin");
+    ItemObject& item = scene.createObject<ItemObject>();
+    item.kind = "coin";
     trackEntity(item, entity("Item", "i1", {}, {{"persistence", "permanent"}}), {2.0f, 3.0f});
     const GameObjectId itemId = item.id;
     item.onTriggerEnter(scene, player);
@@ -583,22 +604,21 @@ TEST(checkpoint_records_activation_time_only_with_iid) {
     WorldState state;
     state.clock = 7.0;
     PlayerObject& player = scene.createObject<PlayerObject>(PlayerObject::Config{});
-    CheckpointObject::Config cc;
-    cc.worldState = &state;
-    scene.createObject<CheckpointObject>(cc).onTriggerEnter(scene, player); // no iid
+    scene.setService(&state);
+    scene.createObject<CheckpointObject>().onTriggerEnter(scene, player); // no iid
     CHECK(state.find("") == nullptr);
-    cc.iid = "c1";
-    scene.createObject<CheckpointObject>(cc).onTriggerEnter(scene, player);
+    CheckpointObject& checkpoint = scene.createObject<CheckpointObject>();
+    checkpoint.entityIid = "c1";
+    checkpoint.onTriggerEnter(scene, player);
     CHECK(state.get("c1", "activated", -1.0) == 7.0); // activation time: the latest one is the respawn point
 }
 
 TEST(slime_stomp_kills_and_bounces) {
     Scene2D scene;
     WorldState state;
-    SlimeEnemy::Config sc;
-    sc.worldState = &state;
-    sc.moveSpeed = 0.0f;
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc); // collider 0.8 x 0.8 at (0, 0)
+    scene.setService(&state); // the kill is recorded in the WorldState service
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(); // collider 0.8 x 0.8 at (0, 0)
+    slime.moveSpeed = 0.0f;
     GameObject& ground = scene.createObject<GameObject>(); // the slime falls now: it stands on this
     ground.transform.position = {0.0f, -0.5f};
     ground.collider = ColliderData{.size = {2.0f, 0.2f}};
@@ -620,7 +640,8 @@ TEST(slime_stomp_kills_and_bounces) {
     CHECK(scene.findObject(slimeId) == nullptr && state.isGone("s1"));
 
     // From the side (feet below the slime's centre) nothing happens.
-    SlimeEnemy& other = scene.createObject<SlimeEnemy>(sc);
+    SlimeEnemy& other = scene.createObject<SlimeEnemy>();
+    other.moveSpeed = 0.0f;
     other.transform.position = {5.0f, 0.0f};
     GameObject& floor = scene.createObject<GameObject>();
     floor.transform.position = {5.0f, -0.5f};
@@ -2042,9 +2063,8 @@ TEST(slime_turns_at_ledge_on_slope) {
     setCells(L, 9, 0, 19, 1); setCells(L, 8, 0, 19, 1); setCells(L, 7, 6, 6, 5); setCells(L, 7, 7, 7, 7);
     Scene2D scene;
     scene.collision.addRoom("r", gridSegs(L));
-    SlimeEnemy::Config sc;
-    sc.patrolDistance = 20.0f;
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>();
+    slime.patrolDistance = 20.0f;
     slime.transform.position = {1.5f, -3.6f};
     float maxX = 0.0f, minBottom = 0.0f;
     for (int i = 0; i < 360; ++i) {
@@ -2059,9 +2079,8 @@ TEST(slime_turns_at_ledge_on_slope) {
 TEST(slime_walks_down_45_ramp) {
     Scene2D scene;
     scene.collision.addRoom("r", gridSegs(rampLayer())); // flat top -2 from x 4.5 to the room edge at 10
-    SlimeEnemy::Config sc;
-    sc.patrolDistance = 20.0f;
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>();
+    slime.patrolDistance = 20.0f;
     slime.transform.position = {6.0f, -1.6f};
     float minX = 10.0f;
     for (int i = 0; i < 720; ++i) { scene.step(kDt); minX = std::min(minX, slime.transform.position.x); }
@@ -2073,7 +2092,7 @@ TEST(slime_patrols_around_where_it_was_placed) {
     LdtkLayer L = gridLayer(40, 10, {});
     setCells(L, 9, 0, 39, 1); // floor top -4.5, x 0..20
     scene.collision.addRoom("r", gridSegs(L));
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(SlimeEnemy::Config{}); // patrol 2 u
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(); // patrol 2 u
     slime.transform.position = {10.0f, -4.1f}; // placed after onCreate, as Spawn::slime does
     float lo = 10.0f, hi = 10.0f;
     for (int i = 0; i < 600; ++i) {
@@ -2163,9 +2182,8 @@ TEST(controller_airborne_landing_on_uphill_keeps_vx_sign) {
 TEST(slime_lands_on_ramp_without_turning) {
     Scene2D scene;
     scene.collision.addRoom("r", gridSegs(rampLayer()));
-    SlimeEnemy::Config sc;
-    sc.patrolDistance = 20.0f;
-    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(sc);
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>();
+    slime.patrolDistance = 20.0f;
     slime.transform.position = {3.3f, -1.0f};
     float x = slime.transform.position.x;
     for (int i = 0; i < 60; ++i) { scene.step(kDt); CHECK(slime.transform.position.x >= x - 1e-4f); x = slime.transform.position.x; }
@@ -2206,7 +2224,786 @@ TEST(collides_at_position_sees_segments) {
     CHECK(!Collision2D::collidesAtPosition(scene, m.id, {6.0f, 0.5f}));
 }
 
+// --- Reflection (D1) ---------------------------------------------------------------------------------
+
+MUSH2D_ENUM(TestElement, Fire, Ice, Combined, None)
+
+class TestEnemyBase : public GameObject {
+    MUSH2D_OBJECT(TestEnemyBase, GameObject)
+public:
+    MUSH2D_EXPORT(int, maxHealth, 10)
+};
+
+class TestSlime : public TestEnemyBase {
+    MUSH2D_OBJECT(TestSlime, TestEnemyBase)
+public:
+    MUSH2D_EXPORT(float, speed, 1.5f)
+    MUSH2D_EXPORT(bool, angry, true)
+    MUSH2D_EXPORT(std::string, title, "slimy")
+    MUSH2D_EXPORT(glm::vec2, patrol, glm::vec2{2.0f, 0.5f})
+    MUSH2D_EXPORT(Color, tint, Color{1.0f, 0.5f, 0.25f, 1.0f})
+    MUSH2D_EXPORT(TestElement, weakness, TestElement::Ice)
+    MUSH2D_EXPORT(PrefabRef, drop, "coin")
+    MUSH2D_EXPORT(EntityRef, door, "")
+    MUSH2D_EXPORT(AssetRef, idleAnim, "kaa_animals/fox_idle")
+};
+
+struct TestGlow : Component {
+    MUSH2D_COMPONENT(TestGlow)
+    MUSH2D_EXPORT(float, radius, 3.0f)
+};
+
+static const PropertyInfo* findProp(const std::vector<const PropertyInfo*>& props, const std::string& name) {
+    for (const PropertyInfo* p : props) if (p->name == name) return p;
+    return nullptr;
+}
+static int propIndex(const std::vector<const PropertyInfo*>& props, const std::string& name) {
+    for (std::size_t i = 0; i < props.size(); ++i) if (props[i]->name == name) return int(i);
+    return -1;
+}
+
+TEST(reflect_registers_class_and_props) {
+    const TypeRegistry& reg = typeRegistry();
+    const TypeInfo* slime = reg.find("TestSlime");
+    CHECK(slime && slime->base == "TestEnemyBase" && !slime->isComponent && slime->createObject);
+    if (!slime) return;
+    CHECK(slime->props.size() == 9);
+    CHECK(reg.find("TestEnemyBase") && reg.find("TestEnemyBase")->base == "GameObject");
+
+    auto own = [&](const std::string& n) { return findProp(reg.allProps("TestSlime"), n); };
+    CHECK(own("speed")->type == PropType::Float && own("speed")->defaultValue == 1.5f);
+    CHECK(own("angry")->type == PropType::Bool && own("angry")->defaultValue == true);
+    CHECK(own("title")->type == PropType::String && own("title")->defaultValue == "slimy");
+    CHECK(own("patrol")->type == PropType::Vec2 && own("patrol")->defaultValue == nlohmann::json({2.0f, 0.5f}));
+    CHECK(own("tint")->type == PropType::Color && own("tint")->defaultValue == nlohmann::json({1.0f, 0.5f, 0.25f, 1.0f}));
+    CHECK(own("weakness")->type == PropType::Enum && own("weakness")->enumName == "TestElement");
+    CHECK(own("weakness")->defaultValue == "Ice");
+    CHECK(own("drop")->type == PropType::PrefabRef && own("drop")->defaultValue == "coin");
+    CHECK(own("door")->type == PropType::EntityRef && own("idleAnim")->type == PropType::AssetRef);
+    CHECK(own("maxHealth")->type == PropType::Int && own("maxHealth")->defaultValue == 10);
+
+    // Base first: GameObject, then TestEnemyBase, then TestSlime.
+    auto all = reg.allProps("TestSlime");
+    CHECK(propIndex(all, "name") == 0);
+    CHECK(propIndex(all, "position") >= 0 && propIndex(all, "spriteAtlas") >= 0 && propIndex(all, "flipX") >= 0);
+    CHECK(propIndex(all, "position") < propIndex(all, "maxHealth"));
+    CHECK(propIndex(all, "maxHealth") < propIndex(all, "speed"));
+    CHECK(propIndex(all, "speed") < propIndex(all, "idleAnim"));
+
+    const std::vector<std::string>* values = reg.enumValues("TestElement");
+    CHECK(values && *values == std::vector<std::string>({"Fire", "Ice", "Combined", "None"}));
+
+    // Create by name; the virtual typeOf knows the real class; get/set reach the member.
+    std::unique_ptr<GameObject> obj = slime->createObject();
+    CHECK(obj && &typeOf(*obj) == slime);
+    auto* ts = dynamic_cast<TestSlime*>(obj.get());
+    CHECK(ts && ts->speed == 1.5f && ts->weakness == TestElement::Ice && ts->title == "slimy");
+    std::string err;
+    CHECK(own("speed")->set(obj.get(), 3, err) && ts->speed == 3.0f);
+    CHECK(own("weakness")->set(obj.get(), "Combined", err) && ts->weakness == TestElement::Combined);
+    CHECK(own("weakness")->get(obj.get()) == "Combined");
+    CHECK(own("patrol")->set(obj.get(), {4, 5}, err) && ts->patrol == glm::vec2(4.0f, 5.0f));
+    CHECK(own("door")->set(obj.get(), "abc-iid", err) && ts->door == "abc-iid");
+    CHECK(own("maxHealth")->set(obj.get(), 7, err) && ts->maxHealth == 7);
+
+    // GameObject base data and the sprite shortcuts (they create the sprite / collider when missing).
+    CHECK(findProp(all, "position")->set(obj.get(), {1, 2}, err) && obj->transform.position == glm::vec2(1.0f, 2.0f));
+    CHECK(!obj->sprite && findProp(all, "spriteFrame")->set(obj.get(), "fox_idle", err));
+    CHECK(obj->sprite && obj->sprite->frameName == "fox_idle");
+    CHECK(findProp(all, "depth")->set(obj.get(), 2.5f, err) && obj->sprite->depth == 2.5f);
+    CHECK(findProp(all, "isTrigger")->set(obj.get(), true, err) && obj->collider && obj->collider->isTrigger);
+    CHECK(findProp(all, "name")->get(obj.get()) == "");
+
+    // A plain GameObject reports the GameObject type.
+    GameObject plain;
+    CHECK(typeOf(plain).name == "GameObject" && typeOf(plain).base.empty());
+
+    // Components: same macros, created by name.
+    const TypeInfo* glow = reg.find("TestGlow");
+    CHECK(glow && glow->isComponent && glow->base == "Component" && glow->createComponent);
+    if (glow) {
+        auto c = glow->createComponent();
+        CHECK(c && &typeOf(*c) == glow);
+        auto cp = reg.allProps("TestGlow");
+        CHECK(propIndex(cp, "enabled") == 0 && propIndex(cp, "radius") == 1);
+        CHECK(findProp(cp, "radius")->set(c.get(), 5.0f, err) && static_cast<TestGlow*>(c.get())->radius == 5.0f);
+    }
+
+    // Game library types are registered by mush2dRegisterGameTypes() (called in main).
+    CHECK(reg.find("SlimeEnemy") && reg.find("SlimeEnemy")->createObject);
+}
+
+TEST(reflect_set_wrong_type_reports_error) {
+    auto all = typeRegistry().allProps("TestSlime");
+    TestSlime s;
+    std::string err;
+    CHECK(!findProp(all, "speed")->set(static_cast<GameObject*>(&s), "fast", err) && !err.empty() && s.speed == 1.5f);
+    err.clear();
+    CHECK(!findProp(all, "maxHealth")->set(static_cast<GameObject*>(&s), 1.5, err) && !err.empty() && s.maxHealth == 10);
+    err.clear();
+    CHECK(!findProp(all, "weakness")->set(static_cast<GameObject*>(&s), "Lava", err) && !err.empty() && s.weakness == TestElement::Ice);
+    err.clear();
+    CHECK(!findProp(all, "patrol")->set(static_cast<GameObject*>(&s), {1}, err) && !err.empty());
+    err.clear();
+    CHECK(!findProp(all, "angry")->set(static_cast<GameObject*>(&s), 1, err) && !err.empty() && s.angry);
+    err.clear();
+    CHECK(!findProp(all, "drop")->set(static_cast<GameObject*>(&s), 5, err) && !err.empty() && s.drop == "coin");
+}
+
+TEST(scene_services) {
+    Scene2D scene;
+    WorldState state;
+    CHECK(scene.service<WorldState>() == nullptr);
+    scene.setService(&state);
+    CHECK(scene.service<WorldState>() == &state);
+    CHECK(scene.service<World>() == nullptr);
+    scene.clear(); // services are not objects: they survive clear()
+    CHECK(scene.service<WorldState>() == &state);
+    scene.setService<WorldState>(nullptr);
+    CHECK(scene.service<WorldState>() == nullptr);
+}
+
+TEST(schema_export_lists_types) {
+    nlohmann::json schema = exportSchema();
+    CHECK(schema["version"] == 1);
+    const nlohmann::json& slime = schema["types"]["TestSlime"];
+    CHECK(slime["base"] == "TestEnemyBase" && slime["component"] == false);
+    CHECK(slime["props"].size() == 9);
+    bool foundWeakness = false;
+    for (const auto& p : slime["props"])
+        if (p["name"] == "weakness")
+            foundWeakness = p["type"] == "Enum" && p["enum"] == "TestElement" && p["default"] == "Ice";
+    CHECK(foundWeakness);
+    CHECK(schema["types"]["GameObject"]["props"].size() > 10);
+    CHECK(schema["types"]["TestGlow"]["component"] == true);
+    CHECK(schema["enums"]["TestElement"] == nlohmann::json({"Fire", "Ice", "Combined", "None"}));
+}
+
+TEST(reflect_int_range_and_error_text) {
+    auto all = typeRegistry().allProps("TestSlime");
+    TestSlime s;
+    std::string err;
+    CHECK(!findProp(all, "maxHealth")->set(static_cast<GameObject*>(&s), 3000000000LL, err) && s.maxHealth == 10);
+    err.clear();
+    CHECK(!findProp(all, "maxHealth")->set(static_cast<GameObject*>(&s), -3000000000LL, err) && s.maxHealth == 10);
+    err.clear();
+    // Invalid UTF-8 in a bad value must not throw while the error text is built.
+    CHECK(!findProp(all, "speed")->set(static_cast<GameObject*>(&s), std::string("\xff\xfe"), err) && !err.empty());
+}
+
+// --- Prefabs, assets, animator (D1 Task 2) ---------------------------------------------------------------
+
+struct TestTint : Component {
+    MUSH2D_COMPONENT(TestTint)
+    MUSH2D_EXPORT(Color, tint, Color{1.0f})
+};
+
+// Records the values it saw when the prefab finished applying.
+class TestHooked : public GameObject {
+    MUSH2D_OBJECT(TestHooked, GameObject)
+public:
+    MUSH2D_EXPORT(float, speed, 1.0f)
+    float speedAtCreate = -1.0f, speedAtApplied = -1.0f;
+    std::string iidAtApplied;
+    void onCreate(Scene2D&) override { speedAtCreate = speed; }
+    void onPrefabApplied(Scene2D&) override { speedAtApplied = speed; iidAtApplied = entityIid; }
+};
+
+namespace {
+const std::filesystem::path TestPrefabs = MUSH2D_TEST_DATA "/prefabs";
+
+AssetRegistry& testAssets() {
+    static AssetRegistry r = [] { AssetRegistry a; a.scan(MUSH2D_TEST_DATA "/atlas"); return a; }();
+    return r;
+}
+
+// A scene with the services prefabs use.
+struct PrefabScene {
+    Scene2D scene;
+    PrefabLibrary prefabs{TestPrefabs};
+    PrefabScene() {
+        scene.setService(&prefabs);
+        scene.setService(&testAssets());
+    }
+};
+
+bool hasWarning(const std::vector<std::string>& warnings, const std::string& part) {
+    return std::any_of(warnings.begin(), warnings.end(), [&](const std::string& w) { return w.find(part) != std::string::npos; });
+}
+}
+
+TEST(asset_registry_scans_folder) {
+    AssetRegistry& r = testAssets();
+    CHECK(r.atlas("test_atlas") && r.atlas("other_atlas")); // subfolders too
+    CHECK(!r.atlas("not_an_atlas"));
+    CHECK(r.atlases().size() == 2);
+    if (const TextureAtlas* a = r.atlas("test_atlas")) {
+        CHECK(a->hasFrame("a 0") && a->hasFrame("b 0") && a->hasAnimation("walk") && a->hasAnimation("rest"));
+        CHECK(a->getAnimation("walk").frames.size() == 2);
+    }
+    CHECK(r.resolve("test_atlas/walk") == std::make_pair(std::string("test_atlas"), std::string("walk")));
+    CHECK(r.resolve("test_atlas/b 0") == std::make_pair(std::string("test_atlas"), std::string("b 0")));
+    CHECK(!r.resolve("test_atlas/nope") && !r.resolve("nope/walk") && !r.resolve("walk"));
+    // Image next to the json; indices: sorted by name unless asked first.
+    CHECK(r.atlasIndex("other_atlas") == 0u && r.atlasIndex("test_atlas") == 1u && !r.atlasIndex("nope"));
+    CHECK(r.atlases()[1].image.filename() == "test_atlas.png");
+    AssetRegistry ordered;
+    ordered.scan(MUSH2D_TEST_DATA "/atlas", {"test_atlas"});
+    CHECK(ordered.atlasIndex("test_atlas") == 0u && ordered.atlasIndex("other_atlas") == 1u);
+    bool threw = false;
+    try { AssetRegistry missing; missing.scan(MUSH2D_TEST_DATA "/atlas", {"absent"}); } catch (const std::exception&) { threw = true; }
+    CHECK(threw); // a shortcut id with no atlas would shift every index
+}
+
+TEST(prefab_applies_props_extra_sprite_collider) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_base");
+    CHECK(o && t.prefabs.warnings().empty());
+    auto* s = dynamic_cast<TestSlime*>(o);
+    CHECK(s && s->speed == 2.5f && s->maxHealth == 20 && s->weakness == TestElement::Fire);
+    if (!s) return;
+    CHECK(s->title == "slimy"); // untouched: C++ default
+    CHECK(s->prefab == "test_base");
+    CHECK(s->extra()["lootChance"] == 0.3 && s->extra()["tier"] == 1);
+    CHECK(s->sprite && s->sprite->frameName == "dot" && s->sprite->layer == 2 && s->sprite->atlasName == "other_atlas");
+    CHECK(s->sprite && s->sprite->atlasTextureIndex == *testAssets().atlasIndex("other_atlas"));
+    CHECK(s->collider && s->collider->size == glm::vec2(0.8f, 0.8f) && !s->collider->isTrigger);
+    auto* glow = s->getComponent<TestGlow>();
+    CHECK(glow && glow->radius == 4.0f && s->getComponent<TestTint>());
+    auto* anim = s->getComponent<SpriteAnimator>();
+    CHECK(anim && anim->animations.size() == 2 && anim->animations["idle"] == "walk" && anim->state == "idle");
+}
+
+TEST(prefab_without_sections_keeps_cpp_defaults) {
+    // Only keys present in the prefab are applied: no sprite or collider appears from nowhere.
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_leaf");
+    CHECK(o && o->name == "LeafDefault" && o->transform.rotation == 0.5f);
+    CHECK(o && !o->sprite && !o->collider && o->components().empty());
+}
+
+TEST(prefab_inheritance_merge_and_remove) {
+    PrefabScene t;
+    std::string err;
+    const nlohmann::json* doc = t.prefabs.resolved("test_child", err);
+    CHECK(doc && err.empty());
+    if (!doc) return;
+    const nlohmann::json& d = *doc;
+    CHECK(d["type"] == "TestSlime");                                  // from the base
+    CHECK(d["props"]["speed"] == 4.0 && d["props"]["maxHealth"] == 20); // key by key
+    CHECK(d["extra"]["tier"] == 2 && d["extra"]["lootChance"] == 0.3);
+    CHECK(d["sprite"]["atlas"] == "test_atlas" && d["sprite"]["frame"] == "dot");
+    CHECK(d["animations"].size() == 3);
+    CHECK(d["components"].size() == 1 && d["components"][0]["type"] == "TestGlow");
+    CHECK(d["components"][0]["props"]["radius"] == 4.0 && d["components"][0]["props"]["enabled"] == false);
+    CHECK(d["children"].size() == 2 && d["children"][0]["name"] == "Glow" && d["children"][1]["name"] == "Leaf");
+    CHECK(d["children"][0]["position"] == nlohmann::json({1, 2}) && d["children"][0]["type"] == "GameObject");
+    CHECK(!d.contains("base"));
+    CHECK(t.prefabs.resolved("test_child", err) == doc); // cached
+
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_child");
+    CHECK(o && t.prefabs.warnings().empty());
+    if (!o) return;
+    CHECK(o->prefab == "test_child" && !o->getComponent<TestTint>());
+    CHECK(o->getComponent<TestGlow>() && !o->getComponent<TestGlow>()->enabled);
+    CHECK(o->sprite && o->sprite->atlasTextureIndex == *testAssets().atlasIndex("test_atlas"));
+}
+
+TEST(prefab_inheritance_cycle_rejected) {
+    PrefabScene t;
+    std::string err;
+    CHECK(!t.prefabs.resolved("test_cycle_a", err) && err.find("cycle") != std::string::npos);
+    CHECK(!t.prefabs.instantiate(t.scene, "test_cycle_a") && hasWarning(t.prefabs.warnings(), "cycle"));
+    CHECK(t.scene.aliveCount() == 0);
+    err.clear();
+    CHECK(!t.prefabs.resolved("no_such_prefab", err) && err.find("no_such_prefab") != std::string::npos);
+    err.clear();
+    CHECK(!t.prefabs.resolved("../escape", err) && !err.empty()); // names are plain file stems
+}
+
+TEST(prefab_unknown_prop_warns_and_keeps_default) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_unknown");
+    auto* s = dynamic_cast<TestSlime*>(o);
+    CHECK(s && s->title == "ok");
+    CHECK(s && s->speed == 1.5f && s->maxHealth == 10); // bad values: C++ defaults kept
+    const auto& w = t.prefabs.warnings();
+    CHECK(w.size() == 3);
+    CHECK(hasWarning(w, "test_unknown.prefab.json") && hasWarning(w, "props.bogus"));
+    // applyProps alone: one warning per bad key, good keys applied.
+    TestSlime direct;
+    auto warnings = applyProps(static_cast<GameObject*>(&direct), "TestSlime", {{"speed", 3}, {"nope", 1}});
+    CHECK(warnings.size() == 1 && direct.speed == 3.0f);
+}
+
+TEST(prefab_wrong_type_warns) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_unknown");
+    CHECK(o && hasWarning(t.prefabs.warnings(), "props.speed") && hasWarning(t.prefabs.warnings(), "expected Float"));
+    CHECK(hasWarning(t.prefabs.warnings(), "props.maxHealth"));
+}
+
+TEST(prefab_invalid_json_warns) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_prefabs_invalid";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "half.prefab.json") << R"({ "version": 1, "type": "TestSlime", "props": { "speed": )";
+    Scene2D scene;
+    PrefabLibrary prefabs{dir};
+    std::string err;
+    CHECK(!prefabs.resolved("half", err) && err.find("half.prefab.json") != std::string::npos);
+    CHECK(!prefabs.instantiate(scene, "half") && hasWarning(prefabs.warnings(), "half.prefab.json"));
+
+    // Hot reload: a good version was loaded, then the file is saved half-way: the last good one is kept.
+    std::ofstream(dir / "half.prefab.json", std::ios::trunc) << R"({ "version": 1, "type": "TestSlime", "props": { "speed": 7 } })";
+    prefabs.clear();
+    err.clear();
+    CHECK(prefabs.resolved("half", err) && err.empty());
+    std::ofstream(dir / "half.prefab.json", std::ios::trunc) << R"({ "version": 1, "type": )";
+    prefabs.clear();
+    err.clear();
+    const nlohmann::json* kept = prefabs.resolved("half", err);
+    CHECK(kept && (*kept)["props"]["speed"] == 7 && err.find("half.prefab.json") != std::string::npos);
+}
+
+TEST(prefab_children_become_scene_children) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_child");
+    CHECK(o && o->children().size() == 2);
+    if (!o || o->children().size() != 2) return;
+    GameObject* glow = t.scene.find(o->children()[0]);
+    GameObject* leaf = t.scene.find(o->children()[1]);
+    CHECK(glow && glow->name == "Glow" && glow->parent() == o->id && glow->transform.position == glm::vec2(1.0f, 2.0f));
+    CHECK(glow && glow->sprite && glow->sprite->frameName == "b 0");
+    CHECK(glow && glow->sprite && glow->sprite->atlasTextureIndex == *testAssets().atlasIndex("test_atlas"));
+    CHECK(leaf && leaf->name == "Leaf" && leaf->prefab == "test_leaf" && leaf->transform.rotation == 0.5f);
+    CHECK(leaf && leaf->transform.position == glm::vec2(0.0f, -1.0f));
+
+    GameObject* base = t.prefabs.instantiate(t.scene, "test_base");
+    CHECK(base && base->children().size() == 2);
+    if (!base || base->children().size() != 2) return;
+    GameObject* hitbox = t.scene.find(base->children()[1]);
+    CHECK(hitbox && hitbox->name == "Hitbox" && hitbox->collider && hitbox->collider->isTrigger);
+    CHECK(hitbox && hitbox->collider && hitbox->collider->size == glm::vec2(1.0f, 0.6f));
+}
+
+TEST(prefab_application_order_and_hook) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_prefabs_hook";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "hooked.prefab.json", std::ios::trunc) << R"({ "version": 1, "type": "TestHooked", "props": { "speed": 3 } })";
+    Scene2D scene;
+    PrefabLibrary prefabs{dir};
+    auto* h = dynamic_cast<TestHooked*>(prefabs.instantiate(scene, "hooked", {{"speed", 5}}, "iid-7"));
+    CHECK(h && h->speedAtCreate == 1.0f && h->speedAtApplied == 5.0f && h->speed == 5.0f && h->iidAtApplied == "iid-7");
+    CHECK(h && h->ldtkOverridden == std::set<std::string>{"speed"});
+}
+
+namespace {
+// EngineServices without a GPU: the loader only touches the scene, the factories get the struct.
+struct FakeServices {
+    GpuContext gpu; SceneRenderer renderer; MaterialLibrary materials; GlfwInput input; Camera2D camera;
+    PrefabScene t;
+    EngineServices s{gpu, renderer, materials, input, camera, t.scene};
+};
+LdtkEntity entityOf(std::string identifier, std::string iid, nlohmann::json fields = nlohmann::json::object()) {
+    LdtkEntity e{};
+    e.identifier = std::move(identifier);
+    e.iid = std::move(iid);
+    e.px = {32.0f, 32.0f};
+    e.size = {32.0f, 64.0f};
+    e.fields = std::move(fields);
+    return e;
+}
+}
+
+TEST(snake_case_names) {
+    CHECK(snakeCase("Slime") == "slime" && snakeCase("SlimeFast") == "slime_fast" && snakeCase("PlayerStart") == "player_start");
+    CHECK(snakeCase("already_snake") == "already_snake");
+}
+
+TEST(ldtk_entity_fields_override_prefab_props) {
+    auto f = std::make_unique<FakeServices>();
+    LevelLoader loader;
+    LdtkLevel level;
+    level.iid = "room-1";
+    level.pxSize = {320, 320};
+    bool factoryRan = false;
+    loader.registerEntity("TestSlime", [&](const LdtkEntity&, glm::vec2, EngineServices&) { factoryRan = true; });
+    nlohmann::json fields{{"speed", 9}, {"door", {{"entityIid", "door-iid"}, {"layerIid", "x"}}},
+                          {"tint", "#FF0000"}, {"mood", "grumpy"}, {"title", nullptr}};
+    loader.spawnEntity(level, entityOf("TestSlime", "slime-iid", fields), f->s);
+    CHECK(!factoryRan); // the prefab file wins over the factory
+    auto* s = f->t.scene.findFirstObjectOfType<TestSlime>();
+    CHECK(s);
+    if (!s) return;
+    CHECK(s->speed == 9.0f && s->door == "door-iid" && s->tint == Color(1.0f, 0.0f, 0.0f, 1.0f));
+    CHECK(s->title == "slimy"); // null = unset LDtk field: no override
+    CHECK(s->extra()["mood"] == "grumpy" && s->extra()["ldtkSize"] == nlohmann::json({1.0f, 2.0f}));
+    CHECK(s->ldtkOverridden.count("speed") && s->ldtkOverridden.count("door") && s->ldtkOverridden.count("position"));
+    CHECK(!s->ldtkOverridden.count("mood") && !s->ldtkOverridden.count("title"));
+    CHECK(s->entityIid == "slime-iid" && s->roomIid == "room-1" && s->prefab == "test_slime");
+    CHECK(s->transform.position == ldtkToWorld(level.worldPx, glm::vec2(48.0f, 64.0f))); // box centre
+
+    // The entity's `prefab` field picks another prefab.
+    loader.spawnEntity(level, entityOf("TestSlime", "other-iid", {{"prefab", "test_leaf"}}), f->s);
+    f->t.scene.flush();
+    bool leafFound = false;
+    f->t.scene.forEach([&](GameObject& o) { if (o.entityIid == "other-iid") leafFound = o.prefab == "test_leaf"; });
+    CHECK(leafFound);
+}
+
+TEST(ldtk_entity_factory_fallback_and_code_only) {
+    auto f = std::make_unique<FakeServices>();
+    LevelLoader loader;
+    LdtkLevel level;
+    int gizmo = 0, start = 0;
+    loader.registerEntity("Gizmo", [&](const LdtkEntity&, glm::vec2, EngineServices&) { ++gizmo; });
+    loader.registerEntity("PlayerStart", [&](const LdtkEntity&, glm::vec2, EngineServices&) { ++start; });
+    loader.spawnEntity(level, entityOf("Gizmo", "g"), f->s);            // no gizmo.prefab.json: factory
+    loader.spawnEntity(level, entityOf("PlayerStart", "p"), f->s);      // player_start.prefab.json exists: still the factory
+    CHECK(gizmo == 1 && start == 1 && f->t.scene.aliveCount() == 0);
+}
+
+TEST(ldtk_entity_without_prefab_warns_once) {
+    auto f = std::make_unique<FakeServices>();
+    LevelLoader loader;
+    LdtkLevel level;
+    loader.spawnEntity(level, entityOf("Mystery", "m1"), f->s);
+    loader.spawnEntity(level, entityOf("Mystery", "m2"), f->s);
+    CHECK(loader.warnings().size() == 1 && hasWarning(loader.warnings(), "Mystery"));
+    CHECK(f->t.scene.aliveCount() == 0);
+}
+
+TEST(sprite_animator_plays_state) {
+    Scene2D scene;
+    scene.setService(&testAssets());
+    GameObject& o = scene.createObject<GameObject>();
+    o.sprite = SpriteData{};
+    o.sprite->atlasName = "test_atlas";
+    o.transform.position = {2.0f, 3.0f};
+    auto& anim = o.addComponent<SpriteAnimator>();
+    anim.animations = {{"idle", "walk"}, {"rest", "test_atlas/rest"}};
+    scene.flush();
+    scene.step(0.01f);
+    CHECK(o.sprite->frameName == "a 0" && o.sprite->atlasTextureIndex == *testAssets().atlasIndex("test_atlas"));
+    // Pivot (16, 16) of a 32x16 frame: the frame's bottom centre stands on the position. The scale is not touched.
+    CHECK(o.sprite->drawSize == glm::vec2(1.0f, 0.5f) && o.sprite->offset == glm::vec2(0.0f, 0.25f));
+    CHECK(o.transform.scale == glm::vec2(1.0f));
+    scene.step(0.1f);
+    CHECK(o.sprite->frameName == "a 1");
+    scene.step(0.1f);
+    CHECK(o.sprite->frameName == "a 0"); // loops
+    anim.setState("rest");
+    scene.step(0.01f);
+    CHECK(o.sprite->frameName == "b 0" && anim.state == "rest");
+    o.flipX = true;
+    scene.step(0.01f);
+    CHECK(o.sprite->drawSize.x == -0.5f && o.transform.scale == glm::vec2(1.0f));
+}
+
+TEST(prefab_only_respawn_policy_respawns) {
+    // test_respawner.prefab.json: PersistentComponent{policy: Respawn, respawnDistance: 3}, no LDtk fields.
+    auto f = std::make_unique<FakeServices>();
+    Scene2D& scene = f->t.scene;
+    LevelLoader loader;
+    World w;
+    w.onLoad = [](int) {};
+    w.onUnload = [](int) {};
+    scene.setService(&w);
+    auto liveCount = [&](const std::string& iid) {
+        scene.flush();
+        int n = 0;
+        scene.forEach([&](GameObject& o) { n += o.entityIid == iid; });
+        return n;
+    };
+    w.open(roomsWith({entity("TestRespawner", "r1", {32, 288}, nlohmann::json::object()),
+                      entity("TestRespawner", "p1", {96, 288}, {{"respawn", false}})}), // LDtk wins: Permanent
+           loader, &f->s);
+    w.update({1.0f, -5.0f});
+    CHECK(liveCount("r1") == 1 && liveCount("p1") == 1);
+    scene.forEach([&](GameObject& o) { if (!o.entityIid.empty()) removeTracked(scene, w.state, o, 1.0); }); // killed
+    CHECK(liveCount("r1") == 0 && w.state.isGone("r1") && w.state.isGone("p1"));
+    w.checkRespawns(SpawnAt, FarView, 2.0); // player standing on the spawn point: not yet
+    CHECK(liveCount("r1") == 0);
+    for (double t = 3.0; t < 5.0; t += 0.5) w.checkRespawns({8.0f, -5.0f}, FarView, t); // moved away, spawn off screen
+    CHECK(liveCount("r1") == 1 && !w.state.isGone("r1"));
+    CHECK(liveCount("p1") == 0 && w.state.isGone("p1"));
+
+    // Kept across open() (hot reload): still respawns although it is not spawned again to re-register.
+    scene.forEach([&](GameObject& o) { if (o.entityIid == "r1") removeTracked(scene, w.state, o, 6.0); });
+    scene.clear();
+    w.open(roomsWith({entity("TestRespawner", "r1", {32, 288}, nlohmann::json::object())}), loader, &f->s);
+    w.update({1.0f, -5.0f});
+    CHECK(liveCount("r1") == 0);
+    for (double t = 7.0; t < 9.0; t += 0.5) w.checkRespawns({8.0f, -5.0f}, FarView, t);
+    CHECK(liveCount("r1") == 1);
+
+    // The prefab drops its policy (a reload spawns it with None): forgotten, so it no longer respawns.
+    w.track("r1", 0, Persistence::None, 0.0f);
+    scene.forEach([&](GameObject& o) { if (o.entityIid == "r1") removeTracked(scene, w.state, o, 10.0); });
+    for (double t = 11.0; t < 13.0; t += 0.5) w.checkRespawns({8.0f, -5.0f}, FarView, t);
+    CHECK(liveCount("r1") == 0);
+}
+
+TEST(scene_sprite_size_is_scale_times_draw_size) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    o.sprite = SpriteData{.frameName = "f"};
+    o.transform.position = {1.0f, 1.0f};
+    o.transform.scale = {2.0f, 3.0f};
+    GameObject& glow = scene.createObject<GameObject>();
+    glow.sprite = SpriteData{.frameName = "f", .additive = true};
+    scene.flush();
+    auto lookup = [](std::uint32_t, const std::string&) { return std::make_pair(Material{}, glm::vec4(0, 0, 1, 1)); };
+    auto first = [&] { SpriteBatch b; appendSceneSprites(scene, b, lookup); return b.sorted()[0]; };
+    CHECK(first().size == glm::vec2(2.0f, 3.0f) && first().position == glm::vec2(1.0f, 1.0f)); // no drawSize: the scale
+    o.sprite->drawSize = {-0.5f, 1.0f};
+    o.sprite->offset = {0.25f, 0.5f};
+    CHECK(first().size == glm::vec2(-1.0f, 3.0f) && first().position == glm::vec2(1.5f, 2.5f)); // offset scales too
+    SpriteBatch b;
+    appendSceneSprites(scene, b, lookup);
+    CHECK(b.sorted()[1].flags == SpriteFlagAdditive && b.sorted()[0].flags == SpriteFlagNearest); // glows are soft
+}
+
+TEST(prefab_child_containing_its_own_prefab_is_refused) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_self_child");
+    CHECK(o && o->children().empty() && t.scene.aliveCount() == 1);
+    CHECK(hasWarning(t.prefabs.warnings(), "contains itself") && t.prefabs.warnings().size() == 1);
+}
+
+TEST(ldtk_prefab_entity_tracking_parallax_and_missing_prefab) {
+    auto f = std::make_unique<FakeServices>();
+    LevelLoader loader;
+    LdtkLevel level;
+    level.pxSize = {320, 320};
+    LdtkEntity e = entityOf("TestSlime", "s-iid", {{"respawn", true}});
+    e.parallax = {0.5f, 0.8f};
+    loader.spawnEntity(level, e, f->s);
+    auto* s = f->t.scene.findFirstObjectOfType<TestSlime>();
+    auto* p = s ? s->getComponent<PersistentComponent>() : nullptr;
+    CHECK(p && p->iid == "s-iid" && p->policy == Persistence::Respawn && p->spawnPos == s->transform.position);
+    CHECK(s && s->sprite && s->sprite->parallax == glm::vec2(0.5f, 0.8f));
+    CHECK(loader.warnings().empty());
+
+    // No persistence field and no component in the prefab: nothing added.
+    loader.spawnEntity(level, entityOf("TestSlime", "plain"), f->s);
+    f->t.scene.flush();
+    f->t.scene.forEach([&](GameObject& o) { if (o.entityIid == "plain") CHECK(!o.getComponent<PersistentComponent>()); });
+
+    // An explicit `prefab` field naming a missing file: warned (once), then the usual "no prefab, no factory".
+    loader.spawnEntity(level, entityOf("TestSlime", "m1", {{"prefab", "nope_prefab"}}), f->s);
+    loader.spawnEntity(level, entityOf("TestSlime", "m2", {{"prefab", "nope_prefab"}}), f->s);
+    CHECK(loader.warnings().size() == 2 && hasWarning(loader.warnings(), "names prefab 'nope_prefab'"));
+}
+
+TEST(game_prefabs_load_without_warnings) {
+    // The real assets/prefabs with the real atlases: a typo in a prefab file fails here, not at runtime.
+    AssetRegistry assets;
+    assets.scan(sourceAssetPath("assets"));
+    Scene2D scene;
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")};
+    scene.setService(&assets);
+    scene.setService(&prefabs);
+    int count = 0;
+    for (const auto& file : std::filesystem::directory_iterator(prefabs.dir())) {
+        const std::string fileName = file.path().filename().string();
+        const std::string suffix = ".prefab.json";
+        if (fileName.size() <= suffix.size() || fileName.compare(fileName.size() - suffix.size(), suffix.size(), suffix) != 0) continue;
+        const std::string name = fileName.substr(0, fileName.size() - suffix.size());
+        GameObject* o = prefabs.instantiate(scene, name, {{"frame", "bush 0"}}); // `frame`: the prop needs one
+        CHECK(o != nullptr);
+        CHECK(prefabs.warnings().empty());
+        for (const std::string& w : prefabs.warnings()) std::printf("    %s: %s\n", name.c_str(), w.c_str());
+        ++count;
+    }
+    CHECK(count >= 10);
+
+    // SlimeFast (criterion 3): only a prefab inheriting from the slime.
+    auto* fast = dynamic_cast<SlimeEnemy*>(prefabs.instantiate(scene, "slime_fast"));
+    CHECK(fast && fast->moveSpeed == 3.0f && fast->patrolDistance == 3.0f && fast->maxHealth == 10);
+    CHECK(fast && fast->sprite && fast->sprite->color == glm::vec4(1.0f, 0.55f, 0.55f, 1.0f) && fast->prefab == "slime_fast");
+
+    // The crystal: frame from its variant, a coloured additive halo child and a light.
+    auto* crystal = dynamic_cast<CrystalObject*>(prefabs.instantiate(scene, "crystal", {{"variant", 1}}));
+    CHECK(crystal && crystal->sprite && crystal->sprite->frameName == "crystal 1" && crystal->getComponent<LightComponent>());
+    GameObject* halo = crystal && crystal->children().size() == 1 ? scene.find(crystal->children()[0]) : nullptr;
+    CHECK(halo && halo->sprite && halo->sprite->additive && halo->transform.scale == glm::vec2(2.8f));
+    CHECK(halo && halo->sprite && halo->sprite->color == glm::vec4(0.45f, 0.0f, 0.45f, 1.0f));
+}
+
+// --- Inspector save (D1 Task 4) -------------------------------------------------------------------------
+
+namespace {
+// A writable copy of some test prefabs.
+std::filesystem::path prefabSaveDir(const char* test, std::initializer_list<const char*> names) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_prefab_save" / test;
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    for (const char* n : names) std::filesystem::copy_file(TestPrefabs / (std::string(n) + ".prefab.json"), dir / (std::string(n) + ".prefab.json"));
+    return dir;
+}
+nlohmann::json readJson(const std::filesystem::path& p) {
+    std::ifstream in(p);
+    return nlohmann::json::parse(in, nullptr, false);
+}
+bool setProp(GameObject& o, const std::string& name, const nlohmann::json& v) {
+    std::string err;
+    for (const PropertyInfo* p : typeRegistry().allProps(typeOf(o).name))
+        if (p->name == name) return p->set(static_cast<GameObject*>(&o), v, err);
+    return false;
+}
+}
+
+TEST(inspector_save_writes_only_diff) {
+    const auto dir = prefabSaveDir("only_diff", {"test_base", "test_child", "test_leaf"});
+    const nlohmann::json original = readJson(dir / "test_child.prefab.json");
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    scene.setService(&lib);
+    scene.setService(&testAssets());
+    GameObject* o = lib.instantiate(scene, "test_child");
+    CHECK(o && setProp(*o, "speed", 6.0f));
+    if (!o) return;
+    std::string err;
+    // Against the base chain: the new speed, plus what the leaf already set (its own atlas); nothing else.
+    const nlohmann::json diff = diffAgainstBase(*o, *lib.resolved("test_base", err));
+    CHECK(diff == nlohmann::json({{"props", {{"speed", 6.0}}}, {"sprite", {{"atlas", "test_atlas"}}}}));
+
+    CHECK(saveToSourcePrefab(lib, *o, {"speed"}, err));
+    nlohmann::json saved = readJson(dir / "test_child.prefab.json");
+    nlohmann::json expected = original;
+    expected["props"]["speed"] = 6.0;
+    CHECK(saved == expected); // only that value changed; version, base, children, components kept
+    auto* again = dynamic_cast<TestSlime*>(lib.instantiate(scene, "test_child"));
+    CHECK(again && again->speed == 6.0f);
+
+    // Back to the base's value: the leaf no longer needs it (an emptied section goes away).
+    CHECK(setProp(*o, "speed", 2.5f) && saveToSourcePrefab(lib, *o, {"speed"}, err));
+    saved = readJson(dir / "test_child.prefab.json");
+    expected.erase("props");
+    CHECK(saved == expected);
+
+    // A prefab without base: the diff is against the C++ defaults; savePrefab keeps the file's type.
+    GameObject* leaf = lib.instantiate(scene, "test_leaf");
+    CHECK(leaf && setProp(*leaf, "visible", false) && saveToSourcePrefab(lib, *leaf, {"visible"}, err));
+    CHECK(readJson(dir / "test_leaf.prefab.json") ==
+          nlohmann::json({{"version", 1}, {"type", "GameObject"}, {"props", {{"name", "LeafDefault"}, {"rotation", 0.5}, {"visible", false}}}}));
+    CHECK(savePrefab(dir / "test_leaf.prefab.json", {{"type", "TestSlime"}, {"children", nlohmann::json::array()}}, err));
+    CHECK(readJson(dir / "test_leaf.prefab.json")["type"] == "GameObject" && !readJson(dir / "test_leaf.prefab.json").contains("children"));
+}
+
+TEST(inspector_save_excludes_ldtk_values) {
+    const auto dir = prefabSaveDir("ldtk", {"test_base", "test_child", "test_leaf"});
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    scene.setService(&lib);
+    scene.setService(&testAssets());
+    auto* s = dynamic_cast<TestSlime*>(lib.instantiate(scene, "test_child", {{"speed", 9}, {"position", {3, 4}}}, "iid"));
+    CHECK(s && s->speed == 9.0f && s->ldtkOverridden.count("speed"));
+    if (!s) return;
+    CHECK(setProp(*s, "maxHealth", 30));
+    std::string err;
+    const nlohmann::json props = diffAgainstBase(*s, *lib.resolved("test_base", err)).value("props", nlohmann::json::object());
+    CHECK(!props.contains("speed") && !props.contains("position") && props.value("maxHealth", 0) == 30);
+    CHECK(saveToSourcePrefab(lib, *s, {"speed", "maxHealth"}, err));
+    const nlohmann::json saved = readJson(dir / "test_child.prefab.json");
+    CHECK(saved.value("props", nlohmann::json()) == nlohmann::json({{"speed", 4.0}, {"maxHealth", 30}})); // the leaf's own speed stays
+}
+
+TEST(save_as_new_prefab_sets_base) {
+    const auto dir = prefabSaveDir("as_new", {"test_base", "test_child", "test_leaf"});
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    scene.setService(&lib);
+    scene.setService(&testAssets());
+    GameObject* o = lib.instantiate(scene, "test_child");
+    CHECK(o && setProp(*o, "speed", 7.0f));
+    if (!o) return;
+    std::string err;
+    CHECK(saveAsNewPrefab(lib, *o, "test_new", {"speed"}, err));
+    CHECK(readJson(dir / "test_new.prefab.json") ==
+          nlohmann::json({{"version", 1}, {"base", "test_child"}, {"type", "TestSlime"}, {"props", {{"speed", 7.0}}}}));
+    auto* made = dynamic_cast<TestSlime*>(lib.instantiate(scene, "test_new"));
+    CHECK(made && made->speed == 7.0f && made->children().size() == 2 && made->prefab == "test_new");
+    CHECK(!saveAsNewPrefab(lib, *o, "test_child", {"speed"}, err) && !err.empty()); // never overwrites a prefab
+    err.clear();
+    CHECK(!saveAsNewPrefab(lib, *o, "bad name", {"speed"}, err) && !err.empty());
+}
+
+// onCreate sets a value other than the registry default (as SlimeEnemy does with scale and collider).
+class TestCreated : public GameObject {
+    MUSH2D_OBJECT(TestCreated, GameObject)
+public:
+    MUSH2D_EXPORT(float, speed, 1.0f)
+    void onCreate(Scene2D&) override { speed = 5.0f; }
+};
+
+TEST(inspector_save_keeps_edits_equal_to_defaults) {
+    const auto dir = prefabSaveDir("defaults", {});
+    std::ofstream(dir / "created.prefab.json") << R"({ "version": 1, "type": "TestCreated" })";
+    std::ofstream(dir / "created_set.prefab.json") << R"({ "version": 1, "type": "TestCreated", "props": { "speed": 1.0 } })";
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    auto* o = dynamic_cast<TestCreated*>(lib.instantiate(scene, "created"));
+    CHECK(o && o->speed == 5.0f);
+    if (!o) return;
+    // Edited back to the registry default: written (the base chain does not set it), so onCreate does not win.
+    std::string err;
+    CHECK(setProp(*o, "speed", 1.0f) && saveToSourcePrefab(lib, *o, {"speed"}, err));
+    CHECK(readJson(dir / "created.prefab.json").value("props", nlohmann::json()) == nlohmann::json({{"speed", 1.0}}));
+    auto* again = dynamic_cast<TestCreated*>(lib.instantiate(scene, "created"));
+    CHECK(again && again->speed == 1.0f);
+
+    // A leaf whose explicit override equals the default keeps it when that attribute is saved again.
+    GameObject* set = lib.instantiate(scene, "created_set");
+    CHECK(set && saveToSourcePrefab(lib, *set, {"speed"}, err));
+    CHECK(readJson(dir / "created_set.prefab.json").value("props", nlohmann::json()) == nlohmann::json({{"speed", 1.0}}));
+    auto* setAgain = dynamic_cast<TestCreated*>(lib.instantiate(scene, "created_set"));
+    CHECK(setAgain && setAgain->speed == 1.0f);
+
+    // Saved with LF and through a temporary file that does not stay behind.
+    std::ifstream raw(dir / "created_set.prefab.json", std::ios::binary);
+    const std::string text(std::istreambuf_iterator<char>(raw), {});
+    CHECK(text.find('\r') == std::string::npos && !std::filesystem::exists(dir / "created_set.prefab.json.tmp"));
+}
+
+TEST(save_disabled_without_source_prefab) {
+    const auto dir = prefabSaveDir("no_source", {"test_base"});
+    Scene2D scene;
+    PrefabLibrary lib{dir};
+    TestSlime& code = scene.createObject<TestSlime>(); // made in code: no source prefab
+    CHECK(!canSaveToPrefab(code));
+    CHECK(setProp(code, "speed", 3.0f));
+    std::string err;
+    CHECK(!saveToSourcePrefab(lib, code, {"speed"}, err) && !err.empty());
+    err.clear();
+    // "Save as new prefab" still works: no base, the diff against the C++ defaults.
+    CHECK(saveAsNewPrefab(lib, code, "from_code", {"speed"}, err));
+    CHECK(readJson(dir / "from_code.prefab.json") ==
+          nlohmann::json({{"version", 1}, {"type", "TestSlime"}, {"props", {{"speed", 3.0}}}}));
+    GameObject* made = lib.instantiate(scene, "from_code");
+    CHECK(made && canSaveToPrefab(*made));
+}
+
+#ifdef _WIN32 // last in the file: windows.h macros reach nothing else
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <crtdbg.h>
+#include <cstdlib>
+#include <windows.h>
+#endif
+
 int main() {
+#ifdef _WIN32
+    // A failed assert or abort() prints to stderr instead of opening a modal dialog that blocks the run.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#endif
+    mush2dRegisterGameTypes();
     for (auto& [name, fn] : registry()) {
         std::printf("[ RUN ] %s\n", name);
         fn();

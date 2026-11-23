@@ -10,6 +10,8 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <typeindex>
+#include <unordered_map>
 #include <vector>
 
 // Emitted for every object freed at a flush; delivered when that flush dispatches events.
@@ -21,7 +23,6 @@ struct ObjectDestroyed {
 // (start and end of step, end of lateStep, or an explicit flush()), so they are safe inside callbacks.
 class Scene2D {
 public:
-    void* userData = nullptr; // opaque, owned by the game
     std::string spawnRoomIid; // stamped as roomIid on every object created while set (LevelLoader::loadRoom)
     // Static level collision (segments per room; LevelLoader adds and removes rooms). Emptied by clear().
     CollisionWorld collision;
@@ -33,8 +34,12 @@ public:
         static_assert(std::is_base_of_v<GameObject, TObject>,
                       "TObject precisa herdar de GameObject.");
 
-        auto object = std::make_unique<TObject>(std::forward<Args>(args)...);
-        TObject& ref = *object;
+        return static_cast<TObject&>(addObject(std::make_unique<TObject>(std::forward<Args>(args)...)));
+    }
+
+    // Same, for an object created by name (TypeInfo::createObject, prefabs).
+    GameObject& addObject(std::unique_ptr<GameObject> object) {
+        GameObject& ref = *object;
         ref.roomIid = spawnRoomIid;
         insert(std::move(object));
         ref.onCreate(*this);
@@ -143,6 +148,20 @@ public:
     // Objects holding a slot, including created-but-unflushed and pending-destroy ones.
     std::size_t aliveCount() const { return aliveCount_; }
 
+    // Shared systems objects reach by type (the game registers WorldState, World...). Not owned; nullptr
+    // unregisters. Kept by clear(). service<T>() is nullptr when T was never registered.
+    template<class T>
+    void setService(T* service) {
+        if (service) services_[std::type_index(typeid(T))] = service;
+        else services_.erase(std::type_index(typeid(T)));
+    }
+
+    template<class T>
+    T* service() const {
+        auto it = services_.find(std::type_index(typeid(T)));
+        return it == services_.end() ? nullptr : static_cast<T*>(it->second);
+    }
+
 private:
     friend class GameObject; // attach/markRemoved reach scene state
     struct Slot {
@@ -190,5 +209,6 @@ private:
     bool componentsDirty_ = false; // some component awaits removal
     bool gridFresh_ = false;       // the last flush synced the grid, so step() can skip its own sync
     EventBus events_;
+    std::unordered_map<std::type_index, void*> services_;
     mutable int iterating_ = 0;
 };

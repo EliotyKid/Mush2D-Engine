@@ -2,8 +2,11 @@
 
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/IGame.hpp"
+#include "engine/core/Paths.hpp"
+#include "engine/world/Prefab.hpp"
 #include "engine/scenes/ISceneDefinition.hpp"
 #include "engine/tools/LookPanel.hpp"
+#include "engine/tools/SceneInspector.hpp"
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/RegionSet.hpp"
 #include "engine/world/World.hpp"
@@ -18,7 +21,10 @@
 #include <utility>
 #include <vector>
 
-class ShowcaseGame : public IGame {
+// The Ikigai game: the LDtk world (showcase.ldtk until the D12 demo map) with objects from prefabs, plus the
+// older Sandbox and Test scenes (TAB). Registers the scene services the objects use: WorldState, World,
+// GameAssets, AssetRegistry and the PrefabLibrary.
+class IkigaiGame : public IGame {
 public:
     void init(EngineServices& s) override;
     void update(EngineServices& s, float dt) override;
@@ -30,14 +36,14 @@ private:
     std::vector<Material> atlasMaterials; // by atlas texture index (GameAtlasId)
 
     // Showcase room (LDtk)
-    // Frame looked up once, at spawn. centre = sprite centre (the frame's pivot is its base centre).
-    struct Crystal { std::string iid; std::string roomIid; int variant; glm::vec2 centre; glm::vec4 uv; Material material; };
     LevelLoader levelLoader;
     World world;                         // streams the rooms of showcase.ldtk around the player
     RegionSet regions;                   // assets/regions/<name>.region.json; the current room's look
     LookPanel lookPanel;
+    SceneInspector inspector; // F1 "Cena"
+    bool inspectorPause = false; // its "pausar o jogo" box
+    bool panelShown = false;     // onImGui ran since the last update (F1 panel open)
     std::vector<EditableLight> lightEdits;   // one per LDtk Light entity of a loaded room
-    std::vector<Crystal> crystals;           // of loaded rooms
     GameObjectId playerObjectId = InvalidGameObjectId;
 
     float mouseZoomSensitivity = 0.15f;
@@ -66,6 +72,8 @@ private:
     // Debug hot reload: a changed .ldtk or .region.json reloads the Showcase like F5, keeping the WorldState
     // and the player's place (pushed out up to 2 u, else the checkpoint).
     FileWatcher levelFiles; // showcase.ldtk and assets/regions/*.region.json
+    FileWatcher prefabFiles; // assets/prefabs/*.prefab.json
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")}; // Debug: the source tree, as the regions
     bool keepRegions = false; // hot reload of the .ldtk alone keeps the in-memory regions (unsaved panel edits)
     void hotReload(EngineServices& s, bool ldtkOnly);
     std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown

@@ -1,63 +1,25 @@
 #pragma once
 
-#include "game/assets/GameAssets.hpp"
-#include "game/objects/PivotSprite.hpp"
-
 #include "engine/world/GameObject.hpp"
+#include "engine/world/Prefab.hpp"
 #include "engine/world/Scene2D.hpp"
+#include "engine/world/SpriteAnimator.hpp"
 
-#include <cstddef>
-#include <cstdint>
-#include <string>
-#include <utility>
-
-// Decor animal: loops one atlas animation, standing with its pivot on transform.position.
+// Decor animal: a sprite and a SpriteAnimator from assets/prefabs/critter.prefab.json. This class only maps
+// the LDtk entity onto them: `anim` (field of that name) becomes the "idle" animation, and the feet stand on
+// the entity box's base. `flipX` is the GameObject attribute.
 class CritterObject : public GameObject {
+    MUSH2D_OBJECT(CritterObject, GameObject)
 public:
-    CritterObject(std::uint32_t atlasIndex, std::string animation, bool flip)
-        : atlasIndex_(atlasIndex), animation_(std::move(animation)), flip_(flip) {}
+    MUSH2D_EXPORT(AssetRef, anim, "") // "idle" animation (name in the sprite's atlas); empty = the prefab's
 
-    void onCreate(Scene2D& scene) override {
-        name = "Critter";
-        sprite = SpriteData{.atlasTextureIndex = atlasIndex_, .layer = 1};
-        applyFrame(scene);
-    }
+    void onCreate(Scene2D&) override { name = "Critter"; }
 
-    void onStep(Scene2D& scene, float dt) override {
-        const AtlasAnimation* anim = animation(scene);
-        if (!anim) return;
-        timer_ += dt;
-        float duration = anim->frames[frame_].durationMs > 0 ? anim->frames[frame_].durationMs / 1000.0f : 0.1f;
-        while (timer_ >= duration) {
-            timer_ -= duration;
-            frame_ = (frame_ + 1) % anim->frames.size();
-            duration = anim->frames[frame_].durationMs > 0 ? anim->frames[frame_].durationMs / 1000.0f : 0.1f;
-        }
-        applyFrame(scene);
-    }
-
-private:
-    std::uint32_t atlasIndex_;
-    std::string animation_;
-    bool flip_;
-    std::size_t frame_ = 0;
-    float timer_ = 0.0f;
-
-    const AtlasAnimation* animation(const Scene2D& scene) const {
-        const GameAssets* assets = gameAssetsOf(scene);
-        if (!assets) return nullptr;
-        const TextureAtlas& atlas = assets->getAtlasByTextureIndex(atlasIndex_);
-        if (!atlas.hasAnimation(animation_)) return nullptr;
-        const AtlasAnimation& anim = atlas.getAnimation(animation_);
-        return anim.frames.empty() ? nullptr : &anim;
-    }
-
-    void applyFrame(Scene2D& scene) {
-        const AtlasAnimation* anim = animation(scene);
-        if (!anim) return;
-        const TextureAtlas& atlas = gameAssetsOf(scene)->getAtlasByTextureIndex(atlasIndex_);
-        const AtlasFrame& f = atlas.getFrame(anim->frames[frame_].frameName);
-        sprite->frameName = f.name;
-        placeFrameAtPivot(*this, f, {0.0f, 0.0f}, flip_);
+    void onPrefabApplied(Scene2D&) override {
+        transform.position = ldtkBoxBottom(*this);
+        if (anim.empty()) return;
+        SpriteAnimator* animator = getComponent<SpriteAnimator>();
+        if (!animator) animator = &addComponent<SpriteAnimator>();
+        animator->animations["idle"] = anim;
     }
 };

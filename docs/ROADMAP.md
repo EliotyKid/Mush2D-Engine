@@ -84,13 +84,13 @@ Para cada fase abaixo:
 Vem primeiro porque tudo o que vier depois será criado com ele.
 
 **Entra:**
-- [ ] **Prefabs** (`.prefab.json`): tipo C++ base, atributos (números, textos, cores e referências), nós filhos (luz, hitbox, partícula, sprite extra), componentes e animações por estado.
-- [ ] **Herança de prefab** (`base: "enemy_base"`), o equivalente a um objeto pai.
-- [ ] **Registro automático dos tipos C++**: uma linha por classe, sem editar o `ShowcaseGame`.
-- [ ] **Entidade do LDtk apontando para um prefab.** Os campos do LDtk sobrescrevem os atributos do prefab.
-- [ ] **Atlas e animações lidos da pasta pelo nome**, sem registro à mão em `GameAssets.cpp`.
-- [ ] **Inspetor em árvore no F1**: a cena ao vivo (objeto → filhos → componentes) com os atributos editáveis e um botão Salvar no prefab.
-- [ ] **Projeto Ikigai separado da vitrine**: `IkigaiGame` passa a ser o jogo padrão, e a vitrine vira uma sala de testes.
+- [x] **Prefabs** (`.prefab.json`): tipo C++ base, atributos (números, textos, cores e referências), nós filhos (luz, hitbox, partícula, sprite extra), componentes e animações por estado.
+- [x] **Herança de prefab** (`base: "enemy_base"`), o equivalente a um objeto pai.
+- [x] **Registro automático dos tipos C++**: uma linha por classe, sem editar o `IkigaiGame`.
+- [x] **Entidade do LDtk apontando para um prefab.** Os campos do LDtk sobrescrevem os atributos do prefab.
+- [x] **Atlas e animações lidos da pasta pelo nome**, sem registro à mão em `GameAssets.cpp`.
+- [x] **Inspetor em árvore no F1**: a cena ao vivo (objeto → filhos → componentes) com os atributos editáveis e um botão Salvar no prefab.
+- [x] **Projeto Ikigai separado da vitrine**: `IkigaiGame` passa a ser o jogo padrão, e a vitrine vira uma sala de testes.
 
 **Cresce para:**
 - editor de animações no painel;

@@ -1,7 +1,7 @@
 #pragma once
 
 enum class SceneId {
-    Showcase, // LDtk room, built by ShowcaseGame (no ISceneDefinition)
+    Showcase, // LDtk room, built by IkigaiGame (no ISceneDefinition)
     Sandbox,
     Test
 };

@@ -1,0 +1,13 @@
+{
+  "frames": {
+    "a 0": { "frame": { "x": 0, "y": 0, "w": 32, "h": 16 }, "duration": 100, "pivot": { "x": 16, "y": 16 } },
+    "a 1": { "frame": { "x": 32, "y": 0, "w": 32, "h": 16 }, "duration": 100, "pivot": { "x": 16, "y": 16 } },
+    "b 0": { "frame": { "x": 64, "y": 0, "w": 16, "h": 16 }, "duration": 200 }
+  },
+  "meta": {
+    "image": "test_atlas.png",
+    "size": { "w": 128, "h": 16 },
+    "frameTags": [ { "name": "walk", "from": 0, "to": 1, "direction": "forward" },
+                   { "name": "rest", "from": 2, "to": 2, "direction": "forward" } ]
+  }
+}

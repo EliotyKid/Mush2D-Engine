@@ -1,25 +1,16 @@
 #include "GameAssets.hpp"
 
 #include "engine/core/Paths.hpp"
-#include "engine/assets/AtlasLoader.hpp"
 
-#include <filesystem>
+#include <iterator>
 #include <stdexcept>
+#include <vector>
 
 #include "GameAtlasId.hpp"
 
 void GameAssets::registerDefaults() {
-    atlases.clear();
-    atlasNamesByTextureIndex.clear();
-
-    static constexpr const char* names[GameAtlasId::Count] = {
-        "characters", "enemies", "environment", "kaa_player", "kaa_animals", "kaa_props", "crystals"};
-    for (std::uint32_t i = 0; i < GameAtlasId::Count; ++i) {
-        std::filesystem::path image = assetPath(GameAtlasId::ImagePaths[i]);
-        std::filesystem::path json = image;
-        json.replace_extension(".json");
-        registerAtlas(i, names[i], json.string(), image.string());
-    }
+    // Every atlas under assets/; the GameAtlasId names take the first indices, in order.
+    registry.scan(assetPath("assets"), std::vector<std::string>(std::begin(GameAtlasId::Names), std::end(GameAtlasId::Names)));
 
     registerSprite(GameSpriteId::PlayerIdle, GameAtlasId::Characters, "Sprite-0001 0.");
     registerSprite(GameSpriteId::PlayerWalk, GameAtlasId::Characters, "Sprite-0001 5.");
@@ -46,38 +37,20 @@ void GameAssets::registerDefaults() {
     registerAnimation(GameAnimationId::SlimeIdle, GameAtlasId::Enemies, "slime_idle");
     registerAnimation(GameAnimationId::SlimeWalk, GameAtlasId::Enemies, "slime_walk");
 }
+
 const TextureAtlas& GameAssets::getAtlas(const std::string& atlasName) const {
-    auto it = atlases.find(atlasName);
-    if (it == atlases.end()) {
+    const TextureAtlas* atlas = registry.atlas(atlasName);
+    if (!atlas) {
         throw std::runtime_error("Atlas nao encontrado em GameAssets: " + atlasName);
     }
-
-    return it->second;
+    return *atlas;
 }
 
 const TextureAtlas& GameAssets::getAtlasByTextureIndex(std::uint32_t textureIndex) const {
-    if (textureIndex >= atlasNamesByTextureIndex.size()) {
+    if (textureIndex >= registry.atlases().size()) {
         throw std::runtime_error("Texture index sem atlas associado.");
     }
-
-    const std::string& atlasName = atlasNamesByTextureIndex[textureIndex];
-    if (atlasName.empty()) {
-        throw std::runtime_error("Texture index sem nome de atlas associado.");
-    }
-
-    return getAtlas(atlasName);
-}
-
-void GameAssets::registerAtlas(
-    std::uint32_t textureIndex,
-    const std::string& atlasName,
-    const std::string& jsonPath,
-    const std::string& imagePath
-) {
-    ensureAtlasIndexCapacity(textureIndex);
-
-    atlases[atlasName] = AtlasLoader::loadFromAsepriteJsonHash(jsonPath, imagePath);
-    atlasNamesByTextureIndex[textureIndex] = atlasName;
+    return registry.atlases()[textureIndex].data;
 }
 
 void GameAssets::registerSprite(
@@ -100,10 +73,4 @@ void GameAssets::registerAnimation(
         .atlasTextureIndex = atlasTextureIndex,
         .animationName = animationName
     });
-}
-
-void GameAssets::ensureAtlasIndexCapacity(std::uint32_t textureIndex) {
-    if (textureIndex >= atlasNamesByTextureIndex.size()) {
-        atlasNamesByTextureIndex.resize(textureIndex + 1);
-    }
 }

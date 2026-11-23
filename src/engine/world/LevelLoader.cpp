@@ -1,6 +1,9 @@
 #include "engine/world/LevelLoader.hpp"
 
+#include "engine/world/PersistentComponent.hpp"
+#include "engine/world/Prefab.hpp"
 #include "engine/world/TerrainMesh.hpp"
+#include "engine/world/World.hpp"
 
 #include <cstdio>
 #include <set>
@@ -111,16 +114,53 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
 
 void LevelLoader::spawnEntity(const LdtkLevel& level, const LdtkEntity& e, EngineServices& services) {
     if (e.identifier == "Terrain") return; // collision only, built by loadRoom
+    // Not game objects: always their code factory, even if a prefab file of that name exists.
+    const bool codeOnly = e.identifier == "Light" || e.identifier == "PlayerStart";
+    PrefabLibrary* prefabs = services.scene.service<PrefabLibrary>();
+    const std::string prefabName = stringField(e, "prefab", snakeCase(e.identifier));
+    const bool usePrefab = !codeOnly && prefabs && prefabs->has(prefabName);
     auto f = factories_.find(e.identifier);
-    if (f == factories_.end()) {
-        std::fprintf(stderr, "LDtk: no factory for entity '%s', ignored\n", e.identifier.c_str());
+    if (!codeOnly && prefabs && e.fields.contains("prefab") && !prefabs->has(prefabName) &&
+        warnedEntities_.insert("prefab:" + prefabName).second) {
+        warnings_.push_back("LDtk: entity '" + e.identifier + "' names prefab '" + prefabName + "', but " + prefabName +
+                            ".prefab.json does not exist");
+        std::fprintf(stderr, "%s\n", warnings_.back().c_str());
+    }
+    if (!usePrefab && f == factories_.end()) {
+        if (warnedEntities_.insert(e.identifier).second) {
+            warnings_.push_back("LDtk: no prefab (" + prefabName + ".prefab.json) and no factory for entity '" +
+                                e.identifier + "', ignored");
+            std::fprintf(stderr, "%s\n", warnings_.back().c_str());
+        }
         return;
     }
     SpawnRoom spawnRoom{services.scene, level.iid};
     auto toWorld = [&](glm::vec2 px) { return ldtkToWorld(level.worldPx, px); };
     // Entities with parallax show at their authored place when the camera is at their room's centre, as in LDtk.
     const glm::vec2 roomCentre = toWorld(glm::vec2(level.pxSize) * 0.5f);
-    f->second(e, ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, roomCentre), services);
+    const glm::vec2 pos = ldtkParallaxAnchor(toWorld(e.px + e.size * 0.5f), e.parallax, roomCentre);
+    if (!usePrefab) {
+        f->second(e, pos, services);
+        return;
+    }
+    // position = the entity box centre (what factories get); ldtkSize = the box in world units (to extra()
+    // unless the class exports it). Both count as LDtk values.
+    nlohmann::json fields = e.fields.is_object() ? e.fields : nlohmann::json::object();
+    fields.erase("prefab");
+    fields["position"] = {pos.x, pos.y};
+    fields["ldtkSize"] = {e.size.x / LdtkPixelsPerUnit, e.size.y / LdtkPixelsPerUnit};
+    GameObject* o = prefabs->instantiate(services.scene, prefabName, fields, e.iid);
+    if (!o) return;
+    if (o->sprite) o->sprite->parallax = e.parallax; // drawn with its LDtk layer
+    // As the old factories: persistence from the entity's fields, recorded where the object now stands.
+    if (parsePersistence(e) != Persistence::None || o->getComponent<PersistentComponent>())
+        trackEntity(*o, e, o->transform.position);
+    // A policy set only by the prefab: World must know it too, or a Respawn object never comes back.
+    // None (no component): forgets a policy an older version of the prefab gave this entity (hot reload).
+    if (World* world = services.scene.service<World>()) {
+        const auto* p = o->getComponent<PersistentComponent>();
+        world->track(e.iid, world->roomOf(level.iid), p ? p->policy : Persistence::None, p ? p->respawnDistance : 0.0f);
+    }
 }
 
 void LevelLoader::unloadRoom(const std::string& roomIid, Scene2D& scene) {

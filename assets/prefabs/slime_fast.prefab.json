@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "base": "slime",
+  "props": { "moveSpeed": 3.0, "patrolDistance": 3.0 },
+  "sprite": { "color": [1.0, 0.55, 0.55, 1.0] }
+}

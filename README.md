@@ -33,6 +33,7 @@ Se o configure do Release travar baixando o imgui, passe `-DFETCHCONTENT_SOURCE_
 - `F`: liga/desliga a câmera que segue o player. Com ela desligada, `W` `A` `S` `D` movem a câmera. Botão do meio do mouse arrastando também move a câmera.
 - `Q` `E` (e a roda do mouse): zoom da câmera. Funciona nos modos pixel art (suave) (limitado a 1x-8x) e HD. Sem efeito no modo pixel art (nítido), que usa escala inteira fixa.
 - `F1`: painel de visual e desempenho (ImGui).
+- `F1` também abre a janela "Cena (F1)": a árvore de objetos ao vivo (objeto, filhos, componentes). Os atributos editados valem na hora; alguns (atlas, frame, variante, vida máxima, política de persistência) só aparecem depois de salvar e recarregar. "Salvar no prefab" grava só os atributos editados no `.prefab.json` de origem; "Salvar como novo prefab" cria um prefab com `base` no original. Valores vindos do LDtk nunca vão para o prefab. Salvar ou editar um prefab recarrega os objetos dele, e edições não salvas se perdem.
 - "Salvar" grava a região atual (`assets/regions/<nome>.region.json`: look e camadas de fundo). No Release, grava ao lado do executável, e a cópia de assets do próximo build sobrescreve esse arquivo. Para persistir, use o Debug (grava no código-fonte).
 
 ## Mundo
@@ -78,6 +79,12 @@ A engine gera a colisão e o visual (borda, lados e preenchimento) a partir da l
 4. Para pintar também o sólido por regra, faça o mesmo com o `1` (9-slice do `grass.png`, nas mesmas posições do `GrassSlopes`).
 
 `tools/add_terrain_content.py` escreve o `.ldtk` no mesmo layout do LDtk (`tools/ldtk_json.py`) e recusa rodar se o arquivo não fizer o caminho de ida e volta byte a byte.
+
+## Prefabs
+
+O jogo (`IkigaiGame`) cria os objetos a partir de prefabs: cada entidade do LDtk cria `assets/prefabs/<nome em snake_case>.prefab.json` (`Slime` → `slime.prefab.json`), ou o prefab do campo `prefab` da entidade. O prefab diz a classe (`"type"`), os atributos (`"props"`), o sprite, o collider, as animações, os componentes e os filhos, e pode herdar de outro com `"base"`. Um campo da entidade com o nome de um atributo sobrescreve o valor. Só `PlayerStart`, `Light` e `Terrain` têm fábrica em código.
+
+Prefabs atuais: `slime`, `slime_fast` (herda do slime: mais rápido, avermelhado), `door`, `lever`, `item`, `checkpoint`, `critter`, `prop`, `crystal` e `crystal_halo` (filho aditivo do cristal). No Debug, `assets/prefabs/prefab_schema.json` lista as classes e os atributos, e salvar um prefab recarrega as salas (o estado do mundo fica).
 
 ## Variáveis de ambiente
 

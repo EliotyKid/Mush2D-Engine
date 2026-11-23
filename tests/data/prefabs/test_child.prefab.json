@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "base": "test_base",
+  "props": { "speed": 4.0 },
+  "extra": { "tier": 2 },
+  "sprite": { "atlas": "test_atlas" },
+  "animations": { "walk": "walk" },
+  "components": [
+    { "type": "TestGlow", "props": { "enabled": false } },
+    { "type": "TestTint", "remove": true }
+  ],
+  "children": [
+    { "name": "Hitbox", "remove": true },
+    { "name": "Glow", "position": [1, 2] },
+    { "name": "Leaf", "prefab": "test_leaf", "position": [0, -1] }
+  ]
+}

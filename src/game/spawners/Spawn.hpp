@@ -16,11 +16,8 @@ PlayerObject& player(
     const PlayerObject::Config& config = {}
 );
 
-SlimeEnemy& slime(
-    Scene2D& scene,
-    const glm::vec2& position,
-    const SlimeEnemy::Config& config = {}
-);
+// The class defaults; the caller tunes the attributes (moveSpeed, gravity, ...) on the result.
+SlimeEnemy& slime(Scene2D& scene, const glm::vec2& position);
 
 WallObject& wall(
     Scene2D& scene,
@@ -29,11 +26,7 @@ WallObject& wall(
     const WallObject::Config& config = {}
 );
 
-CheckpointObject& checkpoint(
-    Scene2D& scene,
-    const glm::vec2& position,
-    const CheckpointObject::Config& config = {}
-);
+CheckpointObject& checkpoint(Scene2D& scene, const glm::vec2& position);
 
 TeleportObject& teleport(
     Scene2D& scene,
