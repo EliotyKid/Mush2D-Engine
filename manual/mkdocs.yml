@@ -2,6 +2,9 @@ site_name: Manual Mush2D
 docs_dir: docs
 site_dir: site
 
+validation:
+  anchors: warn
+
 theme:
   name: material
   language: pt
