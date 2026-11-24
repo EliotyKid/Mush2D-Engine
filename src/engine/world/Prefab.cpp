@@ -330,7 +330,12 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
             else {
                 EffectTriggers* triggers = o.getComponent<EffectTriggers>();
                 if (!triggers) triggers = &o.addComponent<EffectTriggers>();
-                triggers->triggers[trigger] = items.get<std::vector<json>>();
+                std::vector<json>& list = triggers->triggers[trigger];
+                list.clear();
+                for (const json& item : items) { // a bad item is skipped, the rest of the list stays
+                    if (const std::string error = effectItemError(item); error.empty()) list.push_back(item);
+                    else warn(where + ": effects." + trigger + ": " + error);
+                }
             }
         }
     }

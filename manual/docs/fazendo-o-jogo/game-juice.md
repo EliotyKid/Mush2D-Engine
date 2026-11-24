@@ -115,9 +115,10 @@ Um efeito fica em `assets/effects/<nome>.effect.json`. Ele é definido uma vez e
 | `effect` | Toca outro efeito pelo nome. Efeitos dentro de efeitos vão até 8 níveis: mais fundo (um ciclo, por exemplo) é pulado com aviso. |
 
 - Qualquer ação aceita `"delay": segundos` e toca depois desse tempo. Exemplo, a antecipação do pulo: `{"squash": [1.2, 0.8]}` agora e `{"squash": [0.8, 1.25], "delay": 0.033}` dois quadros depois.
-- Uma ação desconhecida avisa uma vez no stderr, com o nome do arquivo, e é ignorada. As outras ações do arquivo continuam valendo.
+- Uma ação desconhecida avisa uma vez no stderr, com o nome do arquivo, e é ignorada. As outras ações do arquivo continuam valendo. O mesmo vale para um modificador de tipo errado (`"delay": "0.03"`, `"scaleByStrength": 1`) e para uma ação só com modificadores (`{"delay": 0.1}`), no arquivo, no prefab ou em código.
+- Um efeito que se inclui com `delay` também para no limite de 8 níveis: a espera não zera a contagem.
 - Um arquivo inválido (JSON quebrado, sem a lista `actions`) avisa e mantém a versão anterior.
-- No Debug, salvar um `.effect.json` recarrega a biblioteca na hora (hot reload). A sala não recarrega, porque o efeito é procurado pelo nome cada vez que toca.
+- No Debug, salvar ou criar um `.effect.json` recarrega a biblioteca na hora (hot reload). A recarga lê a pasta inteira: um arquivo apagado some na próxima recarga. A sala não recarrega, porque o efeito é procurado pelo nome cada vez que toca.
 - Um nome de efeito que não existe avisa uma vez.
 
 ### Gatilhos no prefab

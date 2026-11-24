@@ -3570,6 +3570,16 @@ TEST(effect_invalid_file_keeps_previous) {
     std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": [{"blink": 0.4}, {"squash": [1, 1]}]})";
     lib.reload(file);
     CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 2);
+
+    // scan matches the folder: a removed file disappears, an invalid one keeps its last good version.
+    std::ofstream(dir / "gone.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [{"blink": 0.1}]})";
+    lib.scan(dir);
+    CHECK(lib.find("gone"));
+    std::filesystem::remove(dir / "gone.effect.json");
+    std::ofstream(file, std::ios::trunc) << R"({"version": )";
+    lib.scan(dir);
+    CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 2);
+    CHECK(!lib.find("gone"));
 }
 
 TEST(effect_triggers_state_anim_and_move) {
@@ -3607,13 +3617,103 @@ TEST(effect_triggers_state_anim_and_move) {
     t.scene.step(0.02f);
     CHECK(s->current().y > 1.1f && s->current().x < 0.9f);
 
-    // Another object's events do not reach it.
+    // Events reach only their own object, both ways.
     GameObject* other = t.prefabs.instantiate(t.scene, "test_effects");
+    t.scene.flush(); // other's own idle state: test_dust squashes it to {1.3, 0.7}
+    auto* otherSquash = other ? other->getComponent<SquashStretch>() : nullptr;
+    CHECK(otherSquash && otherSquash->current() == glm::vec2(1.3f, 0.7f));
+    if (!otherSquash) return;
+    emitMovementCue(t.scene, o, "jumped");
     t.scene.flush();
+    CHECK(otherSquash->current() == glm::vec2(1.3f, 0.7f) && s->current() == glm::vec2(1.2f, 0.8f));
     const std::size_t before = e ? e->alive() : 0;
-    if (other) emitMovementCue(t.scene, *other, "jumped");
+    const glm::vec2 squashBefore = s->current();
+    emitMovementCue(t.scene, *other, "jumped");
     t.scene.flush();
-    CHECK(e && e->alive() == before && s->current().y > 1.0f);
+    CHECK(e && e->alive() == before && s->current() == squashBefore);
+}
+
+TEST(effect_trigger_feet_and_register_then_start) {
+    Scene2D scene;
+    std::vector<StateChanged> changes;
+    auto sub = scene.events().subscribe<StateChanged>([&](const StateChanged& c) { changes.push_back(c); });
+    GameObject& o = scene.createObject<GameObject>();
+    o.transform.position = {3.0f, 4.0f};
+    o.collider = ColliderData{.size = {1.0f, 2.0f}, .offset = {0.0f, 0.5f}};
+    auto& t = o.addComponent<EffectTriggers>();
+    t.triggers["move:landed"] = {nlohmann::json::parse(R"({"particles": {"count": 1, "speed": [0, 0]}})")};
+    t.triggers["state:move:idle"] = {nlohmann::json::parse(R"({"blink": 0.2})")};
+    StateMachine<GameObject> move;
+    move.add(std::make_unique<GoIdle>());
+    o.registerStateMachine("move", &move); // registered first, started after: one StateChanged
+    move.start(o, "idle");
+    emitMovementCue(scene, o, "landed");
+    scene.flush();
+    CHECK(changes.size() == 1);
+    if (!changes.empty()) CHECK(changes[0].label == "move" && changes[0].from.empty() && changes[0].to == "idle");
+    CHECK(o.getComponent<Blink>() && o.getComponent<Blink>()->active());
+    auto* e = o.getComponent<ParticleEmitter>();
+    CHECK(e && e->alive() == 1);
+    if (e && e->alive()) CHECK(e->particles()[0].position == glm::vec2(3.0f, 3.5f)); // the collider's bottom
+}
+
+TEST(effect_bad_modifiers_warn_and_never_throw) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_modifiers";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "typo.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [
+        {"squash": [1.2, 0.8], "delay": "0.03"}, {"squash": [1.2, 0.8], "scaleByStrength": 1}, {"delay": 0.1},
+        {"blink": 0.1}]})";
+    EffectLibrary lib;
+    CerrCapture err;
+    lib.scan(dir);
+    const Effect* typo = lib.find("typo");
+    CHECK(typo && typo->actions.size() == 1);
+    CHECK(countOf(err.str(), "typo.effect.json: delay") == 1 && countOf(err.str(), "typo.effect.json: scaleByStrength") == 1);
+    CHECK(countOf(err.str(), "typo.effect.json: no action") == 1);
+
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    bool threw = false;
+    try {
+        playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.2, 0.8], "delay": "0.03"})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.2, 0.8], "scaleByStrength": 1})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(scene, o, nlohmann::json::parse(R"({"delay": 0.2})"), 1.0f, {0.0f, 0.0f}, 1);
+        scene.step(0.5f);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(!threw && !o.getComponent<SquashStretch>() && !o.getComponent<EffectTriggers>());
+    CHECK(countOf(err.str(), "delay: expected seconds") == 2); // load, then play
+    CHECK(countOf(err.str(), "scaleByStrength: expected true or false") == 2);
+}
+
+TEST(effect_delayed_self_include_stops_at_depth) {
+    Scene2D scene;
+    EffectLibrary lib;
+    { CerrCapture quiet; lib.scan(TestEffects); }
+    scene.setService(&lib);
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    CerrCapture err;
+    playEffect(scene, o, "test_delay_loop", 1.0f, {0.0f, 0.0f}, 1);
+    for (int i = 0; i < 20; ++i) scene.step(0.02f); // one round per step
+    auto* e = o.getComponent<ParticleEmitter>();
+    CHECK(e && e->alive() == 8); // depths 0 to 7
+    CHECK(countOf(err.str(), "test_delay_loop' nested deeper than 8") == 1);
+}
+
+TEST(prefab_effects_section_warnings) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_effects_bad");
+    const auto& w = t.prefabs.warnings();
+    CHECK(o && w.size() == 5);
+    CHECK(hasWarning(w, "effects.jump: a trigger starts with") && hasWarning(w, "effects.move:a: expected a list"));
+    CHECK(hasWarning(w, "effects.move:b: delay: expected seconds") && hasWarning(w, "effects.move:c: scaleByStrength"));
+    CHECK(hasWarning(w, "effects.move:c: no action"));
+    auto* triggers = o ? o->getComponent<EffectTriggers>() : nullptr;
+    CHECK(triggers && triggers->triggers.count("jump") == 0 && triggers->triggers.count("move:a") == 0);
+    if (triggers) CHECK(triggers->triggers["move:b"].size() == 1 && triggers->triggers["move:c"].empty());
 }
 
 TEST(movement_cues_landed_strength_and_turned) {

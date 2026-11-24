@@ -53,7 +53,7 @@ const std::map<std::string, Action>& actions() {
             if (!v.is_array() || v.size() != 2 || !v[0].is_number() || !v[1].is_number())
                 return warnOnce("squash: expected [x, y]");
             glm::vec2 scale{v[0].get<float>(), v[1].get<float>()};
-            if (a.value("scaleByStrength", false)) scale = 1.0f + (scale - 1.0f) * std::clamp(p.strength, 0.0f, 1.0f);
+            if (a.contains("scaleByStrength") && a["scaleByStrength"] == true) scale = 1.0f + (scale - 1.0f) * std::clamp(p.strength, 0.0f, 1.0f);
             componentOf<SquashStretch>(p.obj).kick(scale);
         }},
         {"blink", [](const Play& p, const json&, const json& v, int) {
@@ -70,6 +70,26 @@ const std::map<std::string, Action>& actions() {
 
 bool isModifier(const std::string& key) { return key == "scaleByStrength" || key == "delay"; }
 
+} // namespace
+
+std::string effectItemError(const json& item) {
+    if (item.is_string()) return {};
+    if (!item.is_object()) return "expected an effect name or an action, got " + item.dump();
+    if (item.contains("delay") && (!item["delay"].is_number() || item["delay"].get<float>() < 0.0f))
+        return "delay: expected seconds (a number >= 0)";
+    if (item.contains("scaleByStrength") && !item["scaleByStrength"].is_boolean())
+        return "scaleByStrength: expected true or false";
+    bool hasAction = false;
+    for (const auto& [key, value] : item.items()) {
+        if (isModifier(key)) continue;
+        if (!actions().count(key)) return "unknown action '" + key + "'";
+        hasAction = true;
+    }
+    return hasAction ? std::string() : "no action in " + item.dump();
+}
+
+namespace {
+
 // Effect name: its actions one level deeper. Object: one action, now or after "delay" seconds.
 void playItem(const Play& p, const json& item, int depth) {
     if (item.is_string()) {
@@ -83,17 +103,14 @@ void playItem(const Play& p, const json& item, int depth) {
             for (const json& action : effect->actions) playItem(p, action, depth + 1);
         return;
     }
-    if (!item.is_object()) return warnOnce("expected an effect name or an action, got " + item.dump());
-    if (const float delay = item.value("delay", 0.0f); delay > 0.0f) {
+    if (const std::string error = effectItemError(item); !error.empty()) return warnOnce(error + ", ignored");
+    if (const float delay = item.value("delay", 0.0f); delay > 0.0f) { // the depth goes along: a delayed self-include stops too
         json now = item;
         now.erase("delay");
-        return componentOf<EffectTriggers>(p.obj).queue(std::move(now), delay, p.strength, p.pos, p.direction);
+        return componentOf<EffectTriggers>(p.obj).queue(std::move(now), delay, p.strength, p.pos, p.direction, depth);
     }
-    for (const auto& [key, value] : item.items()) {
-        if (isModifier(key)) continue;
-        if (auto a = actions().find(key); a != actions().end()) a->second(p, item, value, depth);
-        else warnOnce("unknown action '" + key + "', ignored");
-    }
+    for (const auto& [key, value] : item.items())
+        if (!isModifier(key)) actions().at(key)(p, item, value, depth);
 }
 
 } // namespace
@@ -103,9 +120,16 @@ void emitMovementCue(Scene2D& scene, const GameObject& obj, std::string name, fl
 }
 
 void EffectLibrary::scan(const std::filesystem::path& dir) {
+    std::map<std::string, Effect> old = std::move(effects_);
+    effects_.clear(); // a removed file disappears; reload keeps the last good version of an invalid one
     std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
-        if (entry.path().string().ends_with(Suffix)) reload(entry.path());
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        const std::string fileName = entry.path().filename().string();
+        if (!fileName.ends_with(Suffix)) continue;
+        const std::string name = fileName.substr(0, fileName.size() - std::string(Suffix).size());
+        if (auto it = old.find(name); it != old.end()) effects_[name] = std::move(it->second);
+        reload(entry.path());
+    }
 }
 
 const Effect* EffectLibrary::find(const std::string& name) {
@@ -126,19 +150,16 @@ void EffectLibrary::reload(const std::filesystem::path& file) {
     if (doc.contains("version") && doc["version"] != 1) return fail("unsupported version " + doc["version"].dump());
     Effect effect;
     for (const json& action : doc["actions"]) {
-        bool known = action.is_object();
-        if (known)
-            for (const auto& [key, value] : action.items())
-                if (!isModifier(key) && !actions().count(key)) known = false;
-        if (known) effect.actions.push_back(action);
-        else std::cerr << "Effects: " << fileName << ": unknown action " << action.dump() << ", ignored\n";
+        const std::string error = action.is_object() ? effectItemError(action) : "expected an action, got " + action.dump();
+        if (error.empty()) effect.actions.push_back(action);
+        else std::cerr << "Effects: " << fileName << ": " << error << ", action ignored\n";
     }
     effects_[name] = std::move(effect);
     warned_.erase(name);
 }
 
-void playEffect(Scene2D& scene, GameObject& obj, const json& item, float strength, glm::vec2 pos, int direction) {
-    playItem({scene, obj, strength, pos, direction}, item, 0);
+void playEffect(Scene2D& scene, GameObject& obj, const json& item, float strength, glm::vec2 pos, int direction, int depth) {
+    playItem({scene, obj, strength, pos, direction}, item, depth);
 }
 
 glm::vec2 effectFeet(const GameObject& obj) {
@@ -155,8 +176,8 @@ void EffectTriggers::fire(GameObject& owner, Scene2D& scene, const std::string& 
     for (const json& item : it->second) playEffect(scene, owner, item, strength, at, direction);
 }
 
-void EffectTriggers::queue(json action, float delay, float strength, glm::vec2 pos, int direction) {
-    delayed_.push_back({delay, std::move(action), strength, pos, direction});
+void EffectTriggers::queue(json action, float delay, float strength, glm::vec2 pos, int direction, int depth) {
+    delayed_.push_back({delay, std::move(action), strength, pos, direction, depth});
 }
 
 void EffectTriggers::onAttach(GameObject& owner, Scene2D& scene) {
@@ -184,5 +205,5 @@ void EffectTriggers::onStep(GameObject& owner, Scene2D& scene, float dt) {
     for (Delayed& d : delayed_)
         if ((d.remaining -= dt) <= 0.0f) due.push_back(std::move(d));
     std::erase_if(delayed_, [](const Delayed& d) { return d.remaining <= 0.0f; });
-    for (const Delayed& d : due) playEffect(scene, owner, d.action, d.strength, d.pos, d.direction);
+    for (const Delayed& d : due) playEffect(scene, owner, d.action, d.strength, d.pos, d.direction, d.depth);
 }

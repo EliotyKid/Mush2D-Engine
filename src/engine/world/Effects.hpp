@@ -70,8 +70,13 @@ private:
 
 // Plays `item` (an effect name or one inline action) on obj: strength scales "scaleByStrength" squashes,
 // pos is where particles start, direction mirrors them. Effects come from the EffectLibrary service.
+// depth: effect nesting so far (a delayed action keeps its own); deeper than 8 is skipped with a warning.
 void playEffect(Scene2D& scene, GameObject& obj, const nlohmann::json& item, float strength, glm::vec2 pos,
-                int direction);
+                int direction, int depth = 0);
+
+// Empty when `item` is playable (an effect name, or an object with one known action and modifiers of the
+// right type: "delay" a number >= 0, "scaleByStrength" true or false); otherwise why not.
+std::string effectItemError(const nlohmann::json& item);
 
 // Where an effect lands when its trigger has no position: the bottom of the collider, else the position.
 glm::vec2 effectFeet(const GameObject& obj);
@@ -86,7 +91,7 @@ public:
     void fire(GameObject& owner, Scene2D& scene, const std::string& key, float strength,
               std::optional<glm::vec2> pos, int direction);
     // An action with "delay": played by onStep once `delay` seconds have passed.
-    void queue(nlohmann::json action, float delay, float strength, glm::vec2 pos, int direction);
+    void queue(nlohmann::json action, float delay, float strength, glm::vec2 pos, int direction, int depth = 0);
 
     void onAttach(GameObject& owner, Scene2D& scene) override;
     void onStep(GameObject& owner, Scene2D& scene, float dt) override;
@@ -99,6 +104,7 @@ private:
         float strength;
         glm::vec2 pos;
         int direction;
+        int depth;
     };
     std::vector<EventBus::Subscription> subscriptions_;
     std::vector<Delayed> delayed_;

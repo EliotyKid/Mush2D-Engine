@@ -179,6 +179,7 @@ void GameObject::attach(std::unique_ptr<Component> component) {
 }
 
 void GameObject::registerStateMachine(std::string label, StateMachineBase* machine) {
+    // The hook points at this object: the machine must not outlive it. Registering again moves the hook.
     machine->registeredChange = [this, label](const char* from, const char* to) {
         if (scene_) scene_->events().emit(StateChanged{id, label, from, to});
     };
