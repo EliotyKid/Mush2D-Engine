@@ -1,0 +1,1 @@
+{"version": 1, "actions": [{"particles": {"count": 1, "lifetime": [1, 1]}}, {"effect": "test_loop_b"}]}

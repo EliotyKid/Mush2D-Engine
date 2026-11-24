@@ -1,0 +1,1 @@
+{"version": 1, "actions": [{"particles": {"count": 1, "speed": [0, 0], "lifetime": [5, 5]}}, {"effect": "test_delay_loop", "delay": 0.01}]}

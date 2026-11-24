@@ -5,7 +5,7 @@ Há três jeitos de um objeto falar com outro.
 ## Direto: achar o objeto
 
 ```cpp
-auto* p = scene.findFirstObjectOfType<PlayerObject>();
+GameObject* p = findPlayer(scene); // engine/world/IPlayer.hpp
 if (p) { /* usa p */ }
 ```
 
@@ -14,6 +14,7 @@ Funções de busca da cena:
 | Função | Devolve |
 |---|---|
 | `scene.find(id)` | o `GameObject*` com esse id, ou `nullptr` |
+| `scene.findObject(id)` | o mesmo, mas `nullptr` também para um objeto que vai ser destruído (o jeito do jogo) |
 | `scene.findObjectAs<T>(id)` | o objeto com esse id, se for do tipo `T`, ou `nullptr` |
 | `scene.findFirstObjectOfType<T>()` | o primeiro objeto do tipo `T`, ou `nullptr` |
 | `scene.findAllObjectsOfType<T>()` | todos os objetos do tipo `T` |
@@ -29,6 +30,9 @@ for (GameObject* g : scene.findObjectsByTag("enemy")) { /* ... */ }
 ```
 
 Dê tags no `onCreate` com `addTag("enemy")`.
+
+!!! note "O player é achado pela tag `player`"
+    Não pergunte pelo tipo (`PlayerObject`): o player pode ser de outro tipo (o Iki). Para saber se `other` é o player, use `other.hasTag("player")`. Para chamar um método dele, use a interface `IPlayer` (`respawnAt`, `downPressedThisFrame`, ...): `dynamic_cast<IPlayer*>(&other)`, ou `scene.findObjectAs<IPlayer>(id)`. Veja [World](../sistemas/world.md).
 
 ## Por evento
 
@@ -64,4 +68,4 @@ bool aberta = state->get(entityIid, "open", 0.0) != 0.0;   // a porta lê
 
 - **Uma alavanca que abre uma porta:** campo `door` (EntityRef) na alavanca, estado no `WorldState`. Veja [Objeto novo](objeto-novo.md).
 - **Todos os inimigos fogem quando o player pega um item:** o item emite um evento; cada inimigo assina no `onCreate` e guarda a `Subscription` num membro.
-- **Um objeto que segue o player:** guarde o id do player e, em `onStep`, use `scene.findObjectAs<PlayerObject>(playerId)`.
+- **Um objeto que segue o player:** guarde o id do player e, em `onStep`, use `scene.findObject(playerId)`, que devolve `nullptr` se ele não existir mais.

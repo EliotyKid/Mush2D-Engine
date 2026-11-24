@@ -9,13 +9,15 @@
 //                   "color": [1, 1, 1, 1], "depth": 0, "additive": false },
 //       "collider": { "size": [0.8, 0.8], "offset": [0, 0], "isTrigger": false },
 //       "animations": { "idle": "slime_idle", "walk": "slime_walk" },      // -> SpriteAnimator
+//       "effects": { "move:landed": ["land_dust"], "state:move:hurt": [{ "blink": 0.8 }] }, // -> EffectTriggers
 //       "components": [ { "type": "LightComponent", "props": { ... } } ],
 //       "children": [ { "name": "Glow", "prefab": "glow_small", "position": [0, 0.5] },
 //                     { "name": "Hitbox", "type": "GameObject", "collider": { "isTrigger": true } } ] }
 //
-// Inheritance: "props", "extra", "sprite", "collider" and "animations" merge key by key over the base;
-// "components" merge by "type" and "children" by "name" ("remove": true drops the inherited item). A cycle is
-// refused with a warning, and so is a child whose prefab is one of the prefabs it sits in (skipped).
+// Inheritance: "props", "extra", "sprite", "collider", "animations", "animationEvents" and "effects" merge
+// key by key over the base; "components" merge by "type" and "children" by "name" ("remove": true drops the
+// inherited item). A cycle is refused with a warning, and so is a child whose prefab is one of the prefabs it
+// sits in (skipped).
 //
 // APPLICATION ORDER (same block in Reflect.hpp; later wins):
 //   construct -> onCreate (the C++ defaults, including a sprite / collider it assigns outright) -> the prefab's

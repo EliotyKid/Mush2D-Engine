@@ -3,6 +3,11 @@
 #include "engine/world/Prefab.hpp"
 #include "engine/world/PrefabSave.hpp"
 #include "engine/world/SpriteAnimator.hpp"
+#include "engine/world/Blink.hpp"
+#include "engine/world/Effects.hpp"
+#include "engine/world/Particles.hpp"
+#include "engine/world/SquashStretch.hpp"
+#include "engine/world/VelocityLean.hpp"
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
@@ -17,6 +22,10 @@
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/Region.hpp"
 #include "engine/world/RegionSet.hpp"
+#include "engine/world/JumpAssist.hpp"
+#include "engine/world/IPlayer.hpp"
+#include "engine/world/Resources.hpp"
+#include "engine/world/StateMachine.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/TerrainMesh.hpp"
 #include "engine/world/World.hpp"
@@ -28,13 +37,16 @@
 #include "game/objects/CheckpointObject.hpp"
 #include "game/objects/CrystalObject.hpp"
 #include "game/objects/DoorObject.hpp"
+#include "game/objects/IkiObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
 #include "game/objects/PlayerObject.hpp"
 #include "game/objects/SlimeEnemy.hpp"
 
+#include <iostream>
 #include <map>
 #include <set>
+#include <sstream>
 
 #include <algorithm>
 #include <chrono>
@@ -2796,6 +2808,22 @@ TEST(ldtk_prefab_entity_tracking_parallax_and_missing_prefab) {
     CHECK(loader.warnings().size() == 2 && hasWarning(loader.warnings(), "names prefab 'nope_prefab'"));
 }
 
+namespace {
+// Captures std::cerr while alive.
+struct CerrCapture {
+    std::ostringstream out;
+    std::streambuf* old = std::cerr.rdbuf(out.rdbuf());
+    ~CerrCapture() { std::cerr.rdbuf(old); }
+    std::string str() const { return out.str(); }
+};
+
+std::size_t countOf(const std::string& text, const std::string& part) {
+    std::size_t n = 0;
+    for (std::size_t i = text.find(part); i != std::string::npos; i = text.find(part, i + 1)) ++n;
+    return n;
+}
+}
+
 TEST(game_prefabs_load_without_warnings) {
     // The real assets/prefabs with the real atlases: a typo in a prefab file fails here, not at runtime.
     AssetRegistry assets;
@@ -2829,6 +2857,30 @@ TEST(game_prefabs_load_without_warnings) {
     GameObject* halo = crystal && crystal->children().size() == 1 ? scene.find(crystal->children()[0]) : nullptr;
     CHECK(halo && halo->sprite && halo->sprite->additive && halo->transform.scale == glm::vec2(2.8f));
     CHECK(halo && halo->sprite && halo->sprite->color == glm::vec4(0.45f, 0.0f, 0.45f, 1.0f));
+
+    // The Iki: the juice components in update order, its effects and their files (D2 Task 5).
+    auto* iki = dynamic_cast<IkiObject*>(prefabs.instantiate(scene, "iki"));
+    CHECK(iki && iki->components().size() >= 5 && iki->getComponent<EffectTriggers>());
+    if (iki && iki->components().size() >= 5) {
+        const char* order[] = {"Resources", "SpriteAnimator", "SquashStretch", "VelocityLean", "Blink"}; // Resources: onCreate
+        for (int i = 0; i < 5; ++i) CHECK(typeOf(*iki->components()[i]).name == order[i]);
+        CHECK(iki->getComponent<SpriteAnimator>()->state == "idle" && iki->getComponent<SpriteAnimator>()->animations.size() == 8);
+    }
+    // Every effect the Iki's triggers name (directly or by an "effect" action) has a valid, non-empty file.
+    EffectLibrary effects;
+    CerrCapture err;
+    effects.scan(sourceAssetPath("assets/effects"));
+    int named = 0;
+    if (auto* triggers = iki ? iki->getComponent<EffectTriggers>() : nullptr)
+        for (const auto& [key, items] : triggers->triggers)
+            for (const nlohmann::json& item : items) {
+                const nlohmann::json* name = item.is_string() ? &item : item.contains("effect") ? &item["effect"] : nullptr;
+                if (!name) continue;
+                ++named;
+                const Effect* effect = effects.find(name->get<std::string>());
+                CHECK(effect && !effect->actions.empty());
+            }
+    CHECK(named >= 6 && err.str().empty());
 }
 
 // --- Inspector save (D1 Task 4) -------------------------------------------------------------------------
@@ -2983,6 +3035,1564 @@ TEST(save_disabled_without_source_prefab) {
           nlohmann::json({{"version", 1}, {"type", "TestSlime"}, {"props", {{"speed", 3.0}}}}));
     GameObject* made = lib.instantiate(scene, "from_code");
     CHECK(made && canSaveToPrefab(*made));
+}
+
+// --- D2 movement foundations: state machine, jump assist, ice-climb surface, global flags ---
+namespace {
+struct SmOwner { std::vector<std::string> log; const char* moveNext = nullptr; const char* actionNext = nullptr; };
+// Logs enter/exit; update returns *next (the owner field this machine reads), then clears it.
+struct LogState : State<SmOwner> {
+    const char* n; const char* SmOwner::*next;
+    LogState(const char* n, const char* SmOwner::*next) : n(n), next(next) {}
+    const char* name() const override { return n; }
+    void enter(SmOwner& o) override { o.log.push_back(std::string("enter ") + n); }
+    void exit(SmOwner& o) override { o.log.push_back(std::string("exit ") + n); }
+    const char* update(SmOwner& o, float) override {
+        o.log.push_back(std::string("update ") + n);
+        return std::exchange(o.*next, nullptr);
+    }
+};
+}
+
+TEST(state_machine_transitions) {
+    SmOwner o;
+    StateMachine<SmOwner> sm;
+    sm.add(std::make_unique<LogState>("idle", &SmOwner::moveNext));
+    sm.add(std::make_unique<LogState>("run", &SmOwner::moveNext));
+    std::vector<std::string> changes;
+    sm.onChange = [&](const char* from, const char* to) { changes.push_back(std::string(from) + ">" + to); };
+    sm.start(o, "idle");
+    CHECK(std::string(sm.current()) == "idle" && (changes == std::vector<std::string>{">idle"}));
+    changes.clear();
+    sm.update(o, 0.25f);
+    sm.update(o, 0.25f);
+    CHECK(std::abs(sm.timeInState() - 0.5f) < 1e-6f);
+    o.log.clear();
+    o.moveNext = "run";
+    sm.update(o, 0.1f); // one transition per call: run's update waits for the next call
+    CHECK(std::string(sm.current()) == "run" && sm.timeInState() == 0.0f);
+    CHECK((o.log == std::vector<std::string>{"update idle", "exit idle", "enter run"}));
+    CHECK((changes == std::vector<std::string>{"idle>run"}));
+    std::ostringstream err;
+    std::streambuf* old = std::cerr.rdbuf(err.rdbuf());
+    sm.change(o, "nope"); // unknown: warns once on stderr, the state stays
+    sm.change(o, "nope");
+    sm.change(o, nullptr); // no state, no warning
+    std::cerr.rdbuf(old);
+    CHECK(err.str() == "StateMachine: unknown state 'nope'\n");
+    CHECK(std::string(sm.current()) == "run" && changes.size() == 1);
+    sm.change(o, "idle"); // forced
+    CHECK(std::string(sm.current()) == "idle" && changes.back() == "run>idle");
+}
+
+TEST(state_machine_two_per_owner) {
+    SmOwner o;
+    StateMachine<SmOwner> move, action;
+    move.add(std::make_unique<LogState>("idle", &SmOwner::moveNext));
+    move.add(std::make_unique<LogState>("run", &SmOwner::moveNext));
+    action.add(std::make_unique<LogState>("none", &SmOwner::actionNext));
+    action.add(std::make_unique<LogState>("attack", &SmOwner::actionNext));
+    std::vector<std::string> moveChanges, actionChanges;
+    move.onChange = [&](const char* f, const char* t) { moveChanges.push_back(std::string(f) + ">" + t); };
+    action.onChange = [&](const char* f, const char* t) { actionChanges.push_back(std::string(f) + ">" + t); };
+    move.start(o, "idle");
+    action.start(o, "none");
+    moveChanges.clear();
+    actionChanges.clear();
+    o.actionNext = "attack";
+    move.update(o, 0.1f);
+    action.update(o, 0.1f);
+    CHECK(std::string(move.current()) == "idle" && std::string(action.current()) == "attack");
+    CHECK(moveChanges.empty() && (actionChanges == std::vector<std::string>{"none>attack"}));
+    o.moveNext = "run";
+    move.update(o, 0.1f);
+    action.update(o, 0.1f);
+    CHECK(std::string(move.current()) == "run" && std::string(action.current()) == "attack");
+    CHECK(std::abs(action.timeInState() - 0.1f) < 1e-6f && move.timeInState() == 0.0f);
+    CHECK(moveChanges.size() == 1 && actionChanges.size() == 1);
+}
+
+namespace {
+struct SmBase { int hits = 0; };
+struct SmDerived : SmBase { bool derivedOnly = true; };
+struct PatrolState : State<SmBase> {
+    const char* name() const override { return "patrol"; }
+    void enter(SmBase& o) override { o.hits += 100; }
+    const char* update(SmBase& o, float) override { ++o.hits; return nullptr; }
+};
+}
+
+TEST(state_machine_shared_base_state) {
+    SmDerived d;
+    StateMachine<SmDerived> sm;
+    sm.add(shared<SmBase, SmDerived>(std::make_unique<PatrolState>()));
+    sm.start(d, "patrol");
+    sm.update(d, 0.1f);
+    sm.update(d, 0.1f);
+    CHECK(std::string(sm.current()) == "patrol" && d.hits == 102 && d.derivedOnly);
+}
+
+namespace {
+struct GoIdle : State<GameObject> {
+    const char* name() const override { return "idle"; }
+    const char* update(GameObject&, float) override { return nullptr; }
+};
+}
+
+TEST(object_lists_registered_state_machines) {
+    GameObject o;
+    CHECK(o.stateMachines().empty());
+    StateMachine<GameObject> move, action;
+    move.add(std::make_unique<GoIdle>());
+    o.registerStateMachine("move", &move);
+    o.registerStateMachine("action", &action);
+    CHECK(std::string(action.current()).empty()); // not started
+    move.start(o, "idle");
+    move.update(o, 0.32f);
+    const auto& list = o.stateMachines();
+    CHECK(list.size() == 2 && list[0].first == "move" && list[1].first == "action");
+    CHECK(list[0].second == &move && std::string(list[0].second->current()) == "idle");
+    CHECK(std::abs(list[0].second->timeInState() - 0.32f) < 1e-6f);
+}
+
+TEST(jump_assist_coyote) {
+    JumpAssist j;
+    j.tick(0.05f, true, false);
+    j.tick(0.05f, false, false); // walked off: 0.05 s into coyote
+    j.tick(0.03f, false, true);
+    CHECK(j.consumeJump());
+    j = JumpAssist{};
+    j.tick(0.05f, true, false);
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, false, true); // 0.15 s after the ledge: too late
+    CHECK(!j.consumeJump());
+    CHECK(j.hasBufferedJump());
+    j.startCoyote(); // wall coyote
+    CHECK(j.consumeJump());
+}
+
+TEST(jump_assist_buffer) {
+    JumpAssist j;
+    j.tick(0.05f, false, true); // pressed in the air, 0.12 s buffer
+    CHECK(!j.consumeJump() && j.hasBufferedJump());
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, true, false); // landed 0.1 s after the press
+    CHECK(j.consumeJump());
+    j = JumpAssist{};
+    j.tick(0.05f, false, true);
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, true, false); // landed 0.15 s after: buffer expired
+    CHECK(!j.hasBufferedJump() && !j.consumeJump());
+    j.tick(0.05f, false, true);
+    j.clearBuffer();
+    CHECK(!j.hasBufferedJump());
+}
+
+TEST(jump_assist_no_double_consume) {
+    JumpAssist j;
+    j.tick(1.0f / 60.0f, true, true);
+    CHECK(j.consumeJump());
+    CHECK(!j.consumeJump());
+    j.tick(1.0f / 60.0f, false, true); // pressed again in the air: the jump spent the coyote time
+    CHECK(!j.consumeJump());
+}
+
+TEST(intgrid_ice_climb_surface) {
+    auto ice = [](const Segment& s) { return s.surface == Surface::IceClimb; };
+    // a 3 x 2 block of 9 collides like 1: four outer faces, all ice
+    auto a = gridSegs(gridLayer(6, 4, {{{1,1},9},{{2,1},9},{{3,1},9},{{1,2},9},{{2,2},9},{{3,2},9}}));
+    CHECK(a.size() == 4 && countIf(a, ice) == 4);
+    for (auto& s : a) CHECK(!s.oneWay);
+    // a row 1-9: the tops do not merge across surfaces
+    auto b = gridSegs(gridLayer(6, 4, {{{1,1},1},{{2,1},9}}));
+    CHECK(b.size() == 6);
+    CHECK(countIf(b, [](auto& s) { return hasNormal(s, {0, 1}); }) == 2);
+    CHECK(countIf(b, [&](auto& s) { return hasNormal(s, {0, 1}) && ice(s); }) == 1);
+    CHECK(countIf(b, [&](auto& s) { return hasNormal(s, {-1, 0}) && !ice(s); }) == 1);
+    CHECK(countIf(b, [&](auto& s) { return hasNormal(s, {1, 0}) && ice(s); }) == 1);
+    // 1 over 9: no inner face between them (9 is full like 1); the side columns split by surface
+    auto c = gridSegs(gridLayer(6, 4, {{{2,1},1},{{2,2},9}}));
+    CHECK(c.size() == 6);
+    CHECK(countIf(c, [&](auto& s) { return hasNormal(s, {0, 1}) && !ice(s); }) == 1);
+    CHECK(countIf(c, [&](auto& s) { return hasNormal(s, {0, -1}) && ice(s); }) == 1);
+}
+
+TEST(showcase_ice_test_room_loads) {
+    // tools/add_ice_test_room.py: IceTest left of Showcase, entered by the doorway in its left wall
+    auto p = loadLdtkProject(sourceAssetPath("assets/levels/showcase.ldtk"));
+    const LdtkLevel* ice = nullptr;
+    const LdtkLevel* showcase = nullptr;
+    for (auto& lv : p.levels) {
+        if (lv.identifier == "IceTest") ice = &lv;
+        if (lv.identifier == "Showcase") showcase = &lv;
+    }
+    CHECK(ice && showcase);
+    if (!ice || !showcase) return;
+    CHECK(ice->worldPx.x + ice->pxSize.x == showcase->worldPx.x);
+    CHECK(ice->worldPx.y + 33 * 16 == showcase->worldPx.y + 23 * 16); // IceTest's opening rows 33-36 = Showcase's 23-26
+    int iceSegments = 0, abilityItems = 0, checkpoints = 0;
+    for (auto& L : ice->layers) {
+        if (L.type == "IntGrid" && L.identifier == "Collision")
+            iceSegments = countIf(gridSegs(L), [](auto& s) { return s.surface == Surface::IceClimb; });
+        for (auto& e : L.entities) {
+            if (e.identifier == "Item" && e.fields.value("kind", "") == "ability.ice.stakes") ++abilityItems;
+            if (e.identifier == "Checkpoint") ++checkpoints;
+        }
+    }
+    CHECK(iceSegments > 0);
+    CHECK(abilityItems == 1 && checkpoints == 1);
+    for (auto& L : showcase->layers) // the doorway: cols 0-1, rows 23-26 open, the floor row 27 solid
+        if (L.type == "IntGrid" && L.identifier == "Collision") {
+            const int w = L.cells.x;
+            for (int y = 23; y <= 26; ++y) CHECK(L.intGrid[y * w] == 0 && L.intGrid[y * w + 1] == 0);
+            CHECK(L.intGrid[22 * w] == 1 && L.intGrid[27 * w] == 1);
+        }
+}
+
+TEST(terrain_ice_climb_field) {
+    auto e = terrainEntity({0, 0}, {{0, 8}, {8, 8}, {8, 0}}, true, 3.0f, false);
+    auto plain = segmentsFromTerrain(e, {0, 0}, 4, "r");
+    CHECK(!plain.empty() && countIf(plain, [](auto& s) { return s.surface == Surface::Default; }) == int(plain.size()));
+    e.fields["iceClimb"] = true;
+    auto ice = segmentsFromTerrain(e, {0, 0}, 4, "r");
+    CHECK(ice.size() == plain.size() && countIf(ice, [](auto& s) { return s.surface == Surface::IceClimb; }) == int(ice.size()));
+}
+
+TEST(probe_wall_and_ceiling_surface) {
+    auto withSurface = [](std::vector<Segment> v, Surface s) { for (auto& seg : v) seg.surface = s; return v; };
+    CollisionWorld w;
+    w.addRoom("ice", withSurface(polySegs({{1, -5}, {3, -5}, {3, 5}, {1, 5}}), Surface::IceClimb));   // wall face x = 1
+    w.addRoom("rock", polySegs({{-3, -5}, {-1, -5}, {-1, 5}, {-3, 5}}));                                // wall face x = -1
+    w.addRoom("roof", withSurface(polySegs({{-1, 2}, {1, 2}, {1, 3}, {-1, 3}}), Surface::IceClimb));  // ceiling y = 2
+    CollisionQuery q{&w, {}};
+    Body b; // half size 0.3 x 0.8
+    CHECK(!probeWall(b, 1, q).hit && !probeWall(b, -1, q).hit && !probeCeiling(b, q).hit);
+    b.position = {0.68f, 0.0f}; // 0.02 from the ice wall
+    SurfaceHit r = probeWall(b, 1, q);
+    CHECK(r.hit && r.surface == Surface::IceClimb);
+    CHECK(!probeWall(b, -1, q).hit);
+    b.position = {-0.68f, 0.0f};
+    r = probeWall(b, -1, q);
+    CHECK(r.hit && r.surface == Surface::Default);
+    b.position = {0.0f, 1.18f}; // top 0.02 under the roof
+    r = probeCeiling(b, q);
+    CHECK(r.hit && r.surface == Surface::IceClimb);
+    CHECK(!probeWall(b, 1, q).hit);
+    b.position = {0.0f, 0.0f};
+    CollisionQuery boxes{&w, {{{0.32f, -1.0f}, {0.6f, 1.0f}}}}; // a dynamic solid is a plain wall
+    r = probeWall(b, 1, boxes);
+    CHECK(r.hit && r.surface == Surface::Default);
+}
+
+TEST(world_state_global_flag_survives_room_restore) {
+    WorldState state;
+    CHECK(!state.flag("ability.ice.stakes"));
+    const std::vector<std::string> room{"e1", "e2"};
+    const auto snap = state.snapshot(room);
+    state.setFlag("ability.ice.stakes", true);
+    state.markGone("e1", {0.0f, 0.0f}, 1.0);
+    state.restore(room, snap); // death: the room goes back, the global flag stays
+    CHECK(state.flag("ability.ice.stakes") && !state.isGone("e1"));
+    CHECK(state.find(WorldState::GlobalIid) != nullptr);
+    state.setFlag("ability.ice.stakes", false);
+    CHECK(!state.flag("ability.ice.stakes"));
+}
+
+// --- Resources, damage and the player found by tag (D2 Task 4) -----------------------------------------------
+
+TEST(resources_spend_regen_delay) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    std::vector<EnergyChanged> seen;
+    auto sub = scene.events().subscribe<EnergyChanged>([&](const EnergyChanged& e) { seen.push_back(e); });
+    CHECK(r.health() == 5 && r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f);
+    CHECK(r.spend(Element::Ice, 30.0f) && r.energy(Element::Ice) == 70.0f);
+    CHECK(!r.spend(Element::Ice, 71.0f) && r.energy(Element::Ice) == 70.0f); // not enough: nothing spent
+    CHECK(r.spend(Element::Fire, 10.0f));
+    scene.flush();
+    CHECK(seen.size() == 2 && seen[0].id == o.id && seen[0].element == Element::Ice && seen[0].value == 70.0f &&
+          seen[0].max == 100.0f);
+    r.update(scene, 0.5f); // still within regenDelay (1 s) of the spend
+    CHECK(r.energy(Element::Ice) == 70.0f);
+    r.spend(Element::Fire, 10.0f); // fire's delay restarts, ice's does not
+    r.update(scene, 0.6f);         // ice waited 1.1 s: regenerates; fire waited 0.6 s
+    CHECK(r.energy(Element::Ice) == 76.0f && r.energy(Element::Fire) == 80.0f); // 70 + 10/s * 0.6 s
+    for (int i = 0; i < 100; ++i) r.update(scene, 0.1f);
+    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f); // capped at the max
+    CHECK(r.spend(Element::Ice, 0.0f) && !r.spend(Element::Ice, -1.0f) && r.energy(Element::Ice) == 100.0f);
+}
+
+TEST(resources_on_step_updates_once_per_step) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    scene.flush();
+    CHECK(r.spend(Element::Ice, 10.0f));
+    scene.step(0.5f); // 0.5 s since the spend: still waiting (two updates per step would regenerate already)
+    CHECK(r.energy(Element::Ice) == 90.0f);
+    scene.step(0.5f); // 1 s: one update of 0.5 s regenerates 5
+    CHECK(r.energy(Element::Ice) == 95.0f);
+}
+
+TEST(resources_spend_both_atomic) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    CHECK(r.spend(Element::Fire, 80.0f));
+    CHECK(!r.spendBoth(30.0f, 30.0f)); // fire has 20: neither is spent
+    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 20.0f);
+    CHECK(r.spendBoth(30.0f, 20.0f));
+    CHECK(r.energy(Element::Ice) == 70.0f && r.energy(Element::Fire) == 0.0f);
+    r.update(scene, 1.0f);            // both waited 1 s: both regenerate 10
+    CHECK(r.spendBoth(0.0f, 5.0f));   // ice is not spent, so its delay does not restart
+    r.update(scene, 0.5f);
+    CHECK(r.energy(Element::Ice) == 85.0f && r.energy(Element::Fire) == 5.0f);
+    CHECK(!r.spendBoth(-1.0f, 1.0f) && r.energy(Element::Fire) == 5.0f);
+    r.refill();
+    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f);
+}
+
+TEST(resources_death_event) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    int died = 0;
+    std::vector<HealthChanged> health;
+    auto a = scene.events().subscribe<Died>([&](const Died& e) { died += e.id == o.id; });
+    auto b = scene.events().subscribe<HealthChanged>([&](const HealthChanged& e) { health.push_back(e); });
+    DamageInfo hit;
+    CHECK(hit.amount == 1 && hit.element == Element::None && hit.direction == glm::vec2(0.0f));
+    r.damage(3);
+    scene.flush();
+    CHECK(r.health() == 2 && died == 0 && health.size() == 1 && health[0].health == 2 && health[0].max == 5);
+    r.heal(1);
+    r.damage(10); // clamps at 0 and dies once
+    r.damage(1);  // already dead: nothing
+    scene.flush();
+    CHECK(r.health() == 0 && died == 1 && health.size() == 3 && health[2].health == 0);
+    r.refill();
+    CHECK(r.health() == 5);
+}
+
+TEST(item_ability_kind_sets_flag) {
+    Scene2D scene;
+    WorldState state;
+    scene.setService(&state);
+    GameObject& player = scene.createObject<GameObject>();
+    player.addTag("player");
+    GameObject& other = scene.createObject<GameObject>();
+    ItemObject& item = scene.createObject<ItemObject>();
+    item.kind = "ability.ice.stakes";
+    item.onTriggerEnter(scene, other); // not the player
+    CHECK(!state.flag("ability.ice.stakes"));
+    item.onTriggerEnter(scene, player); // found by tag, not by type
+    CHECK(state.flag("ability.ice.stakes"));
+    ItemObject& coin = scene.createObject<ItemObject>();
+    coin.kind = "coin";
+    coin.onTriggerEnter(scene, player);
+    CHECK(!state.flag("coin"));
+    CHECK(findPlayer(scene) == &player);
+}
+
+// --- Juice: particles, squash and stretch, blink, lean, frame events (D2 Task 2) -----------------------------
+
+TEST(particles_burst_lifetime_and_pool_limit) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& e = o.addComponent<ParticleEmitter>();
+    scene.flush();
+    ParticleConfig c;
+    c.count = 5;
+    c.speed = {0.0f, 0.0f};
+    c.lifetime = {0.2f, 0.4f};
+    e.burst(c, {1.0f, 2.0f});
+    CHECK(e.alive() == 5);
+    for (int i = 0; i < 10; ++i) scene.step(0.015f); // 0.15 s: none expired yet
+    CHECK(e.alive() == 5);
+    for (int i = 0; i < 20; ++i) scene.step(0.015f); // 0.45 s: all expired
+    CHECK(e.alive() == 0);
+
+    // Over maxParticles the oldest go first.
+    e.maxParticles = 8;
+    c.lifetime = {1.0f, 1.0f};
+    e.burst(c, {0.0f, 0.0f});
+    scene.step(0.1f);
+    e.burst(c, {5.0f, 0.0f});
+    CHECK(e.alive() == 8);
+    const auto atOrigin = std::count_if(e.particles().begin(), e.particles().end(),
+                                        [](const Particle& p) { return p.position.x == 0.0f; });
+    CHECK(atOrigin == 3);
+
+    // Drawn through the sprite path: an empty frame is the tinted white pixel, never emissive.
+    Material white{7, 8, 9, 10, 1, 1};
+    auto lookup = [](std::uint32_t, const std::string&) { return std::make_pair(Material{}, glm::vec4(0, 0, 0, 0)); };
+    SpriteBatch b;
+    appendSceneSprites(scene, b, lookup, &white);
+    CHECK(b.size() == 8 && b.sorted()[0].albedo == 7 && b.sorted()[0].emissive == 9 && b.sorted()[0].flags == SpriteFlagNearest);
+    SpriteBatch none;
+    appendSceneSprites(scene, none, lookup); // no white material: untextured particles are skipped
+    CHECK(none.size() == 0);
+}
+
+TEST(particles_mirror_direction) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& e = o.addComponent<ParticleEmitter>();
+    scene.flush();
+    ParticleConfig c;
+    c.count = 1;
+    c.speed = {2.0f, 2.0f};
+    c.angle = {30.0f, 30.0f};
+    e.burst(c, {0.0f, 0.0f}, 1);
+    e.burst(c, {0.0f, 0.0f}, -1);
+    const glm::vec2 right = e.particles()[0].velocity, left = e.particles()[1].velocity;
+    CHECK(std::abs(right.x - 2.0f * std::cos(glm::radians(30.0f))) < 1e-5f && right.y > 0.0f);
+    CHECK(std::abs(left.x + right.x) < 1e-5f && std::abs(left.y - right.y) < 1e-5f);
+}
+
+TEST(particle_config_parses_json) {
+    ParticleConfig c;
+    std::string error;
+    auto j = nlohmann::json::parse(R"({"count": 6, "speed": [1, 3], "angle": [100, 170], "lifetime": [0.2, 0.4],
+        "gravity": -4, "drag": 2, "size": [0.12, 0.0], "color": [[0.8,0.75,0.65,0.9],[0.8,0.75,0.65,0]],
+        "frame": "dot", "additive": true, "layer": 3})");
+    CHECK(parseParticleConfig(j, c, error) && error.empty());
+    CHECK(c.count == 6 && c.speed == glm::vec2(1, 3) && c.angle == glm::vec2(100, 170) && c.lifetime == glm::vec2(0.2f, 0.4f));
+    CHECK(c.gravity == -4.0f && c.drag == 2.0f && c.size == glm::vec2(0.12f, 0.0f) && c.frame == "dot" && c.additive && c.layer == 3);
+    CHECK(c.colorStart == glm::vec4(0.8f, 0.75f, 0.65f, 0.9f) && c.colorEnd.a == 0.0f);
+    ParticleConfig d;
+    CHECK(!parseParticleConfig(nlohmann::json::parse(R"({"speed": [1]})"), d, error) && error.find("speed") != std::string::npos);
+    CHECK(!parseParticleConfig(nlohmann::json::parse(R"({"cuont": 3})"), d, error) && error.find("cuont") != std::string::npos);
+    CHECK(!parseParticleConfig(nlohmann::json::array(), d, error));
+}
+
+TEST(squash_stretch_returns_to_rest) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& s = o.addComponent<SquashStretch>();
+    scene.flush();
+    s.kick({0.7f, 1.3f});
+    CHECK(s.current() == glm::vec2(0.7f, 1.3f));
+    for (int i = 0; i < 60; ++i) scene.step(1.0f / 60.0f);
+    CHECK(std::abs(s.current().x - 1.0f) < 0.01f && std::abs(s.current().y - 1.0f) < 0.01f);
+    CHECK(o.transform.scale == glm::vec2(1.0f));
+}
+
+TEST(squash_stretch_anchors_feet) {
+    SquashStretch s;
+    s.kick({1.3f, 0.7f});
+    SpriteData sp;
+    sp.drawSize = {-1.0f, 0.5f}; // mirrored
+    sp.offset = {0.2f, 0.15f};   // bottom at y = -0.1
+    s.apply(sp);
+    CHECK(std::abs(sp.drawSize.x + 1.3f) < 1e-5f && std::abs(sp.drawSize.y - 0.35f) < 1e-5f);
+    CHECK(std::abs((sp.offset.y - sp.drawSize.y * 0.5f) - (-0.1f)) < 1e-5f); // the bottom stays put
+    CHECK(std::abs(sp.offset.x - 0.26f) < 1e-5f);                             // spreads from the feet
+    s.apply(sp); // idempotent: a second call starts from the unsquashed size
+    CHECK(std::abs(sp.drawSize.x + 1.3f) < 1e-5f && std::abs(sp.offset.x - 0.26f) < 1e-5f);
+}
+
+TEST(squash_stretch_applies_itself_with_animator) {
+    // No owner code: the animator places the frame, the squash follows, in either component order.
+    for (bool squashFirst : {true, false}) {
+        Scene2D scene;
+        scene.setService(&testAssets());
+        GameObject& o = scene.createObject<GameObject>();
+        o.sprite = SpriteData{};
+        o.sprite->atlasName = "test_atlas";
+        SquashStretch* s = squashFirst ? &o.addComponent<SquashStretch>() : nullptr;
+        o.addComponent<SpriteAnimator>().animations = {{"idle", "test_atlas/rest"}}; // 16x16 frame, 0.5 u
+        if (!s) s = &o.addComponent<SquashStretch>();
+        scene.flush();
+        scene.step(0.0f);
+        s->kick({1.4f, 0.6f});
+        scene.step(0.0f); // dt 0: the springs stay at the kick
+        CHECK(std::abs(o.sprite->drawSize.x - 0.7f) < 1e-5f && std::abs(o.sprite->drawSize.y - 0.3f) < 1e-5f);
+        for (int i = 0; i < 120; ++i) scene.step(1.0f / 60.0f);
+        CHECK(std::abs(o.sprite->drawSize.x - 0.5f) < 0.005f && std::abs(o.sprite->drawSize.y - 0.5f) < 0.005f);
+    }
+    // Without an animator nothing compounds: the sprite keeps its own size as the base.
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    o.sprite = SpriteData{.drawSize = {1.0f, 1.0f}};
+    auto& s = o.addComponent<SquashStretch>();
+    scene.flush();
+    s.kick({2.0f, 0.5f});
+    scene.step(0.0f);
+    scene.step(0.0f);
+    CHECK(o.sprite->drawSize == glm::vec2(2.0f, 0.5f));
+}
+
+TEST(blink_toggles_and_restores) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& b = o.addComponent<Blink>();
+    scene.flush();
+    b.rate = 10.0f;
+    b.start(0.5f);
+    CHECK(b.active());
+    scene.step(0.01f);
+    CHECK(!o.visible);
+    scene.step(0.1f); // 0.11 s: second phase
+    CHECK(o.visible);
+    scene.step(0.1f);
+    CHECK(!o.visible);
+    for (int i = 0; i < 4; ++i) scene.step(0.1f);
+    CHECK(!b.active() && o.visible);
+    o.visible = false; // a hidden object stays hidden
+    b.start(0.2f);
+    for (int i = 0; i < 5; ++i) scene.step(0.1f);
+    CHECK(!o.visible);
+    o.visible = true;
+    b.start(1.0f);
+    scene.step(0.01f);
+    CHECK(!o.visible);
+    o.removeComponent<Blink>(); // removed mid-blink: visibility comes back
+    scene.flush();
+    CHECK(o.visible && !o.getComponent<Blink>());
+}
+
+TEST(velocity_lean_follows_motion) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    o.addComponent<VelocityLean>();
+    scene.flush();
+    const float dt = 1.0f / 60.0f, full = glm::radians(4.0f);
+    for (int i = 0; i < 60; ++i) { o.transform.position.x += 10.0f * dt; scene.step(dt); }
+    CHECK(std::abs(o.transform.rotation + full) < 0.01f * full); // right: leans forward (clockwise)
+    for (int i = 0; i < 60; ++i) { o.transform.position.x -= 2.5f * dt; scene.step(dt); }
+    CHECK(std::abs(o.transform.rotation - 0.5f * full) < 0.01f * full); // half of fullSpeed
+    for (int i = 0; i < 60; ++i) scene.step(dt);
+    CHECK(std::abs(o.transform.rotation) < 0.01f * full);
+    o.transform.position.x += 3.0f; // respawn: beyond teleportDistance, no lean
+    scene.step(dt);
+    CHECK(std::abs(o.transform.rotation) < 0.01f * full);
+}
+
+namespace {
+struct AnimEventFixture {
+    Scene2D scene;
+    std::vector<AnimationEvent> got;
+    EventBus::Subscription sub = scene.events().subscribe<AnimationEvent>([this](const AnimationEvent& e) { got.push_back(e); });
+    GameObject& o = scene.createObject<GameObject>();
+    SpriteAnimator& anim = o.addComponent<SpriteAnimator>();
+    AnimEventFixture() {
+        scene.setService(&testAssets());
+        o.sprite = SpriteData{};
+        o.sprite->atlasName = "test_atlas";
+        anim.animations = {{"idle", "test_atlas/walk"}};
+        anim.animationEvents = {{"walk", {{1, "step"}}}};
+        scene.flush();
+    }
+    void step(float dt) { scene.step(dt); scene.flush(); }
+};
+}
+
+TEST(animation_frame_event_emitted_once_per_entry) {
+    AnimEventFixture f;
+    f.step(0.01f); // frame 0
+    CHECK(f.got.empty());
+    f.step(0.1f); // frame 1 enters
+    CHECK(f.got.size() == 1 && f.o.sprite->frameName == "a 1");
+    if (!f.got.empty()) CHECK(f.got[0].object == f.o.id && f.got[0].animation == "walk" && f.got[0].name == "step");
+    f.step(0.02f);
+    f.step(0.02f); // still on frame 1: no repeat
+    CHECK(f.got.size() == 1);
+    f.step(0.1f); // frame 0
+    f.step(0.1f); // frame 1 again on the next loop
+    CHECK(f.got.size() == 2);
+}
+
+TEST(animation_event_fires_for_skipped_frame) {
+    AnimEventFixture f;
+    f.anim.animationEvents["walk"][0] = "start";
+    f.step(0.01f); // frame 0 enters when the animation starts
+    CHECK(f.got.size() == 1 && f.got[0].name == "start");
+    f.step(0.15f); // frame 1, 0.05 s into it
+    f.got.clear();
+    f.step(0.27f); // 0.32 s of frames in one step: frame 0, frame 1, frame 0
+    CHECK(f.got.size() == 3 && f.o.sprite->frameName == "a 0");
+    if (f.got.size() == 3) CHECK(f.got[0].name == "start" && f.got[1].name == "step" && f.got[2].name == "start");
+}
+
+TEST(prefab_reads_animation_events) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_anim_events");
+    CHECK(o && t.prefabs.warnings().empty());
+    auto* anim = o ? o->getComponent<SpriteAnimator>() : nullptr;
+    CHECK(anim && anim->animationEvents["walk"].size() == 2);
+    if (anim) CHECK(anim->animationEvents["walk"][0] == "start" && anim->animationEvents["walk"][1] == "step");
+    // Inherited per animation: the child's "walk" replaces the base's frame map, "rest" is added.
+    GameObject* c = t.prefabs.instantiate(t.scene, "test_anim_events_child");
+    CHECK(c && t.prefabs.warnings().empty());
+    auto* canim = c ? c->getComponent<SpriteAnimator>() : nullptr;
+    CHECK(canim && canim->animationEvents.size() == 2 && canim->animationEvents["walk"].size() == 1);
+    if (canim) CHECK(canim->animationEvents["walk"][1] == "stomp" && canim->animationEvents["rest"][0] == "sit");
+}
+
+TEST(particles_trim_when_max_lowered) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& e = o.addComponent<ParticleEmitter>();
+    scene.flush();
+    ParticleConfig c;
+    c.count = 10;
+    c.lifetime = {5.0f, 5.0f};
+    e.burst(c, {0.0f, 0.0f});
+    e.maxParticles = 4; // F1 inspector
+    scene.step(0.01f);
+    CHECK(e.alive() == 4);
+}
+
+// --- Reusable effects: library and prefab triggers (D2 Task 3) -----------------------------------------------
+
+namespace {
+const std::filesystem::path TestEffects = MUSH2D_TEST_DATA "/effects";
+}
+
+// A test object with a state machine and no effect code: its juice comes from test_effects.prefab.json.
+// Started before registration, so the first StateChanged comes from registerStateMachine.
+class TestMover : public GameObject {
+    MUSH2D_OBJECT(TestMover, GameObject)
+public:
+    struct Named : State<TestMover> {
+        const char* n;
+        explicit Named(const char* n) : n(n) {}
+        const char* name() const override { return n; }
+        const char* update(TestMover&, float) override { return nullptr; }
+    };
+    StateMachine<TestMover> move;
+    void onCreate(Scene2D&) override {
+        move.add(std::make_unique<Named>("idle"));
+        move.add(std::make_unique<Named>("run"));
+        move.start(*this, "idle");
+        registerStateMachine("move", &move);
+    }
+};
+
+TEST(effect_file_loads_and_warns_unknown_action) {
+    EffectLibrary lib;
+    CerrCapture err;
+    lib.scan(TestEffects);
+    const Effect* dust = lib.find("test_dust");
+    CHECK(dust && dust->actions.size() == 2); // the unknown "wiggle" is dropped
+    if (dust) CHECK(dust->actions[0].contains("particles") && dust->actions[1].contains("squash"));
+    CHECK(countOf(err.str(), "wiggle") == 1 && err.str().find("test_dust.effect.json") != std::string::npos);
+    CHECK(!lib.find("nope") && !lib.find("nope"));
+    CHECK(countOf(err.str(), "'nope'") == 1);
+}
+
+TEST(effect_includes_other_effect) {
+    Scene2D scene;
+    EffectLibrary lib;
+    { CerrCapture quiet; lib.scan(TestEffects); }
+    scene.setService(&lib);
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    playEffect(scene, o, "test_outer", 1.0f, {0.0f, 0.0f}, 1);
+    auto* e = o.getComponent<ParticleEmitter>();
+    auto* b = o.getComponent<Blink>();
+    auto* s = o.getComponent<SquashStretch>();
+    CHECK(e && e->alive() == 3 && b && b->active() && s && s->current() == glm::vec2(1.3f, 0.7f));
+
+    // A cycle stops at depth 8: loop_a plays at depths 0, 2, 4 and 6 (one particle each), warned once.
+    GameObject& c = scene.createObject<GameObject>();
+    scene.flush();
+    CerrCapture err;
+    playEffect(scene, c, "test_loop_a", 1.0f, {0.0f, 0.0f}, 1);
+    playEffect(scene, c, nlohmann::json{{"effect", "test_loop_a"}}, 1.0f, {0.0f, 0.0f}, 1);
+    auto* ce = c.getComponent<ParticleEmitter>();
+    CHECK(ce && ce->alive() == 8);
+    CHECK(countOf(err.str(), "deeper than 8") == 1);
+}
+
+TEST(effect_invalid_file_keeps_previous) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_invalid";
+    std::filesystem::create_directories(dir);
+    const auto file = dir / "puff.effect.json";
+    std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": [{"blink": 0.2}]})";
+    EffectLibrary lib;
+    lib.scan(dir);
+    CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 1);
+    CerrCapture err;
+    std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": [{"blink": )";
+    lib.reload(file);
+    std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": {"blink": 1}})";
+    lib.reload(file);
+    const Effect* kept = lib.find("puff");
+    CHECK(kept && kept->actions.size() == 1 && kept->actions[0]["blink"] == 0.2);
+    CHECK(countOf(err.str(), "puff.effect.json") == 2);
+    std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": [{"blink": 0.4}, {"squash": [1, 1]}]})";
+    lib.reload(file);
+    CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 2);
+
+    // scan matches the folder: a removed file disappears, an invalid one keeps its last good version.
+    std::ofstream(dir / "gone.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [{"blink": 0.1}]})";
+    lib.scan(dir);
+    CHECK(lib.find("gone"));
+    std::filesystem::remove(dir / "gone.effect.json");
+    std::ofstream(file, std::ios::trunc) << R"({"version": )";
+    lib.scan(dir);
+    CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 2);
+    CHECK(!lib.find("gone"));
+
+    // A folder that cannot be listed (gone, locked) keeps every effect.
+    lib.scan(dir / "missing");
+    CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 2);
+    CHECK(countOf(err.str(), "cannot list") == 1);
+}
+
+TEST(blink_scale_by_strength) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    // strength = seconds (the Iki's "hurt" cue carries invulnerableTime), not limited to 1 like a squash.
+    playEffect(scene, o, nlohmann::json::parse(R"({"blink": 1.0, "scaleByStrength": true})"), 1.5f, {0.0f, 0.0f}, 1);
+    auto* b = o.getComponent<Blink>();
+    CHECK(b && b->active());
+    if (!b) return;
+    scene.step(1.4f);
+    CHECK(b->active());
+    scene.step(0.2f);
+    CHECK(!b->active());
+}
+
+TEST(effect_triggers_state_anim_and_move) {
+    PrefabScene t;
+    EffectLibrary lib;
+    { CerrCapture quiet; lib.scan(TestEffects); }
+    t.scene.setService(&lib);
+    GameObject* made = t.prefabs.instantiate(t.scene, "test_effects");
+    CHECK(made && t.prefabs.warnings().empty());
+    if (!made) return;
+    auto& o = static_cast<TestMover&>(*made);
+    CHECK(o.getComponent<EffectTriggers>() && !o.getComponent<ParticleEmitter>());
+
+    t.scene.flush(); // state:move:idle (start, before registration) -> test_dust: particles at the feet
+    auto* e = o.getComponent<ParticleEmitter>();
+    CHECK(e && e->alive() == 3);
+    if (e && e->alive()) CHECK(e->particles()[0].position == o.transform.position);
+
+    o.move.change(o, "run"); // state:move:run -> blink
+    t.scene.flush();
+    auto* b = o.getComponent<Blink>();
+    CHECK(b && b->active());
+
+    t.scene.step(0.01f);
+    t.scene.step(0.1f); // walk frame 1: anim:step -> squash
+    auto* s = o.getComponent<SquashStretch>();
+    CHECK(s && s->current() == glm::vec2(1.2f, 0.8f));
+
+    emitMovementCue(t.scene, o, "jumped"); // squash now, stretch 0.033 s later (the jump anticipation)
+    t.scene.flush();
+    if (!s) return;
+    CHECK(s->current() == glm::vec2(1.2f, 0.8f));
+    t.scene.step(0.02f);
+    CHECK(s->current().y < 1.0f); // delay not elapsed
+    t.scene.step(0.02f);
+    CHECK(s->current().y > 1.1f && s->current().x < 0.9f);
+
+    // Events reach only their own object, both ways.
+    GameObject* other = t.prefabs.instantiate(t.scene, "test_effects");
+    t.scene.flush(); // other's own idle state: test_dust squashes it to {1.3, 0.7}
+    auto* otherSquash = other ? other->getComponent<SquashStretch>() : nullptr;
+    CHECK(otherSquash && otherSquash->current() == glm::vec2(1.3f, 0.7f));
+    if (!otherSquash) return;
+    emitMovementCue(t.scene, o, "jumped");
+    t.scene.flush();
+    CHECK(otherSquash->current() == glm::vec2(1.3f, 0.7f) && s->current() == glm::vec2(1.2f, 0.8f));
+    const std::size_t before = e ? e->alive() : 0;
+    const glm::vec2 squashBefore = s->current();
+    emitMovementCue(t.scene, *other, "jumped");
+    t.scene.flush();
+    CHECK(e && e->alive() == before && s->current() == squashBefore);
+}
+
+TEST(effect_trigger_feet_and_register_then_start) {
+    Scene2D scene;
+    std::vector<StateChanged> changes;
+    auto sub = scene.events().subscribe<StateChanged>([&](const StateChanged& c) { changes.push_back(c); });
+    GameObject& o = scene.createObject<GameObject>();
+    o.transform.position = {3.0f, 4.0f};
+    o.collider = ColliderData{.size = {1.0f, 2.0f}, .offset = {0.0f, 0.5f}};
+    auto& t = o.addComponent<EffectTriggers>();
+    t.triggers["move:landed"] = {nlohmann::json::parse(R"({"particles": {"count": 1, "speed": [0, 0]}})")};
+    t.triggers["state:move:idle"] = {nlohmann::json::parse(R"({"blink": 0.2})")};
+    StateMachine<GameObject> move;
+    move.add(std::make_unique<GoIdle>());
+    o.registerStateMachine("move", &move); // registered first, started after: one StateChanged
+    move.start(o, "idle");
+    emitMovementCue(scene, o, "landed");
+    scene.flush();
+    CHECK(changes.size() == 1);
+    if (!changes.empty()) CHECK(changes[0].label == "move" && changes[0].from.empty() && changes[0].to == "idle");
+    CHECK(o.getComponent<Blink>() && o.getComponent<Blink>()->active());
+    auto* e = o.getComponent<ParticleEmitter>();
+    CHECK(e && e->alive() == 1);
+    if (e && e->alive()) CHECK(e->particles()[0].position == glm::vec2(3.0f, 3.5f)); // the collider's bottom
+}
+
+TEST(effect_bad_modifiers_warn_and_never_throw) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_modifiers";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "typo.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [
+        {"squash": [1.2, 0.8], "delay": "0.03"}, {"squash": [1.2, 0.8], "scaleByStrength": 1}, {"delay": 0.1},
+        {"blink": 0.1}, {"particles": {"count": 2, "lifetme": [1, 2]}}]})";
+    EffectLibrary lib;
+    CerrCapture err;
+    lib.scan(dir);
+    const Effect* typo = lib.find("typo");
+    CHECK(typo && typo->actions.size() == 1);
+    CHECK(countOf(err.str(), "typo.effect.json: particles: unknown key 'lifetme'") == 1); // found at load
+    CHECK(countOf(err.str(), "typo.effect.json: delay") == 1 && countOf(err.str(), "typo.effect.json: scaleByStrength") == 1);
+    CHECK(countOf(err.str(), "typo.effect.json: no action") == 1);
+
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    bool threw = false;
+    try {
+        playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.2, 0.8], "delay": "0.03"})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.2, 0.8], "scaleByStrength": 1})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(scene, o, nlohmann::json::parse(R"({"delay": 0.2})"), 1.0f, {0.0f, 0.0f}, 1);
+        scene.step(0.5f);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(!threw && !o.getComponent<SquashStretch>() && !o.getComponent<EffectTriggers>());
+    CHECK(countOf(err.str(), "delay: expected seconds") == 2); // load, then play
+    CHECK(countOf(err.str(), "scaleByStrength: expected true or false") == 2);
+}
+
+TEST(effect_delayed_self_include_stops_at_depth) {
+    Scene2D scene;
+    EffectLibrary lib;
+    { CerrCapture quiet; lib.scan(TestEffects); }
+    scene.setService(&lib);
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    CerrCapture err;
+    playEffect(scene, o, "test_delay_loop", 1.0f, {0.0f, 0.0f}, 1);
+    for (int i = 0; i < 20; ++i) scene.step(0.02f); // one round per step
+    auto* e = o.getComponent<ParticleEmitter>();
+    CHECK(e && e->alive() == 8); // depths 0 to 7
+    CHECK(countOf(err.str(), "test_delay_loop' nested deeper than 8") == 1);
+}
+
+TEST(prefab_effects_inherited_per_trigger) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_effects_child");
+    CHECK(o && t.prefabs.warnings().empty());
+    auto* triggers = o ? o->getComponent<EffectTriggers>() : nullptr;
+    CHECK(triggers && triggers->triggers.size() == 5);
+    if (!triggers) return;
+    // The child's "state:move:run" replaces the base's list, "move:landed" is added, the rest stay.
+    CHECK(triggers->triggers["state:move:run"].size() == 1 && triggers->triggers["state:move:run"][0]["blink"] == 0.2);
+    CHECK(triggers->triggers["move:landed"].size() == 1 && triggers->triggers["move:landed"][0] == "test_dust");
+    CHECK(triggers->triggers["state:move:idle"].size() == 1 && triggers->triggers["move:jumped"].size() == 2);
+}
+
+TEST(prefab_effects_section_warnings) {
+    PrefabScene t;
+    GameObject* o = nullptr;
+    {
+        CerrCapture err;
+        o = t.prefabs.instantiate(t.scene, "test_effects_bad");
+        CHECK(countOf(err.str(), "test_effects_bad") == 5);
+    }
+    const auto& w = t.prefabs.warnings();
+    CHECK(o && w.size() == 5);
+    CHECK(hasWarning(w, "effects.jump: a trigger starts with") && hasWarning(w, "effects.move:a: expected a list"));
+    CHECK(hasWarning(w, "effects.move:b: delay: expected seconds") && hasWarning(w, "effects.move:c: scaleByStrength"));
+    CHECK(hasWarning(w, "effects.move:c: no action"));
+    auto* triggers = o ? o->getComponent<EffectTriggers>() : nullptr;
+    CHECK(triggers && triggers->triggers.count("jump") == 0 && triggers->triggers.count("move:a") == 0);
+    if (triggers) CHECK(triggers->triggers["move:b"].size() == 1 && triggers->triggers["move:c"].empty());
+}
+
+TEST(movement_cues_landed_strength_and_turned) {
+    Scene2D scene;
+    std::vector<MovementCue> got;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { got.push_back(c); });
+    GameObject& o = scene.createObject<GameObject>();
+    o.flipX = true;
+    scene.flush();
+    MoveResult air, ground;
+    ground.grounded = true;
+    emitMovementCues(scene, o, air, ground, {0.0f, -6.0f}, 12.0f);
+    emitMovementCues(scene, o, air, ground, {0.0f, -30.0f}, 12.0f);
+    scene.flush();
+    CHECK(got.size() == 2);
+    if (got.size() == 2) {
+        CHECK(got[0].name == "landed" && std::abs(got[0].strength - 0.5f) < 1e-5f && got[0].object == o.id);
+        CHECK(got[0].direction == -1 && !got[0].position);
+        CHECK(got[1].strength == 1.0f); // limited to 1
+    }
+    got.clear();
+    emitMovementCues(scene, o, ground, air, {0.0f, 5.0f}, 12.0f);
+    MoveResult runRight = ground;
+    runRight.velocity = {3.0f, 0.0f};
+    emitMovementCues(scene, o, runRight, ground, {-3.0f, 0.0f}, 12.0f); // reversed above the threshold
+    MoveResult slowRight = ground;
+    slowRight.velocity = {1.0f, 0.0f};
+    emitMovementCues(scene, o, slowRight, ground, {-1.0f, 0.0f}, 12.0f); // too slow: no turn
+    emitMovementCues(scene, o, ground, ground, {0.0f, 0.0f}, 12.0f);     // nothing happened
+    scene.flush();
+    CHECK(got.size() == 2);
+    if (got.size() == 2) CHECK(got[0].name == "left_ground" && got[1].name == "turned");
+
+    // A braking mover: still moving right at 3 u/s while it already faces left. The facing flip is the turn.
+    got.clear();
+    emitMovementCues(scene, o, runRight, ground, {1.83f, 0.0f}, 12.0f, DefaultTurnThreshold, 1, -1); // turned
+    emitMovementCues(scene, o, runRight, ground, {1.83f, 0.0f}, 12.0f, DefaultTurnThreshold, -1, -1); // braking, no flip
+    emitMovementCues(scene, o, runRight, ground, {1.83f, 0.0f}, 12.0f, DefaultTurnThreshold, -1, 1);  // faces the motion
+    emitMovementCues(scene, o, slowRight, ground, {0.5f, 0.0f}, 12.0f, DefaultTurnThreshold, 1, -1);  // too slow
+    scene.flush();
+    CHECK(got.size() == 1 && !got.empty() && got[0].name == "turned");
+}
+
+TEST(squash_scale_by_strength) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    const auto squash = nlohmann::json::parse(R"({"squash": [1.4, 0.6], "scaleByStrength": true})");
+    playEffect(scene, o, squash, 0.5f, {0.0f, 0.0f}, 1);
+    auto* s = o.getComponent<SquashStretch>();
+    CHECK(s && std::abs(s->current().x - 1.2f) < 1e-5f && std::abs(s->current().y - 0.8f) < 1e-5f);
+    if (!s) return;
+    playEffect(scene, o, squash, 3.0f, {0.0f, 0.0f}, 1); // strength limited to 1
+    CHECK(std::abs(s->current().x - 1.4f) < 1e-5f && std::abs(s->current().y - 0.6f) < 1e-5f);
+    playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.4, 0.6]})"), 0.5f, {0.0f, 0.0f}, 1); // not scaled
+    CHECK(std::abs(s->current().x - 1.4f) < 1e-5f && std::abs(s->current().y - 0.6f) < 1e-5f);
+}
+
+// --- IkiObject (D2 Task 5) -------------------------------------------------------------------------------
+
+namespace {
+IkiObject& makeIki(Scene2D& scene, glm::vec2 feet) {
+    IkiObject& iki = scene.createObject<IkiObject>();
+    iki.transform.position = feet;
+    return iki;
+}
+void stepIki(Scene2D& scene, IkiObject& iki, const InputState& in, int frames = 1) {
+    for (int i = 0; i < frames; ++i) { iki.applyInput(in); scene.step(kDt); }
+}
+// 20 x 10 cells of 0.5 u: floor top y = -4.5 over x 0..10, plus extra solid cells.
+void ikiLevel(Scene2D& scene, std::initializer_list<std::pair<glm::ivec2, int>> extra = {}) {
+    LdtkLayer L = gridLayer(20, 10, extra);
+    setCells(L, 9, 0, 19, 1);
+    scene.collision.addRoom("r", gridSegs(L));
+}
+// Standing on the floor of ikiLevel at x.
+IkiObject& ikiOnFloor(Scene2D& scene, float x) {
+    IkiObject& iki = makeIki(scene, {x, -4.4f});
+    stepIki(scene, iki, {}, 20);
+    return iki;
+}
+InputState zPress() { InputState in; in.jump.pressed = in.jump.down = true; return in; }
+InputState zHeld() { InputState in; in.jump.down = true; return in; }
+InputState rightHeld() { InputState in; in.moveRight.down = true; return in; }
+bool inState(const IkiObject& iki, const char* name) { return std::string(iki.stateName()) == name; }
+}
+
+TEST(iki_run_accel_decel) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    CHECK(iki.grounded && inState(iki, "idle") && std::abs(iki.transform.position.y + 4.5f) < 1e-3f); // position = feet
+    CHECK(iki.hasTag("player") && iki.stateMachines().size() == 1 && iki.stateMachines()[0].first == "move");
+    stepIki(scene, iki, rightHeld());
+    CHECK(std::abs(iki.velocity_.x - 60.0f * kDt) < 1e-3f && inState(iki, "run") && iki.facing == 1.0f);
+    stepIki(scene, iki, rightHeld(), 10);
+    CHECK(std::abs(iki.velocity_.x - 5.0f) < 1e-4f); // runSpeed
+    stepIki(scene, iki, {});
+    CHECK(std::abs(iki.velocity_.x - (5.0f - 70.0f * kDt)) < 1e-3f && inState(iki, "idle"));
+    stepIki(scene, iki, {}, 5);
+    CHECK(iki.velocity_.x == 0.0f);
+
+    // In the air: airAccel speeding up, airDecel slowing down.
+    InputState jumpRight = rightHeld();
+    jumpRight.jump.pressed = jumpRight.jump.down = true;
+    stepIki(scene, iki, jumpRight);
+    InputState airRight = rightHeld();
+    airRight.jump.down = true;
+    const float before = iki.velocity_.x;
+    stepIki(scene, iki, airRight);
+    CHECK(!iki.grounded && std::abs(iki.velocity_.x - before - 35.0f * kDt) < 1e-3f);
+    const float fast = iki.velocity_.x;
+    stepIki(scene, iki, zHeld());
+    CHECK(std::abs(fast - iki.velocity_.x - 20.0f * kDt) < 1e-3f);
+
+    // Reversing on the ground at speed emits "turned" once (the turn dust); a slow reversal does not.
+    int turned = 0;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { turned += c.name == "turned"; });
+    stepIki(scene, iki, {}, 60);
+    stepIki(scene, iki, rightHeld(), 30);
+    InputState left;
+    left.moveLeft.down = true;
+    stepIki(scene, iki, left, 5);        // 5 -> about -0.8 u/s
+    stepIki(scene, iki, rightHeld(), 1); // below 2 u/s: no turn
+    scene.flush();
+    CHECK(turned == 1);
+}
+
+TEST(iki_jump_coyote_and_buffer) {
+    // Coyote: Z 3 frames (0.05 s) after running off a ledge still jumps; 10 frames (0.17 s) after, it does not.
+    for (int late : {3, 10}) {
+        Scene2D scene;
+        LdtkLayer L = gridLayer(20, 14, {});
+        setCells(L, 7, 0, 9, 1);   // ledge top y = -3.5, x 0..5
+        setCells(L, 13, 0, 19, 1); // floor top y = -6.5
+        scene.collision.addRoom("r", gridSegs(L));
+        IkiObject& iki = makeIki(scene, {4.0f, -3.4f});
+        stepIki(scene, iki, {}, 20);
+        CHECK(iki.grounded);
+        for (int guard = 0; iki.grounded && guard < 120; ++guard) stepIki(scene, iki, rightHeld());
+        stepIki(scene, iki, {}, late - 1);
+        stepIki(scene, iki, zPress());
+        if (late == 3) CHECK(iki.velocity_.y > 9.0f && inState(iki, "jump"));
+        else CHECK(iki.velocity_.y < 0.0f && inState(iki, "fall"));
+    }
+
+    // Buffer: Z 5 frames (0.083 s) before landing jumps on landing; 10 frames (0.17 s) before, it does not.
+    auto drop = [](int pressAt, bool& jumped) {
+        Scene2D scene;
+        ikiLevel(scene);
+        IkiObject& iki = makeIki(scene, {3.0f, -1.0f});
+        int landed = -1;
+        for (int f = 0; f < 90; ++f) {
+            stepIki(scene, iki, f == pressAt ? zPress() : InputState{});
+            if (iki.grounded && landed < 0) landed = f;
+            if (landed >= 0 && iki.velocity_.y > 0.0f) jumped = true;
+        }
+        return landed;
+    };
+    bool jumped = false;
+    const int land = drop(-1, jumped);
+    CHECK(land > 15 && !jumped);
+    drop(land - 5, jumped);
+    CHECK(jumped);
+    jumped = false;
+    drop(land - 10, jumped);
+    CHECK(!jumped);
+}
+
+TEST(iki_variable_jump_cut) {
+    auto height = [](int holdFrames, float* releaseRatio) {
+        Scene2D scene;
+        ikiLevel(scene);
+        IkiObject& iki = ikiOnFloor(scene, 3.0f);
+        const float y0 = iki.transform.position.y;
+        stepIki(scene, iki, zPress());
+        float apex = y0;
+        for (int f = 0; f < 90; ++f) {
+            const float vy = iki.velocity_.y;
+            stepIki(scene, iki, f < holdFrames ? zHeld() : InputState{});
+            if (f == holdFrames && releaseRatio) *releaseRatio = (iki.velocity_.y + 32.0f * kDt) / vy;
+            apex = std::max(apex, iki.transform.position.y);
+        }
+        return apex - y0;
+    };
+    float ratio = 0.0f;
+    const float full = height(1000, nullptr), tap = height(4, &ratio);
+    CHECK(full > 1.8f && tap < 0.6f * full);
+    CHECK(std::abs(ratio - 0.5f) < 1e-3f); // releasing Z multiplies vy by jumpCutFactor, then one frame of gravity
+}
+
+TEST(iki_apex_and_fall_gravity) {
+    Scene2D scene; // nothing to land on
+    IkiObject& iki = makeIki(scene, {0.0f, 0.0f});
+    iki.velocity_ = {0.0f, 11.0f};
+    int rising = 0, apex = 0, falling = 0, wrong = 0;
+    for (int f = 0; f < 180; ++f) {
+        const float before = iki.velocity_.y;
+        stepIki(scene, iki, zHeld());
+        const float g = (iki.velocity_.y - before) / kDt;
+        if (iki.velocity_.y == -18.0f) continue; // limited to maxFallSpeed
+        if (before >= 1.5f) { ++rising; wrong += std::abs(g + 32.0f) > 0.01f; }
+        else if (before > -1.5f) { ++apex; wrong += std::abs(g + 16.0f) > 0.01f; }  // apexGravityFactor 0.5
+        else { ++falling; wrong += std::abs(g + 51.2f) > 0.01f; }                  // fallGravityFactor 1.6
+    }
+    CHECK(rising > 10 && apex > 5 && falling > 5 && wrong == 0);
+    CHECK(iki.velocity_.y == -18.0f);
+    // Near the top without Z: plain gravity going up, fall gravity going down.
+    iki.velocity_ = {0.0f, 1.0f};
+    stepIki(scene, iki, {});
+    CHECK(std::abs(iki.velocity_.y - (1.0f - 32.0f * kDt)) < 1e-4f);
+    iki.velocity_ = {0.0f, -1.0f};
+    stepIki(scene, iki, {});
+    CHECK(std::abs(iki.velocity_.y - (-1.0f - 51.2f * kDt)) < 1e-4f);
+}
+
+TEST(iki_corner_correction) {
+    // A one-cell block (x 5.0..5.5, bottom y = -2.5) above the Iki's right side; the Iki is 0.6 wide.
+    auto jumpUnder = [](float overlap, float& apexFeet, float& x) {
+        Scene2D scene;
+        ikiLevel(scene, {{{10, 4}, 1}});
+        IkiObject& iki = ikiOnFloor(scene, 4.7f + overlap);
+        stepIki(scene, iki, zPress());
+        apexFeet = iki.transform.position.y;
+        for (int f = 0; f < 60; ++f) {
+            stepIki(scene, iki, zHeld());
+            apexFeet = std::max(apexFeet, iki.transform.position.y);
+            if (iki.velocity_.y > 0.0f) x = iki.transform.position.x;
+        }
+    };
+    float apex = 0.0f, x = 0.0f;
+    jumpUnder(0.1f, apex, x);
+    CHECK(apex > -3.0f && x <= 4.7f + 1e-3f && x >= 4.6f); // slid 0.1 left and kept rising
+    jumpUnder(0.3f, apex, x);
+    CHECK(apex < -4.05f && std::abs(x - 5.0f) < 1e-3f); // head hit the block (feet at most 1.6 below it)
+}
+
+TEST(iki_up_arrow_does_not_jump) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    const float y0 = iki.transform.position.y;
+    InputState up;
+    up.moveUp.pressed = up.moveUp.down = true;
+    stepIki(scene, iki, up);
+    up.moveUp.pressed = false;
+    stepIki(scene, iki, up, 20);
+    CHECK(iki.grounded && inState(iki, "idle") && std::abs(iki.transform.position.y - y0) < 1e-4f);
+}
+
+TEST(iki_hurt_knockback_and_invulnerability) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 5.0f);
+    auto* resources = iki.getComponent<Resources>();
+    CHECK(resources && resources->health() == 5);
+    if (!resources) return;
+    iki.hurt({1, {-1.0f, 0.0f}});
+    CHECK(inState(iki, "hurt") && resources->health() == 4 && iki.invulnerable());
+    stepIki(scene, iki, rightHeld()); // input is ignored while hurt
+    CHECK(iki.velocity_.x < -4.0f && iki.velocity_.y > 0.0f && !iki.grounded && iki.facing == 1.0f);
+    iki.hurt({1, {1.0f, 0.0f}});
+    CHECK(resources->health() == 4); // invulnerable
+    stepIki(scene, iki, {}, int(0.35f / kDt) + 2);
+    CHECK(!inState(iki, "hurt"));
+    stepIki(scene, iki, {}, int(0.8f / kDt));
+    CHECK(!iki.invulnerable());
+    iki.hurt({1, {}});
+    CHECK(resources->health() == 3);
+    stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
+    iki.hurt({1, {0.0f, -1.0f}}); // a hit from above pushes down, not up
+    CHECK(resources->health() == 2 && iki.velocity_.y == -6.0f && iki.velocity_.x == 0.0f);
+    // "hurt" carries invulnerableTime: the prefab's blink lasts as long as the invulnerability.
+    stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
+    std::vector<MovementCue> cues;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { if (c.name == "hurt") cues.push_back(c); });
+    iki.invulnerableTime = 1.25f;
+    iki.hurt({1, {}});
+    scene.flush();
+    CHECK(cues.size() == 1 && !cues.empty() && cues[0].strength == 1.25f);
+}
+
+TEST(iki_death_emits_died) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    std::vector<GameObjectId> died;
+    auto sub = scene.events().subscribe<Died>([&](const Died& e) { died.push_back(e.id); });
+    iki.hurt({5, {-1.0f, 0.0f}});
+    scene.flush();
+    CHECK(died.size() == 1 && died[0] == iki.id && inState(iki, "dead"));
+    InputState all = rightHeld();
+    all.jump.pressed = all.jump.down = true;
+    stepIki(scene, iki, all, 30);
+    CHECK(inState(iki, "dead") && iki.velocity_.x == 0.0f && iki.grounded); // no control
+    stepIki(scene, iki, {}, int(1.0f / kDt));
+    iki.hurt({1, {}});
+    scene.flush();
+    CHECK(died.size() == 1);
+}
+
+TEST(iki_respawn_resets_state) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    auto* resources = iki.getComponent<Resources>();
+    if (!resources) { CHECK(false); return; }
+    CHECK(resources->spend(Element::Ice, 30.0f));
+    iki.hurt({5, {}});
+    stepIki(scene, iki, zPress()); // a Z while dead must not jump after the respawn
+    iki.respawnAt({6.0f, -4.4f});
+    iki.respawn();
+    CHECK(inState(iki, "idle") && resources->health() == 5 && resources->energy(Element::Ice) == 100.0f);
+    CHECK(iki.velocity_ == glm::vec2(0.0f) && !iki.invulnerable() && iki.transform.position == glm::vec2(6.0f, -4.4f));
+    bool jumped = false;
+    for (int f = 0; f < 10; ++f) {
+        stepIki(scene, iki, {});
+        jumped = jumped || iki.velocity_.y > 0.0f;
+    }
+    CHECK(!jumped && iki.grounded);
+    iki.hurt({1, {}});
+    CHECK(resources->health() == 4);
+}
+
+TEST(iki_stomps_slime) {
+    Scene2D scene;
+    WorldState state;
+    scene.setService(&state);
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(); // collider 0.8 x 0.8 at (0, 0)
+    slime.moveSpeed = 0.0f;
+    GameObject& ground = scene.createObject<GameObject>();
+    ground.transform.position = {0.0f, -0.5f};
+    ground.collider = ColliderData{.size = {2.0f, 0.2f}};
+    trackEntity(slime, entity("Slime", "s1", {}, {{"respawn", false}}), {0.0f, 0.0f});
+    IkiObject& iki = makeIki(scene, {0.0f, 0.7f}); // feet at 0.7, slime top at 0.4
+    iki.stompBounceFactor = 0.5f;
+    const GameObjectId slimeId = slime.id;
+    bool bounced = false;
+    for (int i = 0; i < 60 && !bounced; ++i) {
+        stepIki(scene, iki, {});
+        bounced = iki.velocity_.y > 0.0f;
+    }
+    scene.flush();
+    CHECK(bounced && std::abs(iki.velocity_.y - 5.5f) < 0.6f); // jumpSpeed * stompBounceFactor, minus up to a frame of gravity
+    CHECK(scene.findObject(slimeId) == nullptr && state.isGone("s1") && inState(iki, "jump"));
+}
+
+// --- Ice stakes (D2 Task 6) ------------------------------------------------------------------------------
+
+namespace {
+// 24 x 16 cells of 0.5 u: cell (x, y) covers x 0.5x..0.5x+0.5, y -0.5y-0.5..-0.5y. Floor top y = -7.5.
+// A wall cell in column 12 has its left face at x = 6.0; the Iki (0.6 wide) touches it with feet x = 5.7.
+LdtkLayer iceGrid() {
+    LdtkLayer L = gridLayer(24, 16, {});
+    setCells(L, 15, 0, 23, 1);
+    return L;
+}
+void column(LdtkLayer& L, int x, int y0, int y1, int v) { for (int y = y0; y <= y1; ++y) L.intGrid[size_t(y) * L.cells.x + x] = v; }
+// An Iki with the ice stakes unlocked (flag in the WorldState service + the ability component).
+IkiObject& iceIki(Scene2D& scene, WorldState& state, const LdtkLayer& L, glm::vec2 feet) {
+    scene.collision.addRoom("r", gridSegs(L));
+    scene.setService(&state);
+    state.setFlag("ability.ice.stakes", true);
+    IkiObject& iki = makeIki(scene, feet);
+    iki.addComponent<IceStakesAbility>();
+    return iki;
+}
+InputState keys(bool left, bool right, bool up, bool down, bool zPressed = false, bool zDown = false) {
+    InputState in;
+    in.moveLeft.down = left;
+    in.moveRight.down = right;
+    in.moveUp.down = up;
+    in.moveDown.down = down;
+    in.jump.pressed = zPressed;
+    in.jump.down = zDown || zPressed;
+    return in;
+}
+// Steps until the Iki is in `state` (at most `limit` frames); true when it got there.
+bool stepUntil(Scene2D& scene, IkiObject& iki, const InputState& in, const char* state, int limit = 120) {
+    for (int f = 0; f < limit && !inState(iki, state); ++f) stepIki(scene, iki, in);
+    return inState(iki, state);
+}
+// Full-height ice wall at column 12 (x = 6.0), rows 3..14, standing on the floor.
+LdtkLayer iceWallGrid() {
+    LdtkLayer L = iceGrid();
+    column(L, 12, 3, 14, 9);
+    return L;
+}
+} // namespace
+
+TEST(iki_wall_cling_requires_ability) {
+    // service / flag / component / ice: all four are needed. Without them the ice is a plain wall: slide and land.
+    auto clings = [](bool service, bool flag, bool component, int value) {
+        Scene2D scene;
+        WorldState state;
+        LdtkLayer L = iceGrid();
+        column(L, 12, 3, 14, value);
+        scene.collision.addRoom("r", gridSegs(L));
+        if (service) scene.setService(&state);
+        state.setFlag("ability.ice.stakes", flag);
+        IkiObject& iki = makeIki(scene, {5.0f, -4.0f});
+        if (component) iki.addComponent<IceStakesAbility>();
+        const bool got = stepUntil(scene, iki, rightHeld(), "wall", 90);
+        if (!got) CHECK(iki.grounded);
+        return got;
+    };
+    CHECK(clings(true, true, true, 9));
+    CHECK(!clings(false, true, true, 9));
+    CHECK(!clings(true, false, true, 9));
+    CHECK(!clings(true, true, false, 9));
+    CHECK(!clings(true, true, true, 1));
+
+    IceStakesAbility ability;
+    Scene2D scene;
+    CHECK(ability.unlockFlag == "ability.ice.stakes" && !ability.unlocked(scene));
+
+    // Clinging holds without a direction and without a time limit; gravity is off.
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    stepIki(scene, iki, {}); // the first step closes the grab gap
+    CHECK(std::abs(iki.transform.position.x - 5.7f) < 1e-4f);
+    const glm::vec2 at = iki.transform.position;
+    stepIki(scene, iki, {}, 180);
+    CHECK(inState(iki, "wall") && glm::length(iki.transform.position - at) < 1e-3f && iki.facing == 1.0f);
+    // Grabbing emits "grab" at the hands (the prefab plays ice_stake there).
+    std::vector<MovementCue> grabs;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { if (c.name == "grab") grabs.push_back(c); });
+    iki.states().change(iki, "wall");
+    scene.flush();
+    CHECK(grabs.size() == 1 && !grabs.empty() && grabs[0].position && glm::length(*grabs[0].position - (at + glm::vec2(0.3f, 1.2f))) < 1e-4f);
+    // The hands follow the collider: a prefab with a bigger body puts the stakes at its hands.
+    iki.collider->size = {1.0f, 2.0f};
+    iki.collider->offset = {0.0f, 1.0f};
+    iki.states().change(iki, "wall");
+    scene.flush();
+    CHECK(grabs.size() == 2 && grabs[1].position && glm::length(*grabs[1].position - (at + glm::vec2(0.5f, 1.5f))) < 1e-4f);
+}
+
+TEST(iki_wall_climb_up_down) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    int climbs = 0;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { climbs += c.name == "climb"; });
+    float y = iki.transform.position.y;
+    stepIki(scene, iki, keys(false, false, true, false), 30); // up: 0.5 s at wallClimbSpeed 3
+    scene.flush();
+    CHECK(inState(iki, "wall") && std::abs(iki.transform.position.y - y - 1.5f) < 0.02f);
+    CHECK(climbs >= 4 && climbs <= 6); // every climbParticleInterval (0.1 s) while moving
+    climbs = 0;
+    y = iki.transform.position.y;
+    stepIki(scene, iki, {}, 30);
+    scene.flush();
+    CHECK(climbs == 0 && std::abs(iki.transform.position.y - y) < 1e-4f);
+    stepIki(scene, iki, keys(false, false, false, true), 15); // down
+    CHECK(inState(iki, "wall") && std::abs(iki.transform.position.y - y + 0.75f) < 0.02f);
+    // Down to the floor: the wall's foot lets go.
+    CHECK(stepUntil(scene, iki, keys(false, false, false, true), "idle"));
+    CHECK(iki.grounded && std::abs(iki.transform.position.y + 7.5f) < 0.01f);
+}
+
+TEST(iki_wall_jump_locks_input) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    stepIki(scene, iki, keys(false, true, false, false, true));
+    CHECK(inState(iki, "jump") && iki.facing == -1.0f);
+    CHECK(std::abs(iki.velocity_.x + 6.0f) < 1e-4f && iki.velocity_.y > 9.0f); // wallJumpVelocity, minus a frame of gravity
+    // wallJumpLock 0.15 s: holding the wall's direction changes nothing (no air accel or decel either).
+    for (int f = 0; f < 7; ++f) {
+        stepIki(scene, iki, keys(false, true, false, false, false, true));
+        CHECK(std::abs(iki.velocity_.x + 6.0f) < 1e-4f);
+    }
+    stepIki(scene, iki, keys(false, true, false, false, false, true), 4);
+    CHECK(iki.velocity_.x > -5.7f); // steering again (airDecel 20 against the push)
+}
+
+TEST(iki_wall_coyote) {
+    // Ice over a pit (rows 3..8, bottom y = -4.5): climbing down past its end lets go; Z within coyoteTime
+    // still wall-jumps, later it does nothing.
+    for (int late : {3, 10}) {
+        Scene2D scene;
+        WorldState state;
+        LdtkLayer L = iceGrid();
+        column(L, 12, 3, 8, 9);
+        IkiObject& iki = iceIki(scene, state, L, {5.0f, -3.0f});
+        CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+        CHECK(stepUntil(scene, iki, keys(false, false, false, true), "fall"));
+        stepIki(scene, iki, {}, late - 1);
+        stepIki(scene, iki, zPress());
+        if (late == 3) CHECK(inState(iki, "jump") && iki.velocity_.x < -5.9f && iki.velocity_.y > 9.0f);
+        else CHECK(inState(iki, "fall") && iki.velocity_.y < 0.0f && iki.velocity_.x == 0.0f);
+    }
+}
+
+TEST(iki_buffered_jump_on_cling_wall_jumps) {
+    auto run = [](int pressAt, bool& clung, float& vx) {
+        Scene2D scene;
+        WorldState state;
+        IkiObject& iki = iceIki(scene, state, iceWallGrid(), {4.5f, -4.0f});
+        int touch = -1;
+        for (int f = 0; f < 60 && touch < 0; ++f) {
+            InputState in = rightHeld();
+            if (f == pressAt) in.jump.pressed = in.jump.down = true;
+            stepIki(scene, iki, in);
+            if (inState(iki, "wall")) clung = true;
+            if (inState(iki, "wall") || iki.velocity_.x < 0.0f) touch = f;
+        }
+        vx = iki.velocity_.x;
+        return touch;
+    };
+    bool clung = false;
+    float vx = 0.0f;
+    const int touch = run(-1, clung, vx);
+    CHECK(touch > 10 && clung);
+    clung = false;
+    run(touch - 5, clung, vx);
+    CHECK(!clung && vx < -5.9f); // the buffered Z wall-jumps on contact
+    clung = false;
+    run(touch - 10, clung, vx);
+    CHECK(clung); // 0.17 s before: expired
+}
+
+namespace {
+// Ice ceiling at row 3 (bottom face y = -2.0) over x 1..6.5, plain ceiling over x 6.5..9.
+LdtkLayer iceCeilingGrid() {
+    LdtkLayer L = iceGrid();
+    setCells(L, 3, 2, 12, 9);
+    setCells(L, 3, 13, 17, 1);
+    return L;
+}
+} // namespace
+
+TEST(iki_ceiling_hang_moves_and_releases) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceCeilingGrid(), {3.0f, -3.85f}); // head 0.25 below the ice
+    const InputState up = keys(false, false, true, false);
+    CHECK(stepUntil(scene, iki, up, "ceiling", 3));
+    stepIki(scene, iki, {}, 30);
+    CHECK(inState(iki, "ceiling") && std::abs(iki.transform.position.y + 3.6f) < 1e-3f); // snapped up, no gravity
+    int climbs = 0;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { climbs += c.name == "climb"; });
+    stepIki(scene, iki, rightHeld(), 30);
+    scene.flush();
+    CHECK(inState(iki, "ceiling") && std::abs(iki.transform.position.x - 4.5f) < 0.02f && iki.facing == 1.0f);
+    CHECK(climbs >= 4 && climbs <= 6);
+    // Down lets go.
+    stepIki(scene, iki, keys(false, false, false, true));
+    CHECK(inState(iki, "fall"));
+    // Z lets go too (falls, no jump), and holding up does not grab again until up is pressed anew.
+    iki.respawnAt({3.0f, -3.85f});
+    stepIki(scene, iki, {});
+    CHECK(stepUntil(scene, iki, up, "ceiling", 3));
+    stepIki(scene, iki, keys(false, false, true, false, true));
+    CHECK(inState(iki, "fall") && iki.velocity_.y <= 0.0f);
+    for (int f = 0; f < 10; ++f) {
+        stepIki(scene, iki, keys(false, false, true, false, false, true));
+        CHECK(!inState(iki, "ceiling") && iki.velocity_.y <= 0.0f);
+    }
+    // The ice ends at x = 6.5: past it the Iki lets go.
+    iki.respawnAt({6.0f, -3.85f});
+    stepIki(scene, iki, {});
+    CHECK(stepUntil(scene, iki, up, "ceiling", 3));
+    CHECK(stepUntil(scene, iki, keys(false, true, true, false), "fall", 60));
+    CHECK(std::abs(iki.transform.position.x - 6.5f) < 0.15f); // the middle of the body left the ice
+}
+
+namespace {
+// Ice wall at x = 6.0 (rows 3..14) under an ice ceiling at y = -1.5 (row 2, x 1..6): an inner corner.
+LdtkLayer iceCornerGrid() {
+    LdtkLayer L = iceWallGrid();
+    setCells(L, 2, 2, 12, 9);
+    return L;
+}
+} // namespace
+
+TEST(iki_wall_to_ceiling_inner_corner) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceCornerGrid(), {5.0f, -5.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    CHECK(stepUntil(scene, iki, keys(false, false, true, false), "ceiling", 120)); // up only: into the ceiling
+    stepIki(scene, iki, {}, 5); // snaps up from the grab reach
+    CHECK(inState(iki, "ceiling") && std::abs(iki.transform.position.y + 3.1f) < 1e-3f);
+    InputState left;
+    left.moveLeft.down = true;
+    stepIki(scene, iki, left, 20);
+    CHECK(inState(iki, "ceiling") && iki.transform.position.x < 5.0f);
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall", 60)); // back to the wall, holding its direction
+    stepIki(scene, iki, {});
+    CHECK(inState(iki, "wall") && std::abs(iki.transform.position.x - 5.7f) < 1e-3f);
+}
+
+TEST(iki_wall_ceiling_corner_no_flicker) {
+    // Up and toward the wall held in the corner: the wall wins and the state never changes again.
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceCornerGrid(), {5.0f, -5.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    int changes = 0;
+    auto sub = scene.events().subscribe<StateChanged>([&](const StateChanged&) { ++changes; });
+    const InputState upRight = keys(false, true, true, false);
+    stepIki(scene, iki, upRight, 120);
+    scene.flush();
+    CHECK(changes == 0 && inState(iki, "wall") && std::abs(iki.transform.position.y + 3.1f) < 1e-3f);
+    // From the ceiling, the same keys: one change to the wall, then none.
+    iki.states().change(iki, "ceiling");
+    scene.flush();
+    changes = 0;
+    stepIki(scene, iki, upRight, 60);
+    scene.flush();
+    CHECK(changes == 1 && inState(iki, "wall"));
+}
+
+TEST(iki_ice_ends_on_plain_wall) {
+    // Column 12: plain rows 3..8 over ice rows 9..14 (ice top y = -4.5).
+    LdtkLayer L = iceGrid();
+    column(L, 12, 3, 8, 1);
+    column(L, 12, 9, 14, 9);
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, L, {5.0f, -3.0f});
+    // Beside the plain part: no grab. It grabs once its centre (feet + 0.8) is beside the ice.
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    CHECK(iki.transform.position.y < -5.2f && iki.transform.position.y > -5.6f);
+    // Climbing up past the ice with a wall above: let go (no ledge hop) and no re-grab while holding.
+    CHECK(stepUntil(scene, iki, keys(false, true, true, false), "fall"));
+    CHECK(iki.velocity_.y <= 0.0f && std::abs(iki.transform.position.x - 5.7f) < 1e-3f);
+    for (int f = 0; f < 10; ++f) {
+        stepIki(scene, iki, keys(false, true, true, false));
+        CHECK(inState(iki, "fall"));
+    }
+    // Pressing the direction anew grabs again.
+    stepIki(scene, iki, {});
+    stepIki(scene, iki, rightHeld());
+    CHECK(inState(iki, "wall"));
+}
+
+TEST(iki_ledge_hop_at_top) {
+    // An ice block x 6.0..8.0, top y = -4.5, nothing above: climbing over its top hops onto it.
+    LdtkLayer L = iceGrid();
+    for (int x = 12; x <= 15; ++x) column(L, x, 9, 14, 9);
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, L, {5.0f, -5.5f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    CHECK(stepUntil(scene, iki, keys(false, false, true, false), "jump"));
+    CHECK(iki.velocity_.x > 0.0f && iki.velocity_.y > 5.0f); // ledgeHop
+    CHECK(stepUntil(scene, iki, {}, "idle", 90));
+    CHECK(iki.grounded && std::abs(iki.transform.position.y + 4.5f) < 1e-3f && iki.transform.position.x > 5.9f);
+}
+
+TEST(iki_hurt_releases_cling) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    iki.hurt({1, {-1.0f, 0.0f}});
+    CHECK(inState(iki, "hurt") && iki.velocity_.x == -6.0f && iki.velocity_.y == 6.0f);
+    // During hurtDuration: no re-grab, no wall jump, whatever is held.
+    for (int f = 0; f < 18; ++f) {
+        stepIki(scene, iki, keys(false, true, true, false, f % 2 == 0, true));
+        CHECK(inState(iki, "hurt") && iki.velocity_.y < 6.5f);
+    }
+
+    // Hanging from a ceiling: the hit lets go too, and up held does not grab again while hurt.
+    Scene2D scene2;
+    WorldState state2;
+    IkiObject& hanging = iceIki(scene2, state2, iceCeilingGrid(), {3.0f, -3.85f});
+    const InputState up = keys(false, false, true, false);
+    CHECK(stepUntil(scene2, hanging, up, "ceiling", 3));
+    stepIki(scene2, hanging, up, 5);
+    hanging.hurt({1, {1.0f, 0.0f}});
+    CHECK(inState(hanging, "hurt") && hanging.velocity_.x == 6.0f);
+    for (int f = 0; f < 18; ++f) {
+        stepIki(scene2, hanging, keys(false, false, true, false, f % 2 == 0, true));
+        CHECK(inState(hanging, "hurt"));
+    }
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

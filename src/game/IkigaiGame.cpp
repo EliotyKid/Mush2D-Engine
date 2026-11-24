@@ -3,9 +3,11 @@
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
 #include "engine/world/Collision.hpp"
-#include "game/objects/PlayerObject.hpp"
+#include "engine/world/IPlayer.hpp"
+#include "engine/world/Resources.hpp"
+#include "game/objects/IkiObject.hpp"
 #include "game/scenes/SceneRegistry.hpp"
-#include "game/spawners/Spawn.hpp"
+#include "game/ui/DebugHud.hpp"
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -20,14 +22,32 @@
 #include <string>
 #include <utility>
 
+// The player is the object tagged "player" (spec D2 decision 4): the remembered one, else the first one found.
+static GameObject* livePlayer(Scene2D& scene, GameObjectId& id) {
+    GameObject* player = scene.findObject(id);
+    if (!player || !player->hasTag("player")) {
+        player = findPlayer(scene);
+        if (player) {
+            id = player->id;
+        }
+    }
+    return player;
+}
+
 void IkigaiGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
     // Objects reach the game's data through scene services (spec decision 5), not constructor arguments.
     s.scene.setService(&gameAssets);
     s.scene.setService(&gameAssets.registry);
     s.scene.setService(&prefabs);
+    effects.scan(sourceAssetPath("assets/effects"));
+    s.scene.setService(&effects);
     s.scene.setService(&world);
     s.scene.setService(&world.state);
+    // Health 0 (Resources emits Died): the existing death (fade, room restore, checkpoint).
+    diedSubscription = s.scene.events().subscribe<Died>([this, &s](const Died& e) {
+        if (currentSceneId == SceneId::Showcase && e.id == playerObjectId) killPlayer(s, e.id);
+    });
     regions.init(s.materials, sourceAssetPath("assets/regions")); // Debug: the source tree, so panel saves survive rebuilds
 
     atlasMaterials.clear();
@@ -56,6 +76,7 @@ void IkigaiGame::init(EngineServices& s) {
     loadScene(s, SceneId::Showcase);
     levelFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), sourceAssetPath("assets/regions"), ".region.json");
     prefabFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), prefabs.dir(), ".prefab.json"); // only .dir is used
+    effectFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), sourceAssetPath("assets/effects"), ".effect.json"); // only .dir is used
 
     // Debug (MUSH2D_CAMERA_X=<world x>): park the camera there, e.g. for parallax screenshots.
     if (const char* camX = std::getenv("MUSH2D_CAMERA_X")) {
@@ -68,6 +89,7 @@ void IkigaiGame::update(EngineServices& s, float deltaTime) {
 
     handleGlobalInput(s, deltaTime);
 #ifndef NDEBUG
+    if (effectFiles.poll(deltaTime).dir) effects.scan(sourceAssetPath("assets/effects"));
     if (currentSceneId == SceneId::Showcase) {
         if (const FileWatcher::Change change = levelFiles.poll(deltaTime)) hotReload(s, !change.dir);
         // A saved prefab: reload the rooms like F5 (unsaved inspector edits are lost; the WorldState stays).
@@ -84,13 +106,7 @@ void IkigaiGame::update(EngineServices& s, float deltaTime) {
         submitRenderData(s);
         return;
     }
-    auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
-    if (!player) {
-        player = scene.findFirstObjectOfType<PlayerObject>();
-        if (player) {
-            playerObjectId = player->id;
-        }
-    }
+    auto* player = dynamic_cast<IPlayer*>(livePlayer(scene, playerObjectId));
     // A death fade only exists in the Showcase world; leaving it mid-fade must not freeze other scenes.
     const bool dying = currentSceneId == SceneId::Showcase && world.dying();
     if (player && !dying) { // a dying player stands still
@@ -148,7 +164,7 @@ void IkigaiGame::submitRenderData(EngineServices& s) {
     }
     appendSceneSprites(s.scene, batch, [this](std::uint32_t atlasIndex, const std::string& frameName) {
         return lookupAtlasFrame(atlasIndex, frameName);
-    });
+    }, &s.materials.white());
 
     // Debug (MUSH2D_DEBUG_ADDITIVE=1): bright additive sprite next to the player, to check additive + bloom.
     static const bool debugAdditive = std::getenv("MUSH2D_DEBUG_ADDITIVE") != nullptr;
@@ -186,10 +202,12 @@ void IkigaiGame::submitRenderData(EngineServices& s) {
     collectComponentLights(s.scene, lights);
 }
 void IkigaiGame::shutdown(EngineServices& s) {
+    diedSubscription.reset();
     s.scene.clear();
     s.scene.setService<GameAssets>(nullptr);
     s.scene.setService<AssetRegistry>(nullptr);
     s.scene.setService<PrefabLibrary>(nullptr);
+    s.scene.setService<EffectLibrary>(nullptr);
     s.scene.setService<World>(nullptr);
     s.scene.setService<WorldState>(nullptr);
 }
@@ -207,15 +225,16 @@ bool IkigaiGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTra
 void IkigaiGame::hotReload(EngineServices& s, bool ldtkOnly) {
     keepRegions = ldtkOnly; // only the .ldtk changed: keep the panel's unsaved look
     const bool wasDying = world.dying();
-    const auto* old = s.scene.findObjectAs<PlayerObject>(playerObjectId);
-    const glm::vec2 at = old ? old->transform.position : glm::vec2(0.0f);
-    const bool hadPlayer = old != nullptr;
+    const GameObject* old = s.scene.findObject(playerObjectId);
+    const bool hadPlayer = old && old->hasTag("player");
+    const glm::vec2 at = hadPlayer ? old->transform.position : glm::vec2(0.0f);
     std::fprintf(stderr, "Hot reload: level files changed\n");
     const bool loaded = tryLoadScene(s, SceneId::Showcase, currentSceneTransitionData);
     keepRegions = false;
     if (!loaded || !hadPlayer) return;
-    auto* player = s.scene.findObjectAs<PlayerObject>(playerObjectId);
-    if (!player || !player->collider) return;
+    GameObject* player = s.scene.findObject(playerObjectId);
+    auto* control = dynamic_cast<IPlayer*>(player);
+    if (!control || !player->collider) return;
 
     // Spec decision 8: same place, pushed out of new geometry up to 2 u, else the checkpoint.
     if (const int room = world.roomAt(at); room >= 0) world.loadAround(room);
@@ -229,7 +248,7 @@ void IkigaiGame::hotReload(EngineServices& s, bool ldtkOnly) {
     glm::vec2 target = respawnPoint();
     if (!wasDying && depenetrate(body, query)) target = body.position - player->collider->offset;
     else if (const int room = world.roomAt(target); room >= 0) world.loadAround(room);
-    player->teleport(target);
+    control->respawnAt(target);
     s.camera.position = target + s.camera.followOffset;
 }
 
@@ -261,7 +280,7 @@ void IkigaiGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTransi
         activeSceneDefinition->onEnter(scene, currentSceneTransitionData);
     }
 
-    auto* player = scene.findFirstObjectOfType<PlayerObject>();
+    GameObject* player = findPlayer(scene);
     if (player) {
         playerObjectId = player->id;
         camera.position = player->transform.position;
@@ -320,18 +339,13 @@ void IkigaiGame::handleGlobalInput(EngineServices& s, float deltaTime) {
         camera.followEnabled = !camera.followEnabled;
     }
 
-    auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
-    if (!player) {
-        player = scene.findFirstObjectOfType<PlayerObject>();
-        if (player) {
-            playerObjectId = player->id;
-        }
-    }
+    GameObject* player = livePlayer(scene, playerObjectId);
+    auto* control = dynamic_cast<IPlayer*>(player);
 
     if (state.respawn.pressed && player && currentSceneId == SceneId::Showcase) {
         killPlayer(s, player->id); // through World: restore, stream, fade
-    } else if (state.respawn.pressed && player) {
-        player->respawnAtCheckpoint();
+    } else if (state.respawn.pressed && control) {
+        control->respawnAtCheckpoint();
 
         if (camera.followEnabled) {
             camera.position = player->transform.position + camera.followOffset;
@@ -339,8 +353,15 @@ void IkigaiGame::handleGlobalInput(EngineServices& s, float deltaTime) {
     }
 
 #ifndef NDEBUG
-    // Debug K = die (the showcase has no damage yet): the room goes back to its entry state, respawn at the
-    // latest activated checkpoint.
+    // Debug J = 1 damage, pushed away from where the Iki faces; L = spend 30 ice and 30 fire (spec D2 "Recursos").
+    const bool hurtKey = input.isKeyDown(GLFW_KEY_J), spendKey = input.isKeyDown(GLFW_KEY_L);
+    if (auto* iki = dynamic_cast<IkiObject*>(player); iki && hurtKey && !hurtPressed) iki->hurt({1, {-iki->facing, 0.0f}});
+    if (Resources* resources = player ? player->getComponent<Resources>() : nullptr; resources && spendKey && !spendPressed)
+        resources->spendBoth(30.0f, 30.0f);
+    hurtPressed = hurtKey;
+    spendPressed = spendKey;
+
+    // Debug K = die: the room goes back to its entry state, respawn at the latest activated checkpoint.
     if (input.isKeyDown(GLFW_KEY_K)) {
         if (!killPressed && player && currentSceneId == SceneId::Showcase) killPlayer(s, player->id);
         killPressed = true;
@@ -469,20 +490,15 @@ void IkigaiGame::setupInitialScene(EngineServices& s) {
 // Only the special entities have a code factory. Every other entity (Slime, Door, Lever, Item, Checkpoint,
 // Critter, Prop, Crystal, ...) creates assets/prefabs/<snake_case name>.prefab.json (LevelLoader::spawnEntity).
 void IkigaiGame::registerLevelEntities() {
-    levelLoader.registerEntity("PlayerStart", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        if (s.scene.findFirstObjectOfType<PlayerObject>()) return; // its room streamed in again
-        PlayerObject::Config c{};
-        c.movementMode = PlayerObject::Config::MovementMode::Platformer;
-        c.moveSpeed = 4.5f;
-        c.colliderSize = {0.6f, 1.6f};
-        c.gravity = -32.0f;  // apex = 11^2 / 64 = 1.89 units = 3.8 tiles
-        c.jumpSpeed = 11.0f;
-        c.jumpCutFactor = 0.5f;
-        c.maxFallSpeed = -18.0f;
-        PlayerObject& player = Spawn::player(s.scene, bottomOf(e, pos) + glm::vec2(0.0f, 0.5f * c.colliderSize.y), c);
-        player.setCheckpointPosition(player.transform.position);
-        player.persistent = true; // the player never belongs to a room
-        player.roomIid.clear();
+    // The Iki (assets/prefabs/iki.prefab.json). Its position is its feet, on the entity's base.
+    levelLoader.registerEntity("PlayerStart", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+        if (findPlayer(s.scene)) return; // its room streamed in again
+        GameObject* iki = prefabs.instantiate(s.scene, "iki");
+        if (!iki) return; // the prefab library printed why
+        iki->transform.position = bottomOf(e, pos);
+        iki->persistent = true; // the player never belongs to a room
+        iki->roomIid.clear();
+        if (auto* player = dynamic_cast<IPlayer*>(iki)) player->setCheckpoint(iki->transform.position);
     });
 
     // Lights are not scene objects: kept per room (roomIid) and dropped when it unloads (world.onRoomUnloaded).
@@ -517,7 +533,7 @@ void IkigaiGame::loadShowcaseLevel(EngineServices& s) {
 
     const glm::vec4 b = world.worldBounds(); // (minX, minY, maxX, maxY)
     s.camera.bounds = Camera2D::WorldBounds{b.x, b.z, b.y, b.w};
-    s.camera.followOffset = {0.0f, 0.6f};
+    s.camera.followOffset = {0.0f, 1.4f}; // the Iki's position is its feet
 
     regions.applyNewLayerOverrides(levelLoader); // lights got theirs per room, in the Light factory
     s.renderer.settings() = regions.current().look.settings;
@@ -525,18 +541,20 @@ void IkigaiGame::loadShowcaseLevel(EngineServices& s) {
 
 void IkigaiGame::killPlayer(EngineServices& s, GameObjectId id) {
     if (world.dying()) return;
-    if (auto* p = s.scene.findObjectAs<PlayerObject>(id)) p->active = false; // frozen until the teleport
+    if (auto* p = s.scene.findObject(id)) p->active = false; // frozen until the teleport
     world.killPlayer(respawnPoint(), [&scene = s.scene, &camera = s.camera, id](glm::vec2 at) {
-        if (auto* p = scene.findObjectAs<PlayerObject>(id)) {
+        GameObject* p = scene.findObject(id);
+        if (auto* player = dynamic_cast<IPlayer*>(p)) {
             p->active = true;
-            p->teleport(at);
+            player->respawnAt(at);
+            if (auto* iki = dynamic_cast<IkiObject*>(p)) iki->respawn(); // full health and energy, state idle
             camera.position = at + camera.followOffset;
         }
     });
 }
 
 // Where the player stands after dying: the latest activated Checkpoint ("activated" = activation time), else
-// PlayerStart. Same placement as the PlayerStart factory: feet on the entity's base.
+// PlayerStart. Same placement as the PlayerStart factory: the Iki's feet (its position) on the entity's base.
 glm::vec2 IkigaiGame::respawnPoint() const {
     const LdtkLevel* bestLevel = nullptr;
     const LdtkEntity* best = nullptr;
@@ -550,7 +568,12 @@ glm::vec2 IkigaiGame::respawnPoint() const {
             }
     if (!best) return glm::vec2(0.0f);
     const glm::vec2 centre = ldtkToWorld(bestLevel->worldPx, best->px + best->size * 0.5f);
-    return bottomOf(*best, centre) + glm::vec2(0.0f, 0.8f); // player collider is 1.6 tall
+    return bottomOf(*best, centre);
+}
+
+void IkigaiGame::onHud(EngineServices& s) {
+    if (const GameObject* player = s.scene.findObject(playerObjectId))
+        if (const auto* resources = player->getComponent<Resources>()) drawDebugHud(*resources);
 }
 
 void IkigaiGame::onImGui(EngineServices& s) {

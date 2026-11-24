@@ -32,6 +32,8 @@ void MaterialLibrary::init(GpuContext& gpu, Bindless& bindless) {
     neutralNormal_ = upload(normal, 1, 1, VK_FORMAT_R8G8B8A8_UNORM);
     neutralEmissive_ = upload(emissive, 1, 1, VK_FORMAT_R8G8B8A8_UNORM);
     neutralMask_ = upload(mask, 1, 1, VK_FORMAT_R8G8B8A8_UNORM);
+    const uint8_t white[4] = {255, 255, 255, 255};
+    white_ = {upload(white, 1, 1, VK_FORMAT_R8G8B8A8_SRGB), neutralNormal_, neutralEmissive_, neutralMask_, 1, 1};
 }
 
 void MaterialLibrary::shutdown() {

@@ -42,6 +42,25 @@ inline float nextVelocityX(const MoveResult& last, float inputVx) {
 // the body's base passes below the one stood on. False (do a normal jump instead) unless the body stands
 // only on one-way ground.
 bool requestDropThrough(Body& body, const MoveResult& last);
+
+class GameObject;
+class Scene2D;
+// Juice cues for any object moved by move() (MovementCue, Effects.hpp), called once per step with the last
+// two results and this step's velocity: "landed" (strength = |velocity.y| / |maxFallSpeed|, limited to 1),
+// "left_ground", and "turned": on the ground, moving at least turnThreshold, the velocity flipped sign or the
+// facing (-1 / +1, 0 = not tracked) flipped against the motion. A mover that brakes before reversing never flips
+// its velocity at speed: it passes its facing before and after this step.
+constexpr float DefaultTurnThreshold = 2.0f; // u/s
+void emitMovementCues(Scene2D& scene, const GameObject& obj, const MoveResult& prev, const MoveResult& now,
+                      glm::vec2 velocity, float maxFallSpeed, float turnThreshold = DefaultTurnThreshold, int prevFacing = 0,
+                      int facing = 0);
 // Hot reload (spec decision 8): a body that overlaps the reloaded geometry moves to the nearest free spot at
 // most maxPush away (straight up first); a free body stays. False (body unchanged) when there is none.
 bool depenetrate(Body& body, const CollisionQuery& query, float maxPush = 2.0f);
+
+struct SurfaceHit { bool hit = false; Surface surface = Surface::Default; };
+// A wall (not ground, not ceiling) facing the body within `reach` of its side (-1 left, +1 right), or a
+// ceiling (normal.y < -0.5) within `reach` above it. Works while the body stands still beside it. IceClimb
+// wins when both surfaces touch; dynamic solids count as Default.
+SurfaceHit probeWall(const Body& body, int side, const CollisionQuery& query, float reach = 0.05f);
+SurfaceHit probeCeiling(const Body& body, const CollisionQuery& query, float reach = 0.05f);

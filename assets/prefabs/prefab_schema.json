@@ -1,5 +1,10 @@
 {
   "enums": {
+    "Element": [
+      "None",
+      "Ice",
+      "Fire"
+    ],
     "Persistence": [
       "None",
       "Permanent",
@@ -11,6 +16,17 @@
     ]
   },
   "types": {
+    "Blink": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 16.0,
+          "name": "rate",
+          "type": "Float"
+        }
+      ]
+    },
     "CheckpointObject": {
       "base": "GameObject",
       "component": false,
@@ -58,6 +74,11 @@
     "DoorObject": {
       "base": "GameObject",
       "component": false,
+      "props": []
+    },
+    "EffectTriggers": {
+      "base": "Component",
+      "component": true,
       "props": []
     },
     "GameObject": {
@@ -168,6 +189,177 @@
         }
       ]
     },
+    "IceStakesAbility": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": "ability.ice.stakes",
+          "name": "unlockFlag",
+          "type": "String"
+        }
+      ]
+    },
+    "IkiObject": {
+      "base": "GameObject",
+      "component": false,
+      "props": [
+        {
+          "default": 5.0,
+          "name": "runSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 60.0,
+          "name": "groundAccel",
+          "type": "Float"
+        },
+        {
+          "default": 70.0,
+          "name": "groundDecel",
+          "type": "Float"
+        },
+        {
+          "default": 35.0,
+          "name": "airAccel",
+          "type": "Float"
+        },
+        {
+          "default": 20.0,
+          "name": "airDecel",
+          "type": "Float"
+        },
+        {
+          "default": -32.0,
+          "name": "gravity",
+          "type": "Float"
+        },
+        {
+          "default": 11.0,
+          "name": "jumpSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 0.5,
+          "name": "jumpCutFactor",
+          "type": "Float"
+        },
+        {
+          "default": 1.5,
+          "name": "apexThreshold",
+          "type": "Float"
+        },
+        {
+          "default": 0.5,
+          "name": "apexGravityFactor",
+          "type": "Float"
+        },
+        {
+          "default": 1.600000023841858,
+          "name": "fallGravityFactor",
+          "type": "Float"
+        },
+        {
+          "default": -18.0,
+          "name": "maxFallSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "name": "coyoteTime",
+          "type": "Float"
+        },
+        {
+          "default": 0.11999999731779099,
+          "name": "jumpBuffer",
+          "type": "Float"
+        },
+        {
+          "default": 0.20000000298023224,
+          "name": "cornerCorrection",
+          "type": "Float"
+        },
+        {
+          "default": 0.6000000238418579,
+          "name": "stompBounceFactor",
+          "type": "Float"
+        },
+        {
+          "default": 2.0,
+          "name": "turnThreshold",
+          "type": "Float"
+        },
+        {
+          "default": 3.0,
+          "name": "wallClimbSpeed",
+          "type": "Float"
+        },
+        {
+          "default": [
+            6.0,
+            10.0
+          ],
+          "name": "wallJumpVelocity",
+          "type": "Vec2"
+        },
+        {
+          "default": 0.15000000596046448,
+          "name": "wallJumpLock",
+          "type": "Float"
+        },
+        {
+          "default": [
+            2.0,
+            7.0
+          ],
+          "name": "ledgeHop",
+          "type": "Vec2"
+        },
+        {
+          "default": 3.0,
+          "name": "ceilingMoveSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "name": "climbParticleInterval",
+          "type": "Float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "name": "wallGripHalf",
+          "type": "Float"
+        },
+        {
+          "default": 0.30000001192092896,
+          "name": "ceilingGrabReach",
+          "type": "Float"
+        },
+        {
+          "default": 8.0,
+          "name": "ceilingStickSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 0.3499999940395355,
+          "name": "hurtDuration",
+          "type": "Float"
+        },
+        {
+          "default": [
+            6.0,
+            6.0
+          ],
+          "name": "hurtKnockback",
+          "type": "Vec2"
+        },
+        {
+          "default": 0.800000011920929,
+          "name": "invulnerableTime",
+          "type": "Float"
+        }
+      ]
+    },
     "ItemObject": {
       "base": "GameObject",
       "component": false,
@@ -187,6 +379,17 @@
           "default": "",
           "name": "door",
           "type": "EntityRef"
+        }
+      ]
+    },
+    "ParticleEmitter": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 128,
+          "name": "maxParticles",
+          "type": "Int"
         }
       ]
     },
@@ -280,6 +483,37 @@
         }
       ]
     },
+    "Resources": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 5,
+          "name": "maxHealth",
+          "type": "Int"
+        },
+        {
+          "default": 100.0,
+          "name": "maxIce",
+          "type": "Float"
+        },
+        {
+          "default": 100.0,
+          "name": "maxFire",
+          "type": "Float"
+        },
+        {
+          "default": 10.0,
+          "name": "regenPerSecond",
+          "type": "Float"
+        },
+        {
+          "default": 1.0,
+          "name": "regenDelay",
+          "type": "Float"
+        }
+      ]
+    },
     "SlimeEnemy": {
       "base": "GameObject",
       "component": false,
@@ -322,10 +556,52 @@
         }
       ]
     },
+    "SquashStretch": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 300.0,
+          "name": "stiffness",
+          "type": "Float"
+        },
+        {
+          "default": 18.0,
+          "name": "damping",
+          "type": "Float"
+        }
+      ]
+    },
     "TeleportObject": {
       "base": "GameObject",
       "component": false,
       "props": []
+    },
+    "VelocityLean": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 4.0,
+          "name": "maxDegrees",
+          "type": "Float"
+        },
+        {
+          "default": 5.0,
+          "name": "fullSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 12.0,
+          "name": "smoothing",
+          "type": "Float"
+        },
+        {
+          "default": 1.0,
+          "name": "teleportDistance",
+          "type": "Float"
+        }
+      ]
     },
     "WallObject": {
       "base": "GameObject",

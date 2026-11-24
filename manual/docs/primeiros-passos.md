@@ -53,13 +53,16 @@ ctest --test-dir build/debug
 | Tecla | Ação |
 |---|---|
 | Setas | Mover. |
-| `Z` ou seta para cima | Pular. |
+| `Z` | Pular. Nas cenas Sandbox e Test, a seta para cima também pula; o Iki (vitrine) só pula com `Z`. |
 | `↓` + pulo sobre plataforma atravessável | Descer por ela. Em chão sólido é um pulo normal. |
 | `↓` sobre uma alavanca | Abre ou fecha a porta ligada a ela. |
+| `←`/`→`, `↑`/`↓` numa parede ou teto de gelo (Iki, com a habilidade) | Agarrar, subir, descer, andar pendurado. Veja [Estacas de gelo](fazendo-o-jogo/iki.md#estacas-de-gelo). |
 | `Espaço` | Dash. Só nas cenas Sandbox e Test, não na sala vitrine. |
 | `H` | Golpe. Só nas cenas Sandbox e Test. |
 | `R` | Voltar ao checkpoint. Na vitrine é uma morte (escurece e restaura a sala); nas cenas Sandbox e Test só teleporta. |
 | `K` (só Debug, na vitrine) | Morrer. Veja [Mundo e salas](fazendo-o-jogo/mundo-e-salas.md#morte-e-respawn). |
+| `J` (só Debug, na vitrine) | 1 de dano no Iki (estado `hurt`, pisca). Com a vida em 0, ele morre. |
+| `L` (só Debug, na vitrine) | Gasta 30 de gelo e 30 de fogo (as barras do HUD recarregam 1 s depois). |
 | `TAB` | Próxima cena. |
 | `F5` | Recarregar a cena atual. |
 | `F` | Liga/desliga a câmera que segue o player. Desligada, `W` `A` `S` `D` movem a câmera. |
@@ -67,7 +70,7 @@ ctest --test-dir build/debug
 | `Q` `E` e roda do mouse | Zoom da câmera. |
 | `F1` | Painel de visual e desempenho e janela "Cena (F1)". Veja [Painel F1 e inspetor](fazendo-o-jogo/inspetor.md). |
 
-Pular em cima de um slime o mata.
+Pular em cima de um slime o mata. Na vitrine, o personagem é o Iki: veja [Iki: estados e habilidades](fazendo-o-jogo/iki.md).
 
 O zoom funciona nos modos pixel art (suave), limitado a 1x a 8x, e HD. Não tem efeito no modo pixel art (nítido), que usa escala inteira fixa.
 

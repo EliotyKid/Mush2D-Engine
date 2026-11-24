@@ -50,4 +50,6 @@ private:
 using AtlasLookup = std::function<std::pair<Material, glm::vec4>(uint32_t atlasIndex, const std::string& frame)>;
 
 // Every active, visible object with a sprite becomes one instance (size = world scale, times sprite.drawSize when set).
-void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLookup& lookup);
+// Then the particles of every ParticleEmitter on an active object: a frame of the owner's sprite atlas, or `white`
+// tinted when the particle has no frame (skipped when white is null).
+void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLookup& lookup, const Material* white = nullptr);

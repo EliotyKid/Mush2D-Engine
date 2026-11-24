@@ -32,9 +32,25 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 
 ---
 
+## Iki
+
+**O que faz:** o personagem jogável da vitrine (`IkiObject`). Corre com aceleração, pula só com `Z` (coyote time, buffer, altura variável, topo flutuante, queda rápida, correção de quina), leva dano, morre e renasce cheio. Tem a máquina de estados `move` (`idle`, `run`, `jump`, `fall`, `hurt`, `dead`, `wall` agarrado numa parede de gelo, `ceiling` pendurado num teto de gelo), vida e energias (`Resources`) e todo o juice pelo prefab. Tags: `player`.
+
+**Atributos:** os números de movimento e de dano estão na página [Iki: estados e habilidades](fazendo-o-jogo/iki.md#parametros).
+
+**Como nasce:** pela entidade `PlayerStart` (fábrica em código em `IkigaiGame.cpp`), que instancia `assets/prefabs/iki.prefab.json` uma vez só, com os pés na base da entidade. O Iki é `persistent` e não pertence a nenhuma sala.
+
+**Casos de uso:**
+
+- Ajustar o pulo ao vivo: `F1` → "Cena (F1)" → Iki → `jumpSpeed`, `apexGravityFactor`, `fallGravityFactor`.
+- Causar dano em código: `iki->hurt({1, {-1.0f, 0.0f}})` (quantidade, sentido do empurrão). No Debug, `J` faz isso.
+- Mudar a poeira, o squash ou o piscar: edite os arquivos em `assets/effects/` ou a seção `effects` do prefab.
+
+**Arquivos:** `src/game/objects/IkiObject.hpp/.cpp`, `src/game/iki/states/`, `assets/prefabs/iki.prefab.json`.
+
 ## Player
 
-**O que faz:** o personagem controlado pelo jogador. Anda, pula (com pulo curto ao soltar o botão), dash e golpe, tem checkpoint e pode ser teleportado. Tags: `player`.
+**O que faz:** o personagem antigo, só nas cenas Sandbox e Test (a vitrine usa o [Iki](#iki)). Anda, pula (com pulo curto ao soltar o botão), dash e golpe, tem checkpoint e pode ser teleportado. Tags: `player`.
 
 **Atributos** (`PlayerObject`):
 
@@ -50,13 +66,14 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 | `jumpCutFactor` | Float | `0.5` | Só `Platformer`. Ao soltar o pulo subindo, `velocity.y` é multiplicado por isto. |
 | `maxFallSpeed` | Float | `-18` | Velocidade máxima de queda. |
 
-**Como nasce:** pela entidade `PlayerStart` (fábrica em código em `IkigaiGame.cpp`), não por prefab. Ela cria o player uma vez só, em modo `Platformer`, com `moveSpeed` 4,5, collider 0,6 × 1,6, `gravity` -32 e `jumpSpeed` 11. O player é `persistent` e não pertence a nenhuma sala.
+**Como nasce:** em código, pelas cenas Sandbox e Test (`Spawn::player`), não por prefab.
 
 **Casos de uso:**
 
 - Ajustar a altura do pulo ao vivo: `F1` → "Cena (F1)" → player → `jumpSpeed`. O ápice é `jumpSpeed² / (2 × |gravity|)` unidades.
-- Mandar o player para outro lugar em código: `player->teleport(posicao)`.
-- Saber se o player apertou ↓ neste frame (para interagir): `player->interactPressed()`.
+- Mandar o player para outro lugar em código: `player->teleport(posicao)`, ou `respawnAt(posicao)` pela interface `IPlayer`.
+- Saber se o player apertou ↓ neste frame (para interagir): `downPressedThisFrame()` (`IPlayer`), o mesmo que `interactPressed()`.
+- Os outros objetos acham o player pela tag `player` e falam com ele pela interface `IPlayer`, nunca pelo tipo `PlayerObject`. Veja [Comunicação](fazendo-o-jogo/comunicacao.md).
 
 **Arquivos:** `src/game/objects/PlayerObject.hpp`, `src/game/spawners/Spawn.cpp`.
 
@@ -122,12 +139,13 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 
 | Atributo | Tipo | Padrão | Efeito |
 |---|---|---|---|
-| `kind` | String | `""` (prefab: `"coin"`) | Tipo do item. Hoje só informativo. |
+| `kind` | String | `""` (prefab: `"coin"`) | Tipo do item. Começando por `ability.` (ex.: `ability.ice.stakes`), pegar o item liga a flag global de mesmo nome no `WorldState` e desbloqueia a habilidade. Fora isso, só informativo. |
 
 **Casos de uso:**
 
 - Uma moeda que nunca volta: campo `persistence` = `permanent`.
 - Uma vida que volta depois de um tempo: campo `respawn` ligado.
+- Um item de habilidade: `kind` = `ability.ice.stakes`. A flag não volta atrás na morte; o componente da habilidade lê `flag(kind)`.
 
 **Arquivos:** `src/game/objects/ItemObject.hpp`, `assets/prefabs/item.prefab.json`.
 
@@ -211,7 +229,7 @@ Usados só nas cenas antigas montadas em código (Sandbox, Test), sem prefab. S�
 
 ### PlayerStart
 
-Cria o player (veja [Player](#player)). Se o player já existe (a sala carregou de novo), não faz nada.
+Cria o Iki pelo prefab `iki` (veja [Iki](#iki)). Se o player já existe (a sala carregou de novo), não faz nada.
 
 ### Light
 

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "type": "TestMover",
+  "sprite": { "atlas": "test_atlas", "frame": "a 0" },
+  "animations": { "idle": "walk" },
+  "animationEvents": { "walk": { "1": "step" } },
+  "effects": {
+    "state:move:idle": ["test_dust"],
+    "state:move:run": [{ "blink": 0.5 }],
+    "anim:step": [{ "squash": [1.2, 0.8] }],
+    "move:jumped": [{ "squash": [1.2, 0.8] }, { "squash": [0.8, 1.25], "delay": 0.033 }]
+  }
+}

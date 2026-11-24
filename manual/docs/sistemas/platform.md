@@ -27,7 +27,7 @@ Quando o painel F1 (ImGui) está com o foco do teclado ou do mouse, o jogo vê o
 | Botão | Tecla |
 |---|---|
 | `moveLeft` / `moveRight` / `moveUp` / `moveDown` | setas |
-| `jump` | `Z` (no modo plataforma, a seta para cima também pula) |
+| `jump` | `Z` (no `PlayerObject` em modo plataforma, a seta para cima também pula; no Iki, não) |
 | `dash` | `Espaço` |
 | `hit` | `H` |
 | `cameraLeft` / `Right` / `Up` / `Down` | `A` / `D` / `W` / `S` |
@@ -49,7 +49,7 @@ Em `GlfwInput.cpp`, na linha do `state.jump`, troque `GLFW_KEY_Z` por `GLFW_KEY_
 1. Em `InputState.hpp`, adicione `ButtonState interact;`.
 2. Em `GlfwInput.hpp`, adicione `bool previousInteract = false;`.
 3. Em `GlfwInput.cpp`, ao lado dos outros: `updateButton(state.interact, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS, previousInteract);`.
-4. Objetos não recebem o input: só o player, em `PlayerObject::applyInput(const InputState&)`. Leia `input.interact.pressed` ali e exponha para os outros objetos como o player já faz com `interactPressed()`.
+4. Objetos não recebem o input: só o player, em `applyInput(const InputState&)` (`IkiObject` ou `PlayerObject`). Leia `input.interact.pressed` ali e exponha para os outros objetos como o player já faz com `interactPressed()`.
 
 ### Uma tecla de depuração só no jogo
 

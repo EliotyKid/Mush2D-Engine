@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "base": "test_anim_events",
+  "animationEvents": { "walk": { "1": "stomp" }, "rest": { "0": "sit" } }
+}

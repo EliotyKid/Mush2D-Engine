@@ -3,9 +3,8 @@
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
 
-#include "PlayerObject.hpp"
-
 #include "engine/world/GameObject.hpp"
+#include "engine/world/IPlayer.hpp"
 #include "engine/world/Scene2D.hpp"
 
 class TeleportObject : public GameObject {
@@ -58,7 +57,7 @@ public:
     }
 
     void onTriggerEnter(Scene2D& scene, GameObject& other) override {
-        auto* player = dynamic_cast<PlayerObject*>(&other);
+        auto* player = other.hasTag("player") ? dynamic_cast<IPlayer*>(&other) : nullptr;
         if (!player) {
             return;
         }
@@ -68,7 +67,7 @@ public:
                 return;
             }
 
-            player->teleport(trigger->targetPosition); // no ground, slide or drop-through carried over
+            player->respawnAt(trigger->targetPosition); // no ground, slide or drop-through carried over
 
             if (trigger->oneShot) {
                 trigger->consumed = true;

@@ -26,12 +26,14 @@ bool mapMatchesAlbedo(int aw, int ah, int mw, int mh);
 
 class MaterialLibrary {
 public:
-    void init(GpuContext& gpu, Bindless& bindless); // creates the 3 neutral 1x1 textures
+    void init(GpuContext& gpu, Bindless& bindless); // creates the 3 neutral 1x1 maps and the white albedo
     void shutdown();                                // destroys every image (waits for device idle)
 
     // Albedo sRGB; missing or size-mismatched maps fall back to the neutral index. Cached by path (level reloads).
     Material load(const std::filesystem::path& albedoPng);
     uint32_t loadTexture(const std::filesystem::path& path, bool srgb);
+    // A 1x1 white albedo with the neutral maps (no emission): untextured sprites tinted by their colour.
+    const Material& white() const { return white_; }
 
 private:
     uint32_t upload(const uint8_t* rgba, uint32_t w, uint32_t h, VkFormat format);
@@ -42,4 +44,5 @@ private:
     std::vector<GpuImage> images_;
     std::map<std::string, Material> cache_;
     uint32_t neutralNormal_ = 0, neutralEmissive_ = 0, neutralMask_ = 0;
+    Material white_;
 };

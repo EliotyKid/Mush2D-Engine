@@ -12,9 +12,9 @@ Garante que este arquivo é incluído só uma vez por compilação.
 ```cpp
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
-#include "game/objects/PlayerObject.hpp"
 
 #include "engine/world/GameObject.hpp"
+#include "engine/world/IPlayer.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/WorldState.hpp"
 ```
@@ -81,8 +81,8 @@ Pinta a alavanca de vermelho ou verde. `onPrefabApplied` roda depois que o prefa
 
 ```cpp
     void onStep(Scene2D& scene, float) override {
-        auto* player = scene.findObjectAs<PlayerObject>(playerId);
-        if (player && player->interactPressed()) toggle();
+        auto* player = scene.findObjectAs<IPlayer>(playerId);
+        if (player && player->downPressedThisFrame()) toggle();
         refresh();
     }
 ```
@@ -94,10 +94,10 @@ Step Event, a cada frame:
 
 ```cpp
     void onTriggerEnter(Scene2D&, GameObject& other) override {
-        if (dynamic_cast<PlayerObject*>(&other)) playerId = other.id;
+        if (other.hasTag("player")) playerId = other.id;
     }
 ```
-"Algo entrou na minha máscara." `dynamic_cast<PlayerObject*>` pergunta "esse `other` é um player?" e devolve `nullptr` se não for. Se for o player, guarda o id dele.
+"Algo entrou na minha máscara." `hasTag("player")` pergunta "esse `other` é o player?", seja qual for o tipo dele. Se for, guarda o id dele. No `onStep`, `findObjectAs<IPlayer>` chega na interface `IPlayer`, que tem o `downPressedThisFrame()`.
 
 ```cpp
     void onTriggerExit(Scene2D&, GameObject& other) override {
@@ -144,7 +144,6 @@ As variáveis da instância, que só a classe enxerga. `state` fica `nullptr` nu
     ```cpp
     #pragma once
 
-    #include "game/objects/PlayerObject.hpp"
     #include "game/objects/Tracked.hpp"
     #include "engine/world/GameObject.hpp"
     #include "engine/world/Scene2D.hpp"
@@ -161,7 +160,7 @@ As variáveis da instância, que só a classe enxerga. `state` fica `nullptr` nu
         }
         void onStep(Scene2D&, float dt) override { transform.rotation += spin * dt; }
         void onTriggerEnter(Scene2D& scene, GameObject& other) override {
-            if (!dynamic_cast<PlayerObject*>(&other)) return;
+            if (!other.hasTag("player")) return;
             // removeTracked grava a coleta no WorldState (se houver política) e destrói
             if (WorldState* state = scene.service<WorldState>()) removeTracked(scene, *state, *this, state->clock);
             else scene.destroy(id);

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "type": "GameObject",
+  "effects": {
+    "jump": ["test_dust"],
+    "move:a": 3,
+    "move:b": [{ "squash": [1, 1], "delay": "0.03" }, { "blink": 0.1 }],
+    "move:c": [{ "squash": [1, 1], "scaleByStrength": 1 }, { "delay": 0.1 }]
+  }
+}

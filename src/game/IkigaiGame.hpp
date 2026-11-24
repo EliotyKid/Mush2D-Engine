@@ -3,6 +3,7 @@
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/IGame.hpp"
 #include "engine/core/Paths.hpp"
+#include "engine/world/Effects.hpp"
 #include "engine/world/Prefab.hpp"
 #include "engine/scenes/ISceneDefinition.hpp"
 #include "engine/tools/LookPanel.hpp"
@@ -23,11 +24,12 @@
 
 // The Ikigai game: the LDtk world (showcase.ldtk until the D12 demo map) with objects from prefabs, plus the
 // older Sandbox and Test scenes (TAB). Registers the scene services the objects use: WorldState, World,
-// GameAssets, AssetRegistry and the PrefabLibrary.
+// GameAssets, AssetRegistry, the PrefabLibrary and the EffectLibrary.
 class IkigaiGame : public IGame {
 public:
     void init(EngineServices& s) override;
     void update(EngineServices& s, float dt) override;
+    void onHud(EngineServices& s) override; // the test HUD (DebugHud) for the player's Resources
     void onImGui(EngineServices& s) override;
     void shutdown(EngineServices& s) override;
 
@@ -57,6 +59,9 @@ private:
     bool nextScenePressed = false;
     bool reloadScenePressed = false;
     bool killPressed = false;
+    bool hurtPressed = false;  // debug J
+    bool spendPressed = false; // debug L
+    EventBus::Subscription diedSubscription; // Died -> killPlayer
 
     SceneTransitionData currentSceneTransitionData{};
 
@@ -74,6 +79,8 @@ private:
     FileWatcher levelFiles; // showcase.ldtk and assets/regions/*.region.json
     FileWatcher prefabFiles; // assets/prefabs/*.prefab.json
     PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")}; // Debug: the source tree, as the regions
+    FileWatcher effectFiles; // assets/effects/*.effect.json: rescanned, no room reload (effects are found by name)
+    EffectLibrary effects;
     bool keepRegions = false; // hot reload of the .ldtk alone keeps the in-memory regions (unsaved panel edits)
     void hotReload(EngineServices& s, bool ldtkOnly);
     std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown

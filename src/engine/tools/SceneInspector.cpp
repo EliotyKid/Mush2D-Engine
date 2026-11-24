@@ -1,6 +1,7 @@
 #include "engine/tools/SceneInspector.hpp"
 
 #include "engine/world/PrefabSave.hpp"
+#include "engine/world/StateMachine.hpp"
 
 #include <imgui.h>
 
@@ -133,6 +134,8 @@ void SceneInspector::drawSelected(GameObject& o, PrefabLibrary& prefabs) {
     ImGui::SeparatorText(labelOf(o).c_str());
     ImGui::Text("prefab: %s", o.prefab.empty() ? "(nenhum: criado em codigo ou filho inline)" : o.prefab.c_str());
     ImGui::Text("entityIid: %s", o.entityIid.empty() ? "-" : o.entityIid.c_str());
+    for (const auto& [label, machine] : o.stateMachines())
+        ImGui::Text("%s: %s (%.2f s)", label.c_str(), machine->current(), machine->timeInState());
 
     std::set<std::string>& edited = edited_[o.id];
     std::vector<const TypeInfo*> chain; // GameObject -> ... -> the object's class

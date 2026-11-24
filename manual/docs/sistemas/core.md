@@ -12,7 +12,7 @@ A `Engine` abre a janela, inicializa GPU, renderer, materiais, input e câmera, 
 
 | Tipo | Papel |
 |---|---|
-| `IGame` | O contrato de todo jogo: `init(EngineServices&)`, `update(EngineServices&, float dt)`, `onImGui(EngineServices&)` (painel F1, opcional) e `shutdown(EngineServices&)` (opcional). |
+| `IGame` | O contrato de todo jogo: `init(EngineServices&)`, `update(EngineServices&, float dt)`, `onHud(EngineServices&)` (todo quadro com o painel F1 fechado, dentro de um quadro do ImGui, para um HUD; opcional), `onImGui(EngineServices&)` (só com o painel F1 aberto, opcional) e `shutdown(EngineServices&)` (opcional). |
 | `EngineServices` | A caixa de ferramentas que a engine entrega ao jogo: `gpu`, `renderer`, `materials`, `input`, `camera` e `scene`. |
 | `Engine` | `run(IGame&)`: abre tudo, roda o loop até a janela fechar e desliga. |
 | `assetPath(rel)` | `<pasta do executável>/rel`. Onde o jogo lê assets copiados pelo build. |
@@ -47,7 +47,7 @@ O jogo atual fica fora da engine, em `src/game/`. É ali que você trabalha.
 
 | Arquivo | Papel |
 |---|---|
-| `IkigaiGame.hpp/.cpp` | O jogo. Carrega os assets; registra os serviços da cena (`WorldState`, `World`, `GameAssets`, `AssetRegistry`, prefabs) e as fábricas das entidades especiais (`PlayerStart`, `Light`); trata `TAB`, `F5`, `K` e `R`; liga o mundo e as regiões; verifica os triggers do player. |
+| `IkigaiGame.hpp/.cpp` | O jogo. Carrega os assets; registra os serviços da cena (`WorldState`, `World`, `GameAssets`, `AssetRegistry`, prefabs) e as fábricas das entidades especiais (`PlayerStart`, `Light`); trata `TAB`, `F5`, `K`, `R` e, no Debug, `J` e `L`; ouve `Died` para a morte; desenha o HUD de teste (`onHud`); liga o mundo e as regiões; verifica os triggers do player. |
 | `objects/*.hpp` | Os objetos (veja [Objetos do jogo](../objetos.md)). Toda classe daqui é registrada só por existir. |
 | `assets/GameAssets.*`, `Game*Id.hpp` | Os ids de atlas, sprites e animações usados pelo player e pelo código antigo. |
 | `scenes/*` | As cenas antigas montadas em código (`SandboxScene`, `TestScene`) e o registro de cenas que o `TAB` percorre. |

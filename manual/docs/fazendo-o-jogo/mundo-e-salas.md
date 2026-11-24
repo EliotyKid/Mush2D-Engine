@@ -9,8 +9,34 @@
 | `Showcase` | `forest` | A sala vitrine. |
 | `Forest2` | `forest` | À direita da vitrine, pela passagem aberta na parede direita. Chão orgânico (`Terrain`) com dois morros, uma descida de ~30° e um galho atravessável sobre a descida. |
 | `Cave1` | `cave` (mais escura) | Acima e à direita de `Forest2`; o chão continua a borda alta da direita de `Forest2`. Mesa com rampas de 45°, morro com rampas de 22,5° e plataforma atravessável com um slime em cima. |
+| `IceTest` | `cave` | À esquerda da vitrine, pela porta na parede esquerda dela (fora do caminho principal). Sala de teste das estacas de gelo: veja abaixo. |
 
-As duas salas de teste foram geradas uma vez por `tools/add_test_rooms.py`, e o terreno e as rampas por `tools/add_terrain_content.py`. Cada uma tem chão, um slime que volta (`respawn` ligado), um que não volta, um item `permanent`, um item `respawn`, uma alavanca que abre uma porta e um `Checkpoint`. Edite tudo livremente no LDtk.
+`Forest2` e `Cave1` foram geradas uma vez por `tools/add_test_rooms.py`, e o terreno e as rampas por `tools/add_terrain_content.py`. Cada uma tem chão, um slime que volta (`respawn` ligado), um que não volta, um item `permanent`, um item `respawn`, uma alavanca que abre uma porta e um `Checkpoint`. Edite tudo livremente no LDtk.
+
+## A sala `IceTest`
+
+A sala tem 64 x 40 células (1024 x 640 px). O chão fica na mesma altura do chão da vitrine. Da porta para a esquerda, ela tem:
+
+1. o item `kind: "ability.ice.stakes"` no chão. Pegá-lo liga a flag global que desbloqueia as estacas;
+2. um vão raso no chão, sob o teto de gelo;
+3. uma parede de gelo de 8 u, a face direita de um pilar;
+4. no alto do pilar, um teto de gelo de 6 u para a direita, sobre o vão. Não há chão nessa altura;
+5. uma plataforma alta, 6 u acima do chão, sob o fim do teto, com um `Checkpoint`.
+
+O percurso: pegue o item, pule contra a parede segurando `←` e suba com `↑`. No canto, solte `←` e continue com `↑` para pendurar no teto. Ande para a direita até o fim do teto e caia na plataforma. Sem o item, o pulo (~1,9 u) não alcança nada: a sala não tem outra subida.
+
+A sala foi criada por `tools/add_ice_test_room.py`. O script pode rodar de novo: se tudo já existe, ele não muda nada. Ele acrescenta:
+
+- o valor `9` na IntGrid;
+- a sala e as entidades dela;
+- a porta da vitrine: as colunas 0 e 1, linhas 23 a 26 da camada `Collision`, com 8 células zeradas e os tiles de `Ground_d0` correspondentes removidos. A porta tem 2 u de altura, porque o Iki mede 1,6 u. Foi uma exceção aprovada pelo autor; o resto da vitrine não mudou.
+
+## Marcar gelo no LDtk
+
+- **IntGrid:** na camada `Collision`, pinte com o valor `9` (`IceClimb`, azul-gelo `#7fd4ff`). Ele colide como o `1`, e todas as faces dele são gelo escalável. Paredes e tetos comuns continuam `1`. Pinte só a face que deve ser escalável, como a coluna da direita do pilar da `IceTest`.
+- **Terrain:** ligue o campo `iceClimb` da entidade. Todos os segmentos dela viram gelo.
+
+O gelo só agarra com a habilidade desbloqueada. Sem ela, é uma parede comum. Veja [Colisão e rampas](colisao-e-rampas.md) e [Iki](iki.md).
 
 ## Regiões
 
@@ -45,7 +71,7 @@ Ao morrer (no Debug, a tecla `K` na vitrine força a morte):
 ### Criar uma sala nova
 
 1. Abra o `.ldtk` no LDtk e crie um nível encostado nos outros.
-2. Pinte a camada `Collision` (1 = sólido, 2 = plataforma, 3 a 8 = rampas; veja [Colisão e rampas](colisao-e-rampas.md)).
+2. Pinte a camada `Collision` (1 = sólido, 2 = plataforma, 3 a 8 = rampas, 9 = gelo escalável; veja [Colisão e rampas](colisao-e-rampas.md)).
 3. Pinte os tiles e salve.
 4. Com o jogo rodando em Debug, ele recarrega sozinho. Ande até a sala nova.
 
