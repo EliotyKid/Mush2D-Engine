@@ -28,9 +28,9 @@ dust.speed = {1.0f, 3.0f};       // [min, max] u/s
 dust.angle = {100.0f, 170.0f};   // [min, max] graus; 0 = direita, 90 = cima
 dust.lifetime = {0.2f, 0.4f};    // [min, max] s
 dust.gravity = -4.0f;            // u/s², negativo cai
-dust.size = {0.12f, 0.0f};       // [início, fim] u
-dust.colorStart = {0.8f, 0.75f, 0.65f, 0.9f};
-dust.colorEnd = {0.8f, 0.75f, 0.65f, 0.0f};
+dust.size = {0.14f, 0.03f};      // [início, fim] u
+dust.colorStart = {0.95f, 0.92f, 0.85f, 1.0f};
+dust.colorEnd = {0.9f, 0.86f, 0.78f, 0.55f}; // alfa abaixo de 0,5 não aparece
 emitter->burst(dust, obj.transform.position, obj.flipX ? -1 : 1); // -1 espelha os ângulos
 ```
 
@@ -44,7 +44,7 @@ No JSON (usado pelos arquivos de efeito), a mesma configuração é lida por `pa
 
 ```json
 {"count": 6, "speed": [1, 3], "angle": [100, 170], "lifetime": [0.2, 0.4], "gravity": -4,
- "size": [0.12, 0.0], "color": [[0.8,0.75,0.65,0.9],[0.8,0.75,0.65,0]], "frame": "", "additive": false, "layer": 0}
+ "size": [0.14, 0.03], "color": [[0.95,0.92,0.85,1],[0.9,0.86,0.78,0.55]], "frame": "", "additive": false, "layer": 0}
 ```
 
 As chaves que faltam ficam com o padrão. Uma chave desconhecida ou um tipo errado devolve erro com o nome da chave.
@@ -104,7 +104,7 @@ Um efeito fica em `assets/effects/<nome>.effect.json`. Ele é definido uma vez e
 ```json
 {"version": 1, "actions": [
   {"particles": {"count": 6, "speed": [1, 3], "angle": [100, 170], "lifetime": [0.2, 0.4], "gravity": -4,
-                 "size": [0.12, 0.0], "color": [[0.8,0.75,0.65,0.9],[0.8,0.75,0.65,0]]}},
+                 "size": [0.14, 0.03], "color": [[0.95,0.92,0.85,1],[0.9,0.86,0.78,0.55]]}},
   {"squash": [1.3, 0.7], "scaleByStrength": true}
 ]}
 ```
@@ -166,6 +166,6 @@ last = now;
 ```
 
 - `landed`: força = |velocity.y| / |maxFallSpeed|, limitada a 1.
-- `turned`: no chão, inverteu o sentido vindo de pelo menos `turnThreshold` (2 u/s). Um objeto que freia antes de virar (como o Iki) nunca inverte a essa velocidade: ele emite `turned` sozinho, no aperto da direção contrária.
+- `turned`: no chão, a pelo menos `turnThreshold` (2 u/s), a velocidade inverteu ou o lado para onde o objeto olha virou contra o movimento. Um objeto que freia antes de inverter (como o Iki) passa o lado antes e depois do passo: `emitMovementCues(scene, *this, last, now, velocity, maxFallSpeed, DefaultTurnThreshold, ladoAntes, ladoAgora)` (-1 ou +1).
 - Partículas com cor de alfa abaixo de 0,5 não aparecem (o passe opaco descarta o pixel). Para sumir, diminua o `size` e deixe o alfa final em 0,5 ou mais.
 - Em código, `playEffect(scene, obj, "land_dust", força, posição, direção)` toca na hora um efeito ou uma ação inline.

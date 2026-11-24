@@ -21,7 +21,7 @@ public:
     virtual ~IGame() = default;
     virtual void init(EngineServices&) = 0;
     virtual void update(EngineServices&, float dt) = 0;
-    virtual void onHud(EngineServices&) {}   // every frame, inside an ImGui frame (overlays such as a HUD)
+    virtual void onHud(EngineServices&) {}   // every frame the F1 panel is hidden, inside an ImGui frame (a HUD)
     virtual void onImGui(EngineServices&) {} // only while the F1 panel is shown
     virtual void shutdown(EngineServices&) {}
 };

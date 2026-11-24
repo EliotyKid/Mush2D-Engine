@@ -45,7 +45,7 @@ public:
     MUSH2D_EXPORT(float, wallJumpLock, 0.15f)
     MUSH2D_EXPORT(glm::vec2, ledgeHop, glm::vec2(2.0f, 7.0f))
     MUSH2D_EXPORT(float, ceilingMoveSpeed, 3.0f)
-    // Damage. hurtKnockback: x along the hit's direction, y up.
+    // Damage. hurtKnockback: x along the sign of the hit's direction.x, y along direction.y (up when it is 0).
     MUSH2D_EXPORT(float, hurtDuration, 0.35f)
     MUSH2D_EXPORT(glm::vec2, hurtKnockback, glm::vec2(6.0f, 6.0f))
     MUSH2D_EXPORT(float, invulnerableTime, 0.8f)

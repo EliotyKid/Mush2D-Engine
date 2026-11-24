@@ -43,19 +43,19 @@ O movimento é uma **máquina de estados** chamada `"move"`. Em cada momento o I
 
 ## A ordem de cada passo
 
-O `onStep` do Iki sempre segue a mesma ordem:
+Cada passo do Iki segue a mesma ordem:
 
 1. Entrada: o jogo chamou `applyInput` antes do passo.
 2. `JumpAssist::tick`: conta o coyote time e o buffer de pulo.
 3. `states().update`: o estado atual move o Iki com os métodos de física.
-4. `SpriteAnimator`, 5. `SquashStretch`, 6. `VelocityLean` e `Blink`: os componentes rodam logo depois do `onStep`, na ordem do prefab (`components`).
-7. `emitMovementCues`: avisa `landed`, `left_ground` e `turned`. Os efeitos tocam pelos gatilhos do prefab.
+4. `emitMovementCues`, no fim do `onStep`: avisa `landed`, `left_ground` e `turned`. Os avisos são eventos: os efeitos tocam no fim do passo (no flush), depois dos componentes.
+5. Os componentes rodam logo depois do `onStep`, na ordem do prefab (`components`): `SpriteAnimator`, `SquashStretch`, `VelocityLean` e `Blink`. O `SquashStretch` funciona em qualquer ordem: o `SpriteAnimator` o aplica de novo depois de trocar o quadro.
 
 Os estados usam estes métodos do `IkiObject`, nesta ordem:
 
 | Método | O que faz |
 |---|---|
-| `runHorizontal(dt, entrada)` | Leva `velocity_.x` até `entrada * runSpeed`, com aceleração ou desaceleração (chão ou ar). Vira o Iki para a entrada. Virar no chão rápido emite `turned`. |
+| `runHorizontal(dt, entrada)` | Leva `velocity_.x` até `entrada * runSpeed`, com aceleração ou desaceleração (chão ou ar). Vira o Iki para a entrada. Virar no chão correndo rápido vira o aviso `turned`. |
 | `tryJump()` | Se há um `Z` no buffer e o Iki está no chão ou no coyote time, pula e emite `jumped`. Com `↓` numa plataforma atravessável, desce por ela. |
 | `applyGravity(dt)` | Gravidade, mais fraca no topo com `Z` segurado e mais forte na queda, até `maxFallSpeed`. |
 | `moveAndCollide(dt)` | Move com o `CharacterController`, faz a correção de quina e o pulo no slime. |

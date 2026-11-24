@@ -3859,6 +3859,15 @@ TEST(movement_cues_landed_strength_and_turned) {
     scene.flush();
     CHECK(got.size() == 2);
     if (got.size() == 2) CHECK(got[0].name == "left_ground" && got[1].name == "turned");
+
+    // A braking mover: still moving right at 3 u/s while it already faces left. The facing flip is the turn.
+    got.clear();
+    emitMovementCues(scene, o, runRight, ground, {1.83f, 0.0f}, 12.0f, DefaultTurnThreshold, 1, -1); // turned
+    emitMovementCues(scene, o, runRight, ground, {1.83f, 0.0f}, 12.0f, DefaultTurnThreshold, -1, -1); // braking, no flip
+    emitMovementCues(scene, o, runRight, ground, {1.83f, 0.0f}, 12.0f, DefaultTurnThreshold, -1, 1);  // faces the motion
+    emitMovementCues(scene, o, slowRight, ground, {0.5f, 0.0f}, 12.0f, DefaultTurnThreshold, 1, -1);  // too slow
+    scene.flush();
+    CHECK(got.size() == 1 && !got.empty() && got[0].name == "turned");
 }
 
 TEST(squash_scale_by_strength) {
@@ -4087,6 +4096,9 @@ TEST(iki_hurt_knockback_and_invulnerability) {
     CHECK(!iki.invulnerable());
     iki.hurt({1, {}});
     CHECK(resources->health() == 3);
+    stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
+    iki.hurt({1, {0.0f, -1.0f}}); // a hit from above pushes down, not up
+    CHECK(resources->health() == 2 && iki.velocity_.y == -6.0f && iki.velocity_.x == 0.0f);
 }
 
 TEST(iki_death_emits_died) {

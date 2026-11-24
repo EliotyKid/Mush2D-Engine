@@ -332,12 +332,14 @@ SurfaceHit probeCeiling(const Body& body, const CollisionQuery& query, float rea
 }
 
 void emitMovementCues(Scene2D& scene, const GameObject& obj, const MoveResult& prev, const MoveResult& now,
-                      glm::vec2 velocity, float maxFallSpeed, float turnThreshold) {
+                      glm::vec2 velocity, float maxFallSpeed, float turnThreshold, int prevFacing, int facing) {
     if (!prev.grounded && now.grounded) {
         const float fall = std::abs(maxFallSpeed) > 0.0f ? std::abs(velocity.y) / std::abs(maxFallSpeed) : 1.0f;
         emitMovementCue(scene, obj, "landed", std::min(fall, 1.0f));
     }
     if (prev.grounded && !now.grounded) emitMovementCue(scene, obj, "left_ground");
-    if (prev.grounded && now.grounded && std::abs(prev.velocity.x) >= turnThreshold && prev.velocity.x * velocity.x < 0.0f)
+    const bool flipped = prev.velocity.x * velocity.x < 0.0f;
+    const bool turnedAround = prevFacing * facing < 0 && float(facing) * prev.velocity.x < 0.0f;
+    if (prev.grounded && now.grounded && std::abs(prev.velocity.x) >= turnThreshold && (flipped || turnedAround))
         emitMovementCue(scene, obj, "turned");
 }

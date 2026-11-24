@@ -47,9 +47,13 @@ class GameObject;
 class Scene2D;
 // Juice cues for any object moved by move() (MovementCue, Effects.hpp), called once per step with the last
 // two results and this step's velocity: "landed" (strength = |velocity.y| / |maxFallSpeed|, limited to 1),
-// "left_ground", and "turned" (on the ground, reversed from a speed of at least turnThreshold).
+// "left_ground", and "turned": on the ground, moving at least turnThreshold, the velocity flipped sign or the
+// facing (-1 / +1, 0 = not tracked) flipped against the motion. A mover that brakes before reversing never flips
+// its velocity at speed: it passes its facing before and after this step.
+constexpr float DefaultTurnThreshold = 2.0f; // u/s
 void emitMovementCues(Scene2D& scene, const GameObject& obj, const MoveResult& prev, const MoveResult& now,
-                      glm::vec2 velocity, float maxFallSpeed, float turnThreshold = 2.0f);
+                      glm::vec2 velocity, float maxFallSpeed, float turnThreshold = DefaultTurnThreshold, int prevFacing = 0,
+                      int facing = 0);
 // Hot reload (spec decision 8): a body that overlaps the reloaded geometry moves to the nearest free spot at
 // most maxPush away (straight up first); a free body stays. False (body unchanged) when there is none.
 bool depenetrate(Body& body, const CollisionQuery& query, float maxPush = 2.0f);

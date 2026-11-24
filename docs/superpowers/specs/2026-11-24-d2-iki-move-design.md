@@ -309,6 +309,7 @@ Simulações do Iki rodam headless, no estilo dos testes do slime e do checkpoin
 
 1. **Inclinação:** usa `transform.rotation`, que o `SpriteBatch` já desenha. Não há mudança no renderizador. A rotação é aplicada em torno da origem do objeto (os pés).
 2. **`SquashStretch` e `SpriteAnimator`:** o animador escreve `drawSize` e `offset` pelo quadro. O `SquashStretch` roda depois dele, no mesmo passo, e multiplica `drawSize` pelo fator atual. Também ajusta `offset` para o sprite amassar e esticar ancorado nos pés. Ele nunca mexe em `transform.scale`. O `IkiObject` chama os dois em ordem fixa no `update`, em vez de depender da ordem dos componentes.
+   - **Na implementação (Task 5):** o Iki não chama os dois. A ordem animador → squash é garantida pela idempotência do `SquashStretch`: o `SpriteAnimator` o aplica de novo logo depois de trocar o quadro, então a ordem dos componentes não importa.
 3. **Morte:**
    - `Resources` chega a 0 → emite `Died` → o Iki entra em `Dead` (sem controle, animação de morte).
    - O `IkigaiGame` ouve `Died` e chama o `killPlayer` existente (fade, restauração da sala, checkpoint).

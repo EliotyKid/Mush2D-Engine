@@ -19,7 +19,6 @@
 #include <memory>
 
 namespace {
-constexpr float TurnSpeed = 2.0f; // emitMovementCues' default turnThreshold
 
 float moveTowards(float value, float target, float maxStep) {
     return value < target ? std::min(value + maxStep, target) : std::max(value - maxStep, target);
@@ -66,9 +65,11 @@ void IkiObject::onStep(Scene2D& scene, float dt) {
     jump.jumpBuffer = jumpBuffer;
     jump.tick(dt, grounded, input_.jump.pressed);
     const MoveResult previous = lastMove_;
+    const int previousFacing = int(facing);
     machine_.update(*this, dt);
     flipX = facing < 0.0f;
-    if (!placed_) emitMovementCues(scene, *this, previous, lastMove_, stepVelocity_, maxFallSpeed);
+    // The facing tells "turned" apart from braking: the Iki slows down before its velocity flips.
+    if (!placed_) emitMovementCues(scene, *this, previous, lastMove_, stepVelocity_, maxFallSpeed, DefaultTurnThreshold, previousFacing, int(facing));
     placed_ = false;
 }
 
@@ -80,10 +81,7 @@ void IkiObject::applyGravity(float dt) {
 }
 
 void IkiObject::runHorizontal(float dt, float inputX) {
-    // Reversing on the ground at speed: "turned" (skid dust). emitMovementCues only sees a turn when the
-    // velocity flips sign at speed, which the deceleration never allows.
-    if (grounded && inputX * velocity_.x < 0.0f && std::abs(velocity_.x) >= TurnSpeed && inputX * facing < 0.0f && scene_)
-        emitMovementCue(*scene_, *this, "turned");
+
     if (inputX != 0.0f) facing = inputX > 0.0f ? 1.0f : -1.0f;
     const float target = inputX * runSpeed;
     // Speeding up toward the input uses the acceleration; slowing down or turning uses the deceleration.
@@ -184,10 +182,10 @@ void IkiObject::hurt(const DamageInfo& info) {
         return;
     }
     if (info.direction.x != 0.0f) velocity_.x = (info.direction.x > 0.0f ? 1.0f : -1.0f) * hurtKnockback.x;
-    if (info.direction != glm::vec2(0.0f)) {
-        velocity_.y = hurtKnockback.y;
-        jumped_ = true;
-    }
+    // Up or down along direction.y; a sideways hit pops the Iki up.
+    if (info.direction.y != 0.0f) velocity_.y = (info.direction.y > 0.0f ? 1.0f : -1.0f) * hurtKnockback.y;
+    else if (info.direction.x != 0.0f) velocity_.y = hurtKnockback.y;
+    if (velocity_.y > 0.0f) jumped_ = true; // leaves the ground
     jumpCuttable = false;
     machine_.change(*this, "hurt");
 }

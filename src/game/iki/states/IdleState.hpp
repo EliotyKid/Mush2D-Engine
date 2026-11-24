@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "engine/world/StateMachine.hpp"
 #include "game/objects/IkiObject.hpp"

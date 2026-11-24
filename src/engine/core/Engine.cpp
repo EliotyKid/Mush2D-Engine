@@ -174,9 +174,9 @@ void Engine::run(IGame& game) {
             bool f1 = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
             if (f1 && !f1Held) showPanel = !showPanel;
             f1Held = f1;
-            // Hidden panel never blocks the game (io.Want* is stale from the last drawn frame).
+            // Only the shown panel blocks the game (the HUD draws no windows and never wants the input).
             input.setBlocked(showPanel && io.WantCaptureKeyboard, showPanel && io.WantCaptureMouse);
-            // Every frame: the game's HUD draws with ImGui even when the panel is hidden.
+            // Every frame: the game's HUD draws with ImGui while the panel is hidden.
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
@@ -198,9 +198,10 @@ void Engine::run(IGame& game) {
             camera.updateFollow(scene, deltaTime);
             camera.clampToBounds(gpu.swapchain().extent());
 
-            game.onHud(services);
             if (showPanel) {
                 game.onImGui(services);
+            } else {
+                game.onHud(services); // the HUD would cover the panel's windows
             }
             ImGui::Render();
 
