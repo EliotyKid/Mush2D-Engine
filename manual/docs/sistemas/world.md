@@ -10,6 +10,7 @@
 - Move personagens sobre o cenário com rampas e plataformas (`CharacterController`).
 - Organiza o comportamento em estados com nome (`StateMachine`).
 - Cria objetos a partir de prefabs (`PrefabLibrary`) e salva edições do inspetor (`PrefabSave`).
+- Dá vida aos sprites: partículas, squash e stretch, piscar, inclinação e eventos por quadro (veja [Game juice](../fazendo-o-jogo/game-juice.md)).
 
 ## Tipos principais
 
@@ -57,7 +58,17 @@
 |---|---|
 | `PrefabLibrary` | Carrega e mescla prefabs (`resolved`), cria objetos (`instantiate(scene, nome, overrides, entityIid)`), `clear()` no hot reload. Serviço da cena. |
 | `PrefabSave` | `diffAgainstBase`, `savePrefab`, usados pelo inspetor para "Salvar no prefab" e "Salvar como novo prefab". |
-| `SpriteAnimator` | Componente que toca a animação do estado atual (`setState("walk")`), usando o mapa `animations` do prefab, com o pivô do frame na posição do objeto. |
+| `SpriteAnimator` | Componente que toca a animação do estado atual (`setState("walk")`), usando o mapa `animations` do prefab, com o pivô do frame na posição do objeto. `animationEvents` (animação → {quadro → nome}) emite `AnimationEvent{object, animation, name}` no `scene.events()` cada vez que o quadro entra: a cada volta do loop e também nos quadros pulados por um `dt` grande. |
+
+### Juice
+
+| Tipo | Papel |
+|---|---|
+| `ParticleEmitter` (`Particles.hpp`) | Partículas na CPU, em coordenadas de mundo. `burst(config, posição, direção)` (direção `-1` espelha os ângulos), `alive()`, `maxParticles` (128; acima disso a mais velha sai). Desenhadas como sprites pelo `appendSceneSprites`: sem `frame`, um pixel branco tingido. Sem luz e sem emissão. |
+| `ParticleConfig` | `count`, `speed`, `angle` (graus) e `lifetime` como [min, max], `gravity`, `drag`, `size` [início, fim], `colorStart`/`colorEnd`, `frame` (do atlas do sprite do dono), `additive`, `layer`. `parseParticleConfig(json, config, erro)` lê o formato JSON (`"color": [início, fim]`). |
+| `SquashStretch` | Molas em x e y que voltam a {1, 1}: `kick({0.8, 1.25})`, `current()`, `apply(sprite)` (multiplica `drawSize` mantendo a base do sprite; chame depois do `SpriteAnimator`). `stiffness` 300, `damping` 18. Nunca mexe em `transform.scale`. |
+| `Blink` | `start(segundos)` alterna `visible` `rate` vezes por segundo (16) e devolve a visibilidade do começo ao terminar. `active()`. |
+| `VelocityLean` | Inclina `transform.rotation` pela velocidade horizontal medida pela posição: até `maxDegrees` (4) a partir de `fullSpeed` (5 u/s). O `SpriteBatch` gira o sprite em torno do pivô (os pés). |
 
 ## Casos de uso
 
@@ -123,4 +134,4 @@ Com `MUSH2D_COMPONENT`, ele pode ser listado em `"components"` de um prefab.
 
 ## Arquivos
 
-`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`.
+`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`, `Particles.*`, `SquashStretch.*`, `Blink.hpp`, `VelocityLean.hpp`.

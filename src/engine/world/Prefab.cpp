@@ -3,6 +3,11 @@
 #include "engine/assets/AssetRegistry.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/SpriteAnimator.hpp"
+// Included so their MUSH2D_COMPONENT registration is linked in: prefabs name them in "components".
+#include "engine/world/Blink.hpp"
+#include "engine/world/Particles.hpp"
+#include "engine/world/SquashStretch.hpp"
+#include "engine/world/VelocityLean.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -17,8 +22,8 @@ namespace {
 constexpr int MaxDepth = 16; // children of children...: also stops a child that instantiates its own parent
 
 const std::set<std::string> KnownKeys = {"version", "base", "type", "props", "extra", "sprite", "collider",
-                                         "animations", "components", "children", "name", "position", "prefab", "remove"};
-const std::set<std::string> KeyedSections = {"props", "extra", "sprite", "collider", "animations"};
+                                         "animations", "animationEvents", "components", "children", "name", "position", "prefab", "remove"};
+const std::set<std::string> KeyedSections = {"props", "extra", "sprite", "collider", "animations", "animationEvents"};
 
 // Prefab section field -> GameObject attribute.
 const std::map<std::string, std::string> SpriteFields = {{"atlas", "spriteAtlas"}, {"frame", "spriteFrame"},
@@ -296,10 +301,23 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
             else warn(where + ": animations." + state + ": expected an animation name");
         }
     }
-    if (!animations.empty()) {
+    std::map<std::string, std::map<int, std::string>> animationEvents; // animation -> {frame -> event}
+    if (doc.contains("animationEvents")) {
+        if (!doc["animationEvents"].is_object()) warn(where + ": animationEvents: expected an object");
+        else for (const auto& [anim, frames] : doc["animationEvents"].items()) {
+            if (!frames.is_object()) { warn(where + ": animationEvents." + anim + ": expected {frame: event}"); continue; }
+            for (const auto& [frame, event] : frames.items()) {
+                const bool digits = !frame.empty() && frame.size() < 6 && std::all_of(frame.begin(), frame.end(), [](unsigned char c) { return std::isdigit(c); });
+                if (digits && event.is_string()) animationEvents[anim][std::stoi(frame)] = event.get<std::string>();
+                else warn(where + ": animationEvents." + anim + "." + frame + ": expected a frame number and an event name");
+            }
+        }
+    }
+    if (!animations.empty() || !animationEvents.empty()) {
         SpriteAnimator* animator = o.getComponent<SpriteAnimator>();
         if (!animator) animator = &o.addComponent<SpriteAnimator>();
         for (auto& [state, anim] : animations) animator->animations[state] = anim;
+        for (auto& [anim, frames] : animationEvents) animator->animationEvents[anim] = frames;
     }
 
     if (!prefab.empty()) lineage.push_back(prefab); // the prefabs being spawned, root first

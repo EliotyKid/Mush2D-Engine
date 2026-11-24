@@ -3,6 +3,10 @@
 #include "engine/world/Prefab.hpp"
 #include "engine/world/PrefabSave.hpp"
 #include "engine/world/SpriteAnimator.hpp"
+#include "engine/world/Blink.hpp"
+#include "engine/world/Particles.hpp"
+#include "engine/world/SquashStretch.hpp"
+#include "engine/world/VelocityLean.hpp"
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
@@ -3218,6 +3222,193 @@ TEST(world_state_global_flag_survives_room_restore) {
     CHECK(state.find(WorldState::GlobalIid) != nullptr);
     state.setFlag("ability.ice.stakes", false);
     CHECK(!state.flag("ability.ice.stakes"));
+}
+
+// --- Juice: particles, squash and stretch, blink, lean, frame events (D2 Task 2) -----------------------------
+
+TEST(particles_burst_lifetime_and_pool_limit) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& e = o.addComponent<ParticleEmitter>();
+    scene.flush();
+    ParticleConfig c;
+    c.count = 5;
+    c.speed = {0.0f, 0.0f};
+    c.lifetime = {0.2f, 0.4f};
+    e.burst(c, {1.0f, 2.0f});
+    CHECK(e.alive() == 5);
+    for (int i = 0; i < 10; ++i) scene.step(0.015f); // 0.15 s: none expired yet
+    CHECK(e.alive() == 5);
+    for (int i = 0; i < 20; ++i) scene.step(0.015f); // 0.45 s: all expired
+    CHECK(e.alive() == 0);
+
+    // Over maxParticles the oldest go first.
+    e.maxParticles = 8;
+    c.lifetime = {1.0f, 1.0f};
+    e.burst(c, {0.0f, 0.0f});
+    scene.step(0.1f);
+    e.burst(c, {5.0f, 0.0f});
+    CHECK(e.alive() == 8);
+    const auto atOrigin = std::count_if(e.particles().begin(), e.particles().end(),
+                                        [](const Particle& p) { return p.position.x == 0.0f; });
+    CHECK(atOrigin == 3);
+
+    // Drawn through the sprite path: an empty frame is the tinted white pixel, never emissive.
+    Material white{7, 8, 9, 10, 1, 1};
+    auto lookup = [](std::uint32_t, const std::string&) { return std::make_pair(Material{}, glm::vec4(0, 0, 0, 0)); };
+    SpriteBatch b;
+    appendSceneSprites(scene, b, lookup, &white);
+    CHECK(b.size() == 8 && b.sorted()[0].albedo == 7 && b.sorted()[0].emissive == 9 && b.sorted()[0].flags == SpriteFlagNearest);
+    SpriteBatch none;
+    appendSceneSprites(scene, none, lookup); // no white material: untextured particles are skipped
+    CHECK(none.size() == 0);
+}
+
+TEST(particles_mirror_direction) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& e = o.addComponent<ParticleEmitter>();
+    scene.flush();
+    ParticleConfig c;
+    c.count = 1;
+    c.speed = {2.0f, 2.0f};
+    c.angle = {30.0f, 30.0f};
+    e.burst(c, {0.0f, 0.0f}, 1);
+    e.burst(c, {0.0f, 0.0f}, -1);
+    const glm::vec2 right = e.particles()[0].velocity, left = e.particles()[1].velocity;
+    CHECK(std::abs(right.x - 2.0f * std::cos(glm::radians(30.0f))) < 1e-5f && right.y > 0.0f);
+    CHECK(std::abs(left.x + right.x) < 1e-5f && std::abs(left.y - right.y) < 1e-5f);
+}
+
+TEST(particle_config_parses_json) {
+    ParticleConfig c;
+    std::string error;
+    auto j = nlohmann::json::parse(R"({"count": 6, "speed": [1, 3], "angle": [100, 170], "lifetime": [0.2, 0.4],
+        "gravity": -4, "drag": 2, "size": [0.12, 0.0], "color": [[0.8,0.75,0.65,0.9],[0.8,0.75,0.65,0]],
+        "frame": "dot", "additive": true, "layer": 3})");
+    CHECK(parseParticleConfig(j, c, error) && error.empty());
+    CHECK(c.count == 6 && c.speed == glm::vec2(1, 3) && c.angle == glm::vec2(100, 170) && c.lifetime == glm::vec2(0.2f, 0.4f));
+    CHECK(c.gravity == -4.0f && c.drag == 2.0f && c.size == glm::vec2(0.12f, 0.0f) && c.frame == "dot" && c.additive && c.layer == 3);
+    CHECK(c.colorStart == glm::vec4(0.8f, 0.75f, 0.65f, 0.9f) && c.colorEnd.a == 0.0f);
+    ParticleConfig d;
+    CHECK(!parseParticleConfig(nlohmann::json::parse(R"({"speed": [1]})"), d, error) && error.find("speed") != std::string::npos);
+    CHECK(!parseParticleConfig(nlohmann::json::parse(R"({"cuont": 3})"), d, error) && error.find("cuont") != std::string::npos);
+    CHECK(!parseParticleConfig(nlohmann::json::array(), d, error));
+}
+
+TEST(squash_stretch_returns_to_rest) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& s = o.addComponent<SquashStretch>();
+    scene.flush();
+    s.kick({0.7f, 1.3f});
+    CHECK(s.current() == glm::vec2(0.7f, 1.3f));
+    for (int i = 0; i < 60; ++i) scene.step(1.0f / 60.0f);
+    CHECK(std::abs(s.current().x - 1.0f) < 0.01f && std::abs(s.current().y - 1.0f) < 0.01f);
+    CHECK(o.transform.scale == glm::vec2(1.0f));
+}
+
+TEST(squash_stretch_anchors_feet) {
+    SquashStretch s;
+    s.kick({1.3f, 0.7f});
+    SpriteData sp;
+    sp.drawSize = {-1.0f, 0.5f}; // mirrored
+    sp.offset = {0.2f, 0.15f};   // bottom at y = -0.1
+    s.apply(sp);
+    CHECK(std::abs(sp.drawSize.x + 1.3f) < 1e-5f && std::abs(sp.drawSize.y - 0.35f) < 1e-5f);
+    CHECK(std::abs((sp.offset.y - sp.drawSize.y * 0.5f) - (-0.1f)) < 1e-5f); // the bottom stays put
+    CHECK(std::abs(sp.offset.x - 0.26f) < 1e-5f);                             // spreads from the feet
+}
+
+TEST(blink_toggles_and_restores) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& b = o.addComponent<Blink>();
+    scene.flush();
+    b.rate = 10.0f;
+    b.start(0.5f);
+    CHECK(b.active());
+    scene.step(0.01f);
+    CHECK(!o.visible);
+    scene.step(0.1f); // 0.11 s: second phase
+    CHECK(o.visible);
+    scene.step(0.1f);
+    CHECK(!o.visible);
+    for (int i = 0; i < 4; ++i) scene.step(0.1f);
+    CHECK(!b.active() && o.visible);
+    o.visible = false; // a hidden object stays hidden
+    b.start(0.2f);
+    for (int i = 0; i < 5; ++i) scene.step(0.1f);
+    CHECK(!o.visible);
+}
+
+TEST(velocity_lean_follows_motion) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    o.addComponent<VelocityLean>();
+    scene.flush();
+    const float dt = 1.0f / 60.0f, full = glm::radians(4.0f);
+    for (int i = 0; i < 60; ++i) { o.transform.position.x += 10.0f * dt; scene.step(dt); }
+    CHECK(std::abs(o.transform.rotation + full) < 0.01f * full); // right: leans forward (clockwise)
+    for (int i = 0; i < 60; ++i) { o.transform.position.x -= 2.5f * dt; scene.step(dt); }
+    CHECK(std::abs(o.transform.rotation - 0.5f * full) < 0.01f * full); // half of fullSpeed
+    for (int i = 0; i < 60; ++i) scene.step(dt);
+    CHECK(std::abs(o.transform.rotation) < 0.01f * full);
+}
+
+namespace {
+struct AnimEventFixture {
+    Scene2D scene;
+    std::vector<AnimationEvent> got;
+    EventBus::Subscription sub = scene.events().subscribe<AnimationEvent>([this](const AnimationEvent& e) { got.push_back(e); });
+    GameObject& o = scene.createObject<GameObject>();
+    SpriteAnimator& anim = o.addComponent<SpriteAnimator>();
+    AnimEventFixture() {
+        scene.setService(&testAssets());
+        o.sprite = SpriteData{};
+        o.sprite->atlasName = "test_atlas";
+        anim.animations = {{"idle", "test_atlas/walk"}};
+        anim.animationEvents = {{"walk", {{1, "step"}}}};
+        scene.flush();
+    }
+    void step(float dt) { scene.step(dt); scene.flush(); }
+};
+}
+
+TEST(animation_frame_event_emitted_once_per_entry) {
+    AnimEventFixture f;
+    f.step(0.01f); // frame 0
+    CHECK(f.got.empty());
+    f.step(0.1f); // frame 1 enters
+    CHECK(f.got.size() == 1 && f.o.sprite->frameName == "a 1");
+    if (!f.got.empty()) CHECK(f.got[0].object == f.o.id && f.got[0].animation == "walk" && f.got[0].name == "step");
+    f.step(0.02f);
+    f.step(0.02f); // still on frame 1: no repeat
+    CHECK(f.got.size() == 1);
+    f.step(0.1f); // frame 0
+    f.step(0.1f); // frame 1 again on the next loop
+    CHECK(f.got.size() == 2);
+}
+
+TEST(animation_event_fires_for_skipped_frame) {
+    AnimEventFixture f;
+    f.anim.animationEvents["walk"][0] = "start";
+    f.step(0.01f); // frame 0 enters when the animation starts
+    CHECK(f.got.size() == 1 && f.got[0].name == "start");
+    f.step(0.15f); // frame 1, 0.05 s into it
+    f.got.clear();
+    f.step(0.27f); // 0.32 s of frames in one step: frame 0, frame 1, frame 0
+    CHECK(f.got.size() == 3 && f.o.sprite->frameName == "a 0");
+    if (f.got.size() == 3) CHECK(f.got[0].name == "start" && f.got[1].name == "step" && f.got[2].name == "start");
+}
+
+TEST(prefab_reads_animation_events) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_anim_events");
+    CHECK(o && t.prefabs.warnings().empty());
+    auto* anim = o ? o->getComponent<SpriteAnimator>() : nullptr;
+    CHECK(anim && anim->animationEvents["walk"].size() == 2);
+    if (anim) CHECK(anim->animationEvents["walk"][0] == "start" && anim->animationEvents["walk"][1] == "step");
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

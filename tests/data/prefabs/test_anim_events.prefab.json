@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "type": "GameObject",
+  "sprite": { "atlas": "test_atlas", "frame": "a 0" },
+  "animations": { "idle": "walk" },
+  "animationEvents": { "walk": { "0": "start", "1": "step" } }
+}

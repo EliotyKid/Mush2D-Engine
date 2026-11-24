@@ -148,7 +148,7 @@ void IkigaiGame::submitRenderData(EngineServices& s) {
     }
     appendSceneSprites(s.scene, batch, [this](std::uint32_t atlasIndex, const std::string& frameName) {
         return lookupAtlasFrame(atlasIndex, frameName);
-    });
+    }, &s.materials.white());
 
     // Debug (MUSH2D_DEBUG_ADDITIVE=1): bright additive sprite next to the player, to check additive + bloom.
     static const bool debugAdditive = std::getenv("MUSH2D_DEBUG_ADDITIVE") != nullptr;

@@ -11,6 +11,17 @@
     ]
   },
   "types": {
+    "Blink": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 16.0,
+          "name": "rate",
+          "type": "Float"
+        }
+      ]
+    },
     "CheckpointObject": {
       "base": "GameObject",
       "component": false,
@@ -190,6 +201,17 @@
         }
       ]
     },
+    "ParticleEmitter": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 128,
+          "name": "maxParticles",
+          "type": "Int"
+        }
+      ]
+    },
     "PersistentComponent": {
       "base": "Component",
       "component": true,
@@ -322,10 +344,42 @@
         }
       ]
     },
+    "SquashStretch": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 300.0,
+          "name": "stiffness",
+          "type": "Float"
+        },
+        {
+          "default": 18.0,
+          "name": "damping",
+          "type": "Float"
+        }
+      ]
+    },
     "TeleportObject": {
       "base": "GameObject",
       "component": false,
       "props": []
+    },
+    "VelocityLean": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 4.0,
+          "name": "maxDegrees",
+          "type": "Float"
+        },
+        {
+          "default": 5.0,
+          "name": "fullSpeed",
+          "type": "Float"
+        }
+      ]
     },
     "WallObject": {
       "base": "GameObject",

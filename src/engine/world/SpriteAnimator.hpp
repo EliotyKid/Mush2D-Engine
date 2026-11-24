@@ -20,6 +20,13 @@ inline void placeFrameAtPivot(GameObject& o, const AtlasFrame& f, glm::vec2 anch
         glm::vec2(sx * (float(f.w) * 0.5f - float(f.pivotX)), float(f.pivotY) - float(f.h) * 0.5f) / ArtPixelsPerUnit;
 }
 
+// Emitted on scene.events() each time a frame listed in SpriteAnimator::animationEvents becomes the current one.
+struct AnimationEvent {
+    GameObjectId object;
+    std::string animation; // animation name in its atlas (no "atlas/" prefix)
+    std::string name;
+};
+
 // Loops the animation of the current state (prefab "animations": state -> animation) on the owner's sprite,
 // standing with the frame pivot on transform.position and mirrored by the owner's flipX. An animation is a
 // name in the sprite's atlas (spriteAtlas) or an "atlas/animation" ref. Needs the AssetRegistry scene service
@@ -29,6 +36,9 @@ class SpriteAnimator : public Component {
 public:
     MUSH2D_EXPORT(std::string, state, "idle")
     std::map<std::string, std::string> animations;
+    // animation -> {frame index within the animation (first frame = 0) -> event name}; prefab "animationEvents".
+    // Fires every time the frame is entered: each loop, and for frames a long step skips past.
+    std::map<std::string, std::map<int, std::string>> animationEvents;
 
     // Restarts the animation when the state changes.
     void setState(const std::string& newState) { state = newState; }
