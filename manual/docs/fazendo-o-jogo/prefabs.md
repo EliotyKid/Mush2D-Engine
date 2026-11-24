@@ -34,7 +34,7 @@ Só `PlayerStart`, `Light` e `Terrain` têm fábrica em código.
 | `sprite` | atlas, frame, animação, camada, cor, profundidade, aditivo |
 | `collider` | tamanho, offset, trigger |
 | `animations` | nome do estado → animação do atlas (vira um `SpriteAnimator`) |
-| `components` | componentes com os seus `props` |
+| `components` | componentes registrados com `MUSH2D_COMPONENT` e os seus `props`. Hoje: `PersistentComponent` e `SpriteAnimator`. O `LightComponent` do exemplo ainda não é registrado |
 | `children` | objetos filhos: outro prefab ou um objeto inline |
 
 ## Herança

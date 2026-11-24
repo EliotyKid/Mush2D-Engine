@@ -197,10 +197,12 @@ Se a diferença for só de valores (velocidade, cor), não precisa de C++: use u
 
 ### Um objeto com luz
 
-No prefab, adicione o componente `LightComponent`:
+O `LightComponent` ainda não é exportado para prefabs: adicione-o em C++, como o cristal faz no `onPrefabApplied`:
 
-```json
-"components": [ { "type": "LightComponent", "props": { } } ]
+```cpp
+LightComponent* light = getComponent<LightComponent>();
+if (!light) light = &addComponent<LightComponent>();
+light->light = GpuLight{{0.0f, 0.0f, 0.6f, 3.0f}, {glow, 1.4f}, {0.0f, 0.06f, 2.0f, 0.0f}};
 ```
 
-Os atributos dele estão em [render](../sistemas/render.md).
+O significado de cada número do `GpuLight` está em [render](../sistemas/render.md). Para uma luz parada no cenário, sem objeto, use a entidade `Light` do LDtk (veja [Objetos do jogo](../objetos.md#light)).
