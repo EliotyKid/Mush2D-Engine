@@ -37,6 +37,7 @@
 #include "game/objects/CheckpointObject.hpp"
 #include "game/objects/CrystalObject.hpp"
 #include "game/objects/DoorObject.hpp"
+#include "game/objects/IkiObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
 #include "game/objects/PlayerObject.hpp"
@@ -2840,6 +2841,19 @@ TEST(game_prefabs_load_without_warnings) {
     GameObject* halo = crystal && crystal->children().size() == 1 ? scene.find(crystal->children()[0]) : nullptr;
     CHECK(halo && halo->sprite && halo->sprite->additive && halo->transform.scale == glm::vec2(2.8f));
     CHECK(halo && halo->sprite && halo->sprite->color == glm::vec4(0.45f, 0.0f, 0.45f, 1.0f));
+
+    // The Iki: the juice components in update order, its effects and their files (D2 Task 5).
+    auto* iki = dynamic_cast<IkiObject*>(prefabs.instantiate(scene, "iki"));
+    CHECK(iki && iki->components().size() >= 5 && iki->getComponent<EffectTriggers>());
+    if (iki && iki->components().size() >= 5) {
+        const char* order[] = {"Resources", "SpriteAnimator", "SquashStretch", "VelocityLean", "Blink"}; // Resources: onCreate
+        for (int i = 0; i < 5; ++i) CHECK(typeOf(*iki->components()[i]).name == order[i]);
+        CHECK(iki->getComponent<SpriteAnimator>()->state == "idle" && iki->getComponent<SpriteAnimator>()->animations.size() == 8);
+    }
+    EffectLibrary effects;
+    effects.scan(sourceAssetPath("assets/effects"));
+    for (const char* name : {"land_dust", "run_dust", "turn_dust", "jump_dust", "ice_stake", "ice_shards"})
+        CHECK(effects.find(name) && !effects.find(name)->actions.empty());
 }
 
 // --- Inspector save (D1 Task 4) -------------------------------------------------------------------------
@@ -3860,6 +3874,283 @@ TEST(squash_scale_by_strength) {
     CHECK(std::abs(s->current().x - 1.4f) < 1e-5f && std::abs(s->current().y - 0.6f) < 1e-5f);
     playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.4, 0.6]})"), 0.5f, {0.0f, 0.0f}, 1); // not scaled
     CHECK(std::abs(s->current().x - 1.4f) < 1e-5f && std::abs(s->current().y - 0.6f) < 1e-5f);
+}
+
+// --- IkiObject (D2 Task 5) -------------------------------------------------------------------------------
+
+namespace {
+IkiObject& makeIki(Scene2D& scene, glm::vec2 feet) {
+    IkiObject& iki = scene.createObject<IkiObject>();
+    iki.transform.position = feet;
+    return iki;
+}
+void stepIki(Scene2D& scene, IkiObject& iki, const InputState& in, int frames = 1) {
+    for (int i = 0; i < frames; ++i) { iki.applyInput(in); scene.step(kDt); }
+}
+// 20 x 10 cells of 0.5 u: floor top y = -4.5 over x 0..10, plus extra solid cells.
+void ikiLevel(Scene2D& scene, std::initializer_list<std::pair<glm::ivec2, int>> extra = {}) {
+    LdtkLayer L = gridLayer(20, 10, extra);
+    setCells(L, 9, 0, 19, 1);
+    scene.collision.addRoom("r", gridSegs(L));
+}
+// Standing on the floor of ikiLevel at x.
+IkiObject& ikiOnFloor(Scene2D& scene, float x) {
+    IkiObject& iki = makeIki(scene, {x, -4.4f});
+    stepIki(scene, iki, {}, 20);
+    return iki;
+}
+InputState zPress() { InputState in; in.jump.pressed = in.jump.down = true; return in; }
+InputState zHeld() { InputState in; in.jump.down = true; return in; }
+InputState rightHeld() { InputState in; in.moveRight.down = true; return in; }
+bool inState(const IkiObject& iki, const char* name) { return std::string(iki.stateName()) == name; }
+}
+
+TEST(iki_run_accel_decel) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    CHECK(iki.grounded && inState(iki, "idle") && std::abs(iki.transform.position.y + 4.5f) < 1e-3f); // position = feet
+    CHECK(iki.hasTag("player") && iki.stateMachines().size() == 1 && iki.stateMachines()[0].first == "move");
+    stepIki(scene, iki, rightHeld());
+    CHECK(std::abs(iki.velocity_.x - 60.0f * kDt) < 1e-3f && inState(iki, "run") && iki.facing == 1.0f);
+    stepIki(scene, iki, rightHeld(), 10);
+    CHECK(std::abs(iki.velocity_.x - 5.0f) < 1e-4f); // runSpeed
+    stepIki(scene, iki, {});
+    CHECK(std::abs(iki.velocity_.x - (5.0f - 70.0f * kDt)) < 1e-3f && inState(iki, "idle"));
+    stepIki(scene, iki, {}, 5);
+    CHECK(iki.velocity_.x == 0.0f);
+
+    // In the air: airAccel speeding up, airDecel slowing down.
+    InputState jumpRight = rightHeld();
+    jumpRight.jump.pressed = jumpRight.jump.down = true;
+    stepIki(scene, iki, jumpRight);
+    InputState airRight = rightHeld();
+    airRight.jump.down = true;
+    const float before = iki.velocity_.x;
+    stepIki(scene, iki, airRight);
+    CHECK(!iki.grounded && std::abs(iki.velocity_.x - before - 35.0f * kDt) < 1e-3f);
+    const float fast = iki.velocity_.x;
+    stepIki(scene, iki, zHeld());
+    CHECK(std::abs(fast - iki.velocity_.x - 20.0f * kDt) < 1e-3f);
+
+    // Reversing on the ground at speed emits "turned" once (the turn dust); a slow reversal does not.
+    int turned = 0;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { turned += c.name == "turned"; });
+    stepIki(scene, iki, {}, 60);
+    stepIki(scene, iki, rightHeld(), 30);
+    InputState left;
+    left.moveLeft.down = true;
+    stepIki(scene, iki, left, 5);        // 5 -> about -0.8 u/s
+    stepIki(scene, iki, rightHeld(), 1); // below 2 u/s: no turn
+    scene.flush();
+    CHECK(turned == 1);
+}
+
+TEST(iki_jump_coyote_and_buffer) {
+    // Coyote: Z 3 frames (0.05 s) after running off a ledge still jumps; 10 frames (0.17 s) after, it does not.
+    for (int late : {3, 10}) {
+        Scene2D scene;
+        LdtkLayer L = gridLayer(20, 14, {});
+        setCells(L, 7, 0, 9, 1);   // ledge top y = -3.5, x 0..5
+        setCells(L, 13, 0, 19, 1); // floor top y = -6.5
+        scene.collision.addRoom("r", gridSegs(L));
+        IkiObject& iki = makeIki(scene, {4.0f, -3.4f});
+        stepIki(scene, iki, {}, 20);
+        CHECK(iki.grounded);
+        for (int guard = 0; iki.grounded && guard < 120; ++guard) stepIki(scene, iki, rightHeld());
+        stepIki(scene, iki, {}, late - 1);
+        stepIki(scene, iki, zPress());
+        if (late == 3) CHECK(iki.velocity_.y > 9.0f && inState(iki, "jump"));
+        else CHECK(iki.velocity_.y < 0.0f && inState(iki, "fall"));
+    }
+
+    // Buffer: Z 5 frames (0.083 s) before landing jumps on landing; 10 frames (0.17 s) before, it does not.
+    auto drop = [](int pressAt, bool& jumped) {
+        Scene2D scene;
+        ikiLevel(scene);
+        IkiObject& iki = makeIki(scene, {3.0f, -1.0f});
+        int landed = -1;
+        for (int f = 0; f < 90; ++f) {
+            stepIki(scene, iki, f == pressAt ? zPress() : InputState{});
+            if (iki.grounded && landed < 0) landed = f;
+            if (landed >= 0 && iki.velocity_.y > 0.0f) jumped = true;
+        }
+        return landed;
+    };
+    bool jumped = false;
+    const int land = drop(-1, jumped);
+    CHECK(land > 15 && !jumped);
+    drop(land - 5, jumped);
+    CHECK(jumped);
+    jumped = false;
+    drop(land - 10, jumped);
+    CHECK(!jumped);
+}
+
+TEST(iki_variable_jump_cut) {
+    auto height = [](int holdFrames, float* releaseRatio) {
+        Scene2D scene;
+        ikiLevel(scene);
+        IkiObject& iki = ikiOnFloor(scene, 3.0f);
+        const float y0 = iki.transform.position.y;
+        stepIki(scene, iki, zPress());
+        float apex = y0;
+        for (int f = 0; f < 90; ++f) {
+            const float vy = iki.velocity_.y;
+            stepIki(scene, iki, f < holdFrames ? zHeld() : InputState{});
+            if (f == holdFrames && releaseRatio) *releaseRatio = (iki.velocity_.y + 32.0f * kDt) / vy;
+            apex = std::max(apex, iki.transform.position.y);
+        }
+        return apex - y0;
+    };
+    float ratio = 0.0f;
+    const float full = height(1000, nullptr), tap = height(4, &ratio);
+    CHECK(full > 1.8f && tap < 0.6f * full);
+    CHECK(std::abs(ratio - 0.5f) < 1e-3f); // releasing Z multiplies vy by jumpCutFactor, then one frame of gravity
+}
+
+TEST(iki_apex_and_fall_gravity) {
+    Scene2D scene; // nothing to land on
+    IkiObject& iki = makeIki(scene, {0.0f, 0.0f});
+    iki.velocity_ = {0.0f, 11.0f};
+    int rising = 0, apex = 0, falling = 0, wrong = 0;
+    for (int f = 0; f < 180; ++f) {
+        const float before = iki.velocity_.y;
+        stepIki(scene, iki, zHeld());
+        const float g = (iki.velocity_.y - before) / kDt;
+        if (iki.velocity_.y == -18.0f) continue; // limited to maxFallSpeed
+        if (before >= 1.5f) { ++rising; wrong += std::abs(g + 32.0f) > 0.01f; }
+        else if (before > -1.5f) { ++apex; wrong += std::abs(g + 16.0f) > 0.01f; }  // apexGravityFactor 0.5
+        else { ++falling; wrong += std::abs(g + 51.2f) > 0.01f; }                  // fallGravityFactor 1.6
+    }
+    CHECK(rising > 10 && apex > 5 && falling > 5 && wrong == 0);
+    CHECK(iki.velocity_.y == -18.0f);
+    // Near the top without Z: plain gravity going up, fall gravity going down.
+    iki.velocity_ = {0.0f, 1.0f};
+    stepIki(scene, iki, {});
+    CHECK(std::abs(iki.velocity_.y - (1.0f - 32.0f * kDt)) < 1e-4f);
+    iki.velocity_ = {0.0f, -1.0f};
+    stepIki(scene, iki, {});
+    CHECK(std::abs(iki.velocity_.y - (-1.0f - 51.2f * kDt)) < 1e-4f);
+}
+
+TEST(iki_corner_correction) {
+    // A one-cell block (x 5.0..5.5, bottom y = -2.5) above the Iki's right side; the Iki is 0.6 wide.
+    auto jumpUnder = [](float overlap, float& apexFeet, float& x) {
+        Scene2D scene;
+        ikiLevel(scene, {{{10, 4}, 1}});
+        IkiObject& iki = ikiOnFloor(scene, 4.7f + overlap);
+        stepIki(scene, iki, zPress());
+        apexFeet = iki.transform.position.y;
+        for (int f = 0; f < 60; ++f) {
+            stepIki(scene, iki, zHeld());
+            apexFeet = std::max(apexFeet, iki.transform.position.y);
+            if (iki.velocity_.y > 0.0f) x = iki.transform.position.x;
+        }
+    };
+    float apex = 0.0f, x = 0.0f;
+    jumpUnder(0.1f, apex, x);
+    CHECK(apex > -3.0f && x <= 4.7f + 1e-3f && x >= 4.6f); // slid 0.1 left and kept rising
+    jumpUnder(0.3f, apex, x);
+    CHECK(apex < -4.05f && std::abs(x - 5.0f) < 1e-3f); // head hit the block (feet at most 1.6 below it)
+}
+
+TEST(iki_up_arrow_does_not_jump) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    const float y0 = iki.transform.position.y;
+    InputState up;
+    up.moveUp.pressed = up.moveUp.down = true;
+    stepIki(scene, iki, up);
+    up.moveUp.pressed = false;
+    stepIki(scene, iki, up, 20);
+    CHECK(iki.grounded && inState(iki, "idle") && std::abs(iki.transform.position.y - y0) < 1e-4f);
+}
+
+TEST(iki_hurt_knockback_and_invulnerability) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 5.0f);
+    auto* resources = iki.getComponent<Resources>();
+    CHECK(resources && resources->health() == 5);
+    if (!resources) return;
+    iki.hurt({1, {-1.0f, 0.0f}});
+    CHECK(inState(iki, "hurt") && resources->health() == 4 && iki.invulnerable());
+    stepIki(scene, iki, rightHeld()); // input is ignored while hurt
+    CHECK(iki.velocity_.x < -4.0f && iki.velocity_.y > 0.0f && !iki.grounded && iki.facing == 1.0f);
+    iki.hurt({1, {1.0f, 0.0f}});
+    CHECK(resources->health() == 4); // invulnerable
+    stepIki(scene, iki, {}, int(0.35f / kDt) + 2);
+    CHECK(!inState(iki, "hurt"));
+    stepIki(scene, iki, {}, int(0.8f / kDt));
+    CHECK(!iki.invulnerable());
+    iki.hurt({1, {}});
+    CHECK(resources->health() == 3);
+}
+
+TEST(iki_death_emits_died) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    std::vector<GameObjectId> died;
+    auto sub = scene.events().subscribe<Died>([&](const Died& e) { died.push_back(e.id); });
+    iki.hurt({5, {-1.0f, 0.0f}});
+    scene.flush();
+    CHECK(died.size() == 1 && died[0] == iki.id && inState(iki, "dead"));
+    InputState all = rightHeld();
+    all.jump.pressed = all.jump.down = true;
+    stepIki(scene, iki, all, 30);
+    CHECK(inState(iki, "dead") && iki.velocity_.x == 0.0f && iki.grounded); // no control
+    stepIki(scene, iki, {}, int(1.0f / kDt));
+    iki.hurt({1, {}});
+    scene.flush();
+    CHECK(died.size() == 1);
+}
+
+TEST(iki_respawn_resets_state) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    auto* resources = iki.getComponent<Resources>();
+    if (!resources) { CHECK(false); return; }
+    CHECK(resources->spend(Element::Ice, 30.0f));
+    iki.hurt({5, {}});
+    stepIki(scene, iki, zPress()); // a Z while dead must not jump after the respawn
+    iki.respawnAt({6.0f, -4.4f});
+    iki.respawn();
+    CHECK(inState(iki, "idle") && resources->health() == 5 && resources->energy(Element::Ice) == 100.0f);
+    CHECK(iki.velocity_ == glm::vec2(0.0f) && !iki.invulnerable() && iki.transform.position == glm::vec2(6.0f, -4.4f));
+    bool jumped = false;
+    for (int f = 0; f < 10; ++f) {
+        stepIki(scene, iki, {});
+        jumped = jumped || iki.velocity_.y > 0.0f;
+    }
+    CHECK(!jumped && iki.grounded);
+    iki.hurt({1, {}});
+    CHECK(resources->health() == 4);
+}
+
+TEST(iki_stomps_slime) {
+    Scene2D scene;
+    WorldState state;
+    scene.setService(&state);
+    SlimeEnemy& slime = scene.createObject<SlimeEnemy>(); // collider 0.8 x 0.8 at (0, 0)
+    slime.moveSpeed = 0.0f;
+    GameObject& ground = scene.createObject<GameObject>();
+    ground.transform.position = {0.0f, -0.5f};
+    ground.collider = ColliderData{.size = {2.0f, 0.2f}};
+    trackEntity(slime, entity("Slime", "s1", {}, {{"respawn", false}}), {0.0f, 0.0f});
+    IkiObject& iki = makeIki(scene, {0.0f, 0.7f}); // feet at 0.7, slime top at 0.4
+    const GameObjectId slimeId = slime.id;
+    bool bounced = false;
+    for (int i = 0; i < 60 && !bounced; ++i) {
+        stepIki(scene, iki, {});
+        bounced = iki.velocity_.y > 0.0f;
+    }
+    scene.flush();
+    CHECK(bounced && std::abs(iki.velocity_.y - 6.6f) < 0.6f); // jumpSpeed * 0.6, minus up to a frame of gravity
+    CHECK(scene.findObject(slimeId) == nullptr && state.isGone("s1") && inState(iki, "jump"));
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

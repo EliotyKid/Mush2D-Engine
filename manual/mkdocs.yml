@@ -57,6 +57,7 @@ nav:
       - Terreno: fazendo-o-jogo/terreno.md
       - Prefabs: fazendo-o-jogo/prefabs.md
       - Game juice: fazendo-o-jogo/game-juice.md
+      - "Iki: estados e habilidades": fazendo-o-jogo/iki.md
       - Objeto novo: fazendo-o-jogo/objeto-novo.md
       - Comunicação entre objetos: fazendo-o-jogo/comunicacao.md
       - Painel F1 e inspetor: fazendo-o-jogo/inspetor.md

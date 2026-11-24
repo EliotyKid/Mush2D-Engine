@@ -32,9 +32,25 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 
 ---
 
+## Iki
+
+**O que faz:** o personagem jogável da vitrine (`IkiObject`). Corre com aceleração, pula só com `Z` (coyote time, buffer, altura variável, topo flutuante, queda rápida, correção de quina), leva dano, morre e renasce cheio. Tem a máquina de estados `move` (`idle`, `run`, `jump`, `fall`, `hurt`, `dead`), vida e energias (`Resources`) e todo o juice pelo prefab. Tags: `player`.
+
+**Atributos:** os números de movimento e de dano estão na página [Iki: estados e habilidades](fazendo-o-jogo/iki.md#parametros).
+
+**Como nasce:** pela entidade `PlayerStart` (fábrica em código em `IkigaiGame.cpp`), que instancia `assets/prefabs/iki.prefab.json` uma vez só, com os pés na base da entidade. O Iki é `persistent` e não pertence a nenhuma sala.
+
+**Casos de uso:**
+
+- Ajustar o pulo ao vivo: `F1` → "Cena (F1)" → Iki → `jumpSpeed`, `apexGravityFactor`, `fallGravityFactor`.
+- Causar dano em código: `iki->hurt({1, {-1.0f, 0.0f}})` (quantidade, sentido do empurrão). No Debug, `J` faz isso.
+- Mudar a poeira, o squash ou o piscar: edite os arquivos em `assets/effects/` ou a seção `effects` do prefab.
+
+**Arquivos:** `src/game/objects/IkiObject.hpp/.cpp`, `src/game/iki/states/`, `assets/prefabs/iki.prefab.json`.
+
 ## Player
 
-**O que faz:** o personagem controlado pelo jogador. Anda, pula (com pulo curto ao soltar o botão), dash e golpe, tem checkpoint e pode ser teleportado. Tags: `player`.
+**O que faz:** o personagem antigo, só nas cenas Sandbox e Test (a vitrine usa o [Iki](#iki)). Anda, pula (com pulo curto ao soltar o botão), dash e golpe, tem checkpoint e pode ser teleportado. Tags: `player`.
 
 **Atributos** (`PlayerObject`):
 
@@ -50,7 +66,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 | `jumpCutFactor` | Float | `0.5` | Só `Platformer`. Ao soltar o pulo subindo, `velocity.y` é multiplicado por isto. |
 | `maxFallSpeed` | Float | `-18` | Velocidade máxima de queda. |
 
-**Como nasce:** pela entidade `PlayerStart` (fábrica em código em `IkigaiGame.cpp`), não por prefab. Ela cria o player uma vez só, em modo `Platformer`, com `moveSpeed` 4,5, collider 0,6 × 1,6, `gravity` -32 e `jumpSpeed` 11. O player é `persistent` e não pertence a nenhuma sala.
+**Como nasce:** em código, pelas cenas Sandbox e Test (`Spawn::player`), não por prefab.
 
 **Casos de uso:**
 
@@ -213,7 +229,7 @@ Usados só nas cenas antigas montadas em código (Sandbox, Test), sem prefab. S�
 
 ### PlayerStart
 
-Cria o player (veja [Player](#player)). Se o player já existe (a sala carregou de novo), não faz nada.
+Cria o Iki pelo prefab `iki` (veja [Iki](#iki)). Se o player já existe (a sala carregou de novo), não faz nada.
 
 ### Light
 

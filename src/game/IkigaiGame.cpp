@@ -4,9 +4,10 @@
 #include "engine/render/LightComponent.hpp"
 #include "engine/world/Collision.hpp"
 #include "engine/world/IPlayer.hpp"
-#include "game/objects/PlayerObject.hpp"
+#include "engine/world/Resources.hpp"
+#include "game/objects/IkiObject.hpp"
 #include "game/scenes/SceneRegistry.hpp"
-#include "game/spawners/Spawn.hpp"
+#include "game/ui/DebugHud.hpp"
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -43,6 +44,10 @@ void IkigaiGame::init(EngineServices& s) {
     s.scene.setService(&effects);
     s.scene.setService(&world);
     s.scene.setService(&world.state);
+    // Health 0 (Resources emits Died): the existing death (fade, room restore, checkpoint).
+    diedSubscription = s.scene.events().subscribe<Died>([this, &s](const Died& e) {
+        if (currentSceneId == SceneId::Showcase && e.id == playerObjectId) killPlayer(s, e.id);
+    });
     regions.init(s.materials, sourceAssetPath("assets/regions")); // Debug: the source tree, so panel saves survive rebuilds
 
     atlasMaterials.clear();
@@ -197,6 +202,7 @@ void IkigaiGame::submitRenderData(EngineServices& s) {
     collectComponentLights(s.scene, lights);
 }
 void IkigaiGame::shutdown(EngineServices& s) {
+    diedSubscription.reset();
     s.scene.clear();
     s.scene.setService<GameAssets>(nullptr);
     s.scene.setService<AssetRegistry>(nullptr);
@@ -347,8 +353,15 @@ void IkigaiGame::handleGlobalInput(EngineServices& s, float deltaTime) {
     }
 
 #ifndef NDEBUG
-    // Debug K = die (the showcase has no damage yet): the room goes back to its entry state, respawn at the
-    // latest activated checkpoint.
+    // Debug J = 1 damage, pushed away from where the Iki faces; L = spend 30 ice and 30 fire (spec D2 "Recursos").
+    const bool hurtKey = input.isKeyDown(GLFW_KEY_J), spendKey = input.isKeyDown(GLFW_KEY_L);
+    if (auto* iki = dynamic_cast<IkiObject*>(player); iki && hurtKey && !hurtPressed) iki->hurt({1, {-iki->facing, 0.0f}});
+    if (Resources* resources = player ? player->getComponent<Resources>() : nullptr; resources && spendKey && !spendPressed)
+        resources->spendBoth(30.0f, 30.0f);
+    hurtPressed = hurtKey;
+    spendPressed = spendKey;
+
+    // Debug K = die: the room goes back to its entry state, respawn at the latest activated checkpoint.
     if (input.isKeyDown(GLFW_KEY_K)) {
         if (!killPressed && player && currentSceneId == SceneId::Showcase) killPlayer(s, player->id);
         killPressed = true;
@@ -477,20 +490,15 @@ void IkigaiGame::setupInitialScene(EngineServices& s) {
 // Only the special entities have a code factory. Every other entity (Slime, Door, Lever, Item, Checkpoint,
 // Critter, Prop, Crystal, ...) creates assets/prefabs/<snake_case name>.prefab.json (LevelLoader::spawnEntity).
 void IkigaiGame::registerLevelEntities() {
-    levelLoader.registerEntity("PlayerStart", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
+    // The Iki (assets/prefabs/iki.prefab.json). Its position is its feet, on the entity's base.
+    levelLoader.registerEntity("PlayerStart", [this](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
         if (findPlayer(s.scene)) return; // its room streamed in again
-        PlayerObject::Config c{};
-        c.movementMode = PlayerObject::Config::MovementMode::Platformer;
-        c.moveSpeed = 4.5f;
-        c.colliderSize = {0.6f, 1.6f};
-        c.gravity = -32.0f;  // apex = 11^2 / 64 = 1.89 units = 3.8 tiles
-        c.jumpSpeed = 11.0f;
-        c.jumpCutFactor = 0.5f;
-        c.maxFallSpeed = -18.0f;
-        PlayerObject& player = Spawn::player(s.scene, bottomOf(e, pos) + glm::vec2(0.0f, 0.5f * c.colliderSize.y), c);
-        player.setCheckpointPosition(player.transform.position);
-        player.persistent = true; // the player never belongs to a room
-        player.roomIid.clear();
+        GameObject* iki = prefabs.instantiate(s.scene, "iki");
+        if (!iki) return; // the prefab library printed why
+        iki->transform.position = bottomOf(e, pos);
+        iki->persistent = true; // the player never belongs to a room
+        iki->roomIid.clear();
+        if (auto* player = dynamic_cast<IPlayer*>(iki)) player->setCheckpoint(iki->transform.position);
     });
 
     // Lights are not scene objects: kept per room (roomIid) and dropped when it unloads (world.onRoomUnloaded).
@@ -525,7 +533,7 @@ void IkigaiGame::loadShowcaseLevel(EngineServices& s) {
 
     const glm::vec4 b = world.worldBounds(); // (minX, minY, maxX, maxY)
     s.camera.bounds = Camera2D::WorldBounds{b.x, b.z, b.y, b.w};
-    s.camera.followOffset = {0.0f, 0.6f};
+    s.camera.followOffset = {0.0f, 1.4f}; // the Iki's position is its feet
 
     regions.applyNewLayerOverrides(levelLoader); // lights got theirs per room, in the Light factory
     s.renderer.settings() = regions.current().look.settings;
@@ -539,13 +547,14 @@ void IkigaiGame::killPlayer(EngineServices& s, GameObjectId id) {
         if (auto* player = dynamic_cast<IPlayer*>(p)) {
             p->active = true;
             player->respawnAt(at);
+            if (auto* iki = dynamic_cast<IkiObject*>(p)) iki->respawn(); // full health and energy, state idle
             camera.position = at + camera.followOffset;
         }
     });
 }
 
 // Where the player stands after dying: the latest activated Checkpoint ("activated" = activation time), else
-// PlayerStart. Same placement as the PlayerStart factory: feet on the entity's base.
+// PlayerStart. Same placement as the PlayerStart factory: the Iki's feet (its position) on the entity's base.
 glm::vec2 IkigaiGame::respawnPoint() const {
     const LdtkLevel* bestLevel = nullptr;
     const LdtkEntity* best = nullptr;
@@ -559,7 +568,12 @@ glm::vec2 IkigaiGame::respawnPoint() const {
             }
     if (!best) return glm::vec2(0.0f);
     const glm::vec2 centre = ldtkToWorld(bestLevel->worldPx, best->px + best->size * 0.5f);
-    return bottomOf(*best, centre) + glm::vec2(0.0f, 0.8f); // player collider is 1.6 tall
+    return bottomOf(*best, centre);
+}
+
+void IkigaiGame::onHud(EngineServices& s) {
+    if (const GameObject* player = s.scene.findObject(playerObjectId))
+        if (const auto* resources = player->getComponent<Resources>()) drawDebugHud(*resources);
 }
 
 void IkigaiGame::onImGui(EngineServices& s) {

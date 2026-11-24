@@ -11,6 +11,19 @@ py -m mkdocs serve -f manual/mkdocs.yml
 
 e depois `http://127.0.0.1:8000`.
 
+## Controles (vitrine)
+
+| Tecla | Ação |
+|---|---|
+| `←` `→` | Correr. |
+| `Z` | Pular (só `Z`: a seta para cima não pula o Iki). |
+| `↓` + `Z` | Descer por uma plataforma atravessável. |
+| `J` (só Debug) | 1 de dano no Iki. |
+| `L` (só Debug) | Gasta 30 de gelo e 30 de fogo. |
+| `F1` | Painel e inspetor (mostra o estado do Iki). |
+
+A lista completa está em `manual/docs/primeiros-passos.md`.
+
 ## Prerequisites
 
 - Arch Linux: `sudo pacman -S vulkan-devel cmake ninja gcc libxrandr libxinerama libxcursor libxi libxkbcommon wayland wayland-protocols shaderc`

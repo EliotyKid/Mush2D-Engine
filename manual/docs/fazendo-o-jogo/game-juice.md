@@ -4,6 +4,8 @@
 
 O jeito normal de usar é sem código: um arquivo de efeito descreve o efeito uma vez, e a seção `effects` do prefab diz quando tocá-lo. Veja [Efeitos reaproveitáveis](#efeitos-reaproveitaveis).
 
+O exemplo completo é o Iki: `assets/prefabs/iki.prefab.json` liga os componentes, as animações, os eventos de passo e os efeitos de `assets/effects/`. Veja [Iki: estados e habilidades](iki.md#juice).
+
 | Efeito | Onde | Parâmetros (exportados) |
 |---|---|---|
 | Squash e stretch | componente `SquashStretch`: mexe só em `SpriteData::drawSize` e volta à escala 1 com mola | `stiffness` (300), `damping` (18) |
@@ -164,5 +166,6 @@ last = now;
 ```
 
 - `landed`: força = |velocity.y| / |maxFallSpeed|, limitada a 1.
-- `turned`: no chão, inverteu o sentido vindo de pelo menos `turnThreshold` (2 u/s).
+- `turned`: no chão, inverteu o sentido vindo de pelo menos `turnThreshold` (2 u/s). Um objeto que freia antes de virar (como o Iki) nunca inverte a essa velocidade: ele emite `turned` sozinho, no aperto da direção contrária.
+- Partículas com cor de alfa abaixo de 0,5 não aparecem (o passe opaco descarta o pixel). Para sumir, diminua o `size` e deixe o alfa final em 0,5 ou mais.
 - Em código, `playEffect(scene, obj, "land_dust", força, posição, direção)` toca na hora um efeito ou uma ação inline.

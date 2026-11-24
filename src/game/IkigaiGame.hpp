@@ -29,6 +29,7 @@ class IkigaiGame : public IGame {
 public:
     void init(EngineServices& s) override;
     void update(EngineServices& s, float dt) override;
+    void onHud(EngineServices& s) override; // the test HUD (DebugHud) for the player's Resources
     void onImGui(EngineServices& s) override;
     void shutdown(EngineServices& s) override;
 
@@ -58,6 +59,9 @@ private:
     bool nextScenePressed = false;
     bool reloadScenePressed = false;
     bool killPressed = false;
+    bool hurtPressed = false;  // debug J
+    bool spendPressed = false; // debug L
+    EventBus::Subscription diedSubscription; // Died -> killPlayer
 
     SceneTransitionData currentSceneTransitionData{};
 
