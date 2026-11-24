@@ -1,8 +1,8 @@
 #pragma once
 
 #include <concepts>
-#include <cstdio>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <set>
 #include <string>
@@ -30,16 +30,17 @@ struct State {
 template<class Owner>
 class StateMachine : public StateMachineBase {
 public:
-    std::function<void(const char* from, const char* to)> onChange; // animator, debug; not called by start
+    std::function<void(const char* from, const char* to)> onChange; // animator, debug; start calls it with from = ""
 
     void add(std::unique_ptr<State<Owner>> state) { states_.push_back(std::move(state)); }
 
-    // Enters the first state (no exit, no onChange).
+    // Enters the first state (no exit); onChange("", name) so an animator gets the first state.
     void start(Owner& owner, const char* name) {
         if (State<Owner>* s = find(name)) {
             current_ = s;
             time_ = 0.0f;
             s->enter(owner);
+            if (onChange) onChange("", s->name());
         }
     }
 
@@ -66,11 +67,12 @@ public:
     float timeInState() const override { return time_; }
 
 private:
-    // Unknown name: warns once per name on stderr; the caller keeps the state.
+    // Unknown name: warns once per name on stderr (std::cerr); the caller keeps the state. nullptr: no state.
     State<Owner>* find(const char* name) {
+        if (!name) return nullptr;
         for (const auto& s : states_)
             if (std::string(s->name()) == name) return s.get();
-        if (warned_.insert(name).second) std::fprintf(stderr, "StateMachine: unknown state '%s'\n", name);
+        if (warned_.insert(name).second) std::cerr << "StateMachine: unknown state '" << name << "'\n";
         return nullptr;
     }
 

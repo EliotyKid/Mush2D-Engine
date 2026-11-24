@@ -35,8 +35,10 @@
 #include "game/objects/PlayerObject.hpp"
 #include "game/objects/SlimeEnemy.hpp"
 
+#include <iostream>
 #include <map>
 #include <set>
+#include <sstream>
 
 #include <algorithm>
 #include <chrono>
@@ -3012,7 +3014,8 @@ TEST(state_machine_transitions) {
     std::vector<std::string> changes;
     sm.onChange = [&](const char* from, const char* to) { changes.push_back(std::string(from) + ">" + to); };
     sm.start(o, "idle");
-    CHECK(std::string(sm.current()) == "idle" && changes.empty());
+    CHECK(std::string(sm.current()) == "idle" && (changes == std::vector<std::string>{">idle"}));
+    changes.clear();
     sm.update(o, 0.25f);
     sm.update(o, 0.25f);
     CHECK(std::abs(sm.timeInState() - 0.5f) < 1e-6f);
@@ -3022,8 +3025,13 @@ TEST(state_machine_transitions) {
     CHECK(std::string(sm.current()) == "run" && sm.timeInState() == 0.0f);
     CHECK((o.log == std::vector<std::string>{"update idle", "exit idle", "enter run"}));
     CHECK((changes == std::vector<std::string>{"idle>run"}));
+    std::ostringstream err;
+    std::streambuf* old = std::cerr.rdbuf(err.rdbuf());
     sm.change(o, "nope"); // unknown: warns once on stderr, the state stays
     sm.change(o, "nope");
+    sm.change(o, nullptr); // no state, no warning
+    std::cerr.rdbuf(old);
+    CHECK(err.str() == "StateMachine: unknown state 'nope'\n");
     CHECK(std::string(sm.current()) == "run" && changes.size() == 1);
     sm.change(o, "idle"); // forced
     CHECK(std::string(sm.current()) == "idle" && changes.back() == "run>idle");
@@ -3041,6 +3049,8 @@ TEST(state_machine_two_per_owner) {
     action.onChange = [&](const char* f, const char* t) { actionChanges.push_back(std::string(f) + ">" + t); };
     move.start(o, "idle");
     action.start(o, "none");
+    moveChanges.clear();
+    actionChanges.clear();
     o.actionNext = "attack";
     move.update(o, 0.1f);
     action.update(o, 0.1f);

@@ -4,6 +4,8 @@
 
 // Jump timing, no scene: coyote time (jump shortly after leaving the ground) and jump buffer
 // (a press shortly before landing still jumps). Call tick once per frame, then consumeJump.
+// jumpPressed is the press edge (this frame only), not the held button. The owner must not report
+// grounded on the frame after a jump: a grounded tick refills the coyote time (a second jump).
 struct JumpAssist {
     float coyoteTime = 0.1f, jumpBuffer = 0.12f;
 
