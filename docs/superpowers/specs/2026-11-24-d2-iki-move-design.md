@@ -164,8 +164,9 @@ public:
 
 | Efeito | Onde | Parâmetros (exportados) |
 |---|---|---|
-| Squash e stretch | componente `SquashStretch` (engine), que mexe só em `SpriteData::drawSize` e volta à escala 1 com mola | `stiffness`, `damping`; disparos: `jumpStretch`, `landSquash` (proporcional à velocidade de queda), `clingSquash` |
-| Inclinação | o Iki gira o sprite levemente pela velocidade horizontal | `leanMaxDegrees` (4) |
+| Squash e stretch | componente `SquashStretch` (engine), que mexe só em `SpriteData::drawSize` e volta à escala 1 com mola | `stiffness`, `damping`; disparos pelos efeitos (`squash`, com `scaleByStrength` no pouso) |
+| Inclinação | componente `VelocityLean` (engine): gira o sprite levemente pela velocidade horizontal, medida pela variação da posição | `maxDegrees` (4), `fullSpeed` |
+| Piscar | componente `Blink` (engine): alterna a visibilidade do sprite por um tempo (invulnerabilidade agora, golpe em inimigos no D3) | `rate` |
 | Aceleração e desaceleração | física do Iki | veja a lista do `IkiObject` |
 | Gravidade no topo, queda rápida, correção de quina | física do Iki | veja "Mover e pular" |
 | Partículas | componente `ParticleEmitter` (engine) | veja abaixo |
@@ -174,10 +175,56 @@ public:
 **`ParticleEmitter` (`src/engine/world/Particles.hpp/.cpp`):**
 - O emissor é o mínimo que o D3 vai expandir. Simulação na CPU, num pool fixo por emissor (`maxParticles`).
 - O desenho usa o caminho de sprites que já existe: cada partícula é um `SpriteData` com um quadro de atlas ou com um pixel branco tingido.
-- Configuração nomeada no prefab (`"particles": {"land_dust": {...}}`), com os campos `count`, `speed` [min,max], `angle` [min,max], `lifetime` [min,max], `gravity`, `drag`, `size` [início,fim], `color` [início,fim] (alpha incluído), `frame` (opcional), `additive` e `layer`.
-- API: `burst(name, position, direction=+1)` espelha os ângulos quando o Iki olha para a esquerda.
-- Usos no D2: `land_dust`, `run_dust` (no evento `step`), `turn_dust`, `jump_dust`, `ice_stake` (ao agarrar) e `ice_shards` (ao escalar).
+- Configuração de partícula (`ParticleConfig`): `count`, `speed` [min,max], `angle` [min,max], `lifetime` [min,max], `gravity`, `drag`, `size` [início,fim], `color` [início,fim] (alpha incluído), `frame` (opcional), `additive` e `layer`. Ela vive nos arquivos de efeito (abaixo), não no prefab.
+- API: `burst(const ParticleConfig&, position, direction=+1)` espelha os ângulos quando o dono olha para a esquerda.
 - Sem luz nem emissão por padrão, porque o player não deve emitir luz. `additive` existe para o D3.
+
+### Efeitos reaproveitáveis (pedido do autor)
+
+Todo efeito pode ser usado por qualquer entidade só editando o prefab. O Iki usa o mesmo caminho que um slime usaria e não tem código de efeito próprio.
+
+**Biblioteca de efeitos:** `assets/effects/<nome>.effect.json`, definida uma vez e usada por nome. Hot reload no Debug, como os prefabs.
+
+```json
+{"version": 1, "actions": [
+  {"particles": {"count": 6, "speed": [1, 3], "angle": [100, 170], "lifetime": [0.2, 0.4], "gravity": -4, "size": [0.12, 0.0], "color": [[0.8,0.75,0.65,0.9],[0.8,0.75,0.65,0]]}},
+  {"squash": [1.3, 0.7], "scaleByStrength": true}
+]}
+```
+
+- **Ações do D2:**
+  - `particles`: `ParticleConfig` inline; usa o `ParticleEmitter` do objeto, criado se faltar;
+  - `squash`: `SquashStretch::kick`; com `scaleByStrength`, o desvio de 1 é multiplicado pela força do gatilho, limitada a 1;
+  - `blink`: `Blink::start(seconds)`;
+  - `effect`: inclui outro efeito por nome.
+- Uma ação desconhecida avisa uma vez com o arquivo e é ignorada. O D3 acrescenta `sound`, `shake`, `hitstop` e `flash` como novos tipos de ação, numa tabela nome → função, sem mudar os arquivos existentes.
+
+**Gatilhos no prefab:** a seção `"effects"` liga gatilhos a uma lista de efeitos. Cada item da lista é o nome de um arquivo ou uma ação inline.
+
+```json
+"effects": {
+  "move:landed":       ["land_dust"],
+  "move:jumped":       ["jump_dust", {"squash": [0.8, 1.25]}],
+  "move:turned":       ["turn_dust"],
+  "anim:step":         ["run_dust"],
+  "state:move:wall":   ["ice_stake", {"squash": [1.15, 0.9]}],
+  "state:move:ceiling":["ice_stake"],
+  "move:climb":        ["ice_shards"],
+  "state:move:hurt":   [{"blink": 0.8}]
+}
+```
+
+**Fontes de gatilho** (todas eventos no `EventBus`; o componente `EffectTriggers` ouve todos e filtra pelo objeto):
+- `state:<label>:<estado>`, quando uma máquina registrada entra no estado. Vem de `StateChanged{object, label, from, to}`, emitido automaticamente para toda máquina registrada com `registerStateMachine`.
+- `anim:<evento>`: `AnimationEvent` dos quadros.
+- `move:<nome>`: `MovementCue{object, name, strength, position, direction}`. Movimentos genéricos vêm de um helper da engine que qualquer objeto com `CharacterController` chama a cada passo, `emitMovementCues(scene, obj, prev, now, velocity)`:
+  - `landed`: a força é a velocidade de queda dividida por `maxFallSpeed`;
+  - `left_ground`;
+  - `turned`: inverteu o sentido no chão acima de um limiar.
+
+  Movimentos próprios do objeto ele emite com `emitMovementCue(scene, obj, "jumped")`, como `jumped` e `climb`.
+- A posição do efeito é a do gatilho; sem ela, os pés do objeto. A direção é o lado para onde o objeto olha.
+
 
 ### HUD de teste
 
@@ -196,7 +243,8 @@ public:
 - **Habilidades novas** entram como componentes com `unlockFlag`. Pulo duplo de fogo: `FireDoubleJump` consulta `JumpAssist` e o estado no ar. Talismãs (pós-demo) modificam números exportados das habilidades e dos `Resources`.
 - **Recursos:** `Element` (`Ice`, `Fire`, e outros no futuro) já é o índice das energias. Combinações chamam `spendBoth`. Talismãs mudam `max*` e `regen*`.
 - **Superfícies:** `Surface` ganha valores (gelo derretível, fogo queimável, água congelável) no D5 sem mudar `Segment`.
-- **Partículas:** o D3 acrescenta emissores contínuos, colisão simples, luz por partícula e GPU se o perfil pedir, mantendo `burst(name, ...)`.
+- **Partículas:** o D3 acrescenta emissores contínuos, colisão simples, luz por partícula e GPU se o perfil pedir, mantendo `burst(config, ...)`.
+- **Efeitos:** novas ações (`sound`, `shake`, `hitstop`, `flash`) entram na tabela de ações; inimigos, NPCs e objetos do cenário ganham juice só pelo prefab. A IDE futura edita os `.effect.json` visualmente.
 - **Eventos de animação:** o D3 usa `hit` e `whoosh`; o D8 (cutscenes) usa o mesmo canal.
 - **HUD:** o D9 substitui o `DebugHud`; os eventos `HealthChanged` e `EnergyChanged` continuam sendo a fonte.
 - **Flags globais do `WorldState`** servem a diálogos (D7), cutscenes (D8) e save (D10).
@@ -219,6 +267,10 @@ public:
 - `animation_frame_event_emitted_once_per_entry`.
 - `particles_burst_lifetime_and_pool_limit`.
 - `squash_stretch_returns_to_rest`.
+- `effect_file_loads_and_warns_unknown_action`, `effect_includes_other_effect`.
+- `effect_triggers_state_anim_and_move`: um objeto de teste sem código de efeito recebe partículas, squash e blink pelos três tipos de gatilho.
+- `movement_cues_landed_strength_and_turned`.
+- `blink_and_velocity_lean`.
 
 Simulações do Iki rodam headless, no estilo dos testes do slime e do checkpoint.
 
