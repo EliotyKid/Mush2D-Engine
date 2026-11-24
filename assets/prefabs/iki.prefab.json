@@ -7,6 +7,7 @@
     "fallGravityFactor": 1.6, "maxFallSpeed": -18.0, "coyoteTime": 0.1, "jumpBuffer": 0.12, "cornerCorrection": 0.2,
     "wallClimbSpeed": 3.0, "wallJumpVelocity": [6.0, 10.0], "wallJumpLock": 0.15, "ledgeHop": [2.0, 7.0],
     "ceilingMoveSpeed": 3.0, "climbParticleInterval": 0.1,
+    "wallGripHalf": 0.1, "ceilingGrabReach": 0.3, "ceilingStickSpeed": 8.0,
     "hurtDuration": 0.35, "hurtKnockback": [6.0, 6.0], "invulnerableTime": 0.8
   },
   "sprite": { "atlas": "kaa_player", "layer": 2 },
@@ -28,8 +29,9 @@
     "move:jumped": ["jump_dust", {"squash": [1.2, 0.8]}, {"squash": [0.8, 1.25], "delay": 0.033}],
     "move:turned": ["turn_dust"],
     "anim:step": ["run_dust"],
-    "state:move:wall": ["ice_stake", {"squash": [1.15, 0.9]}],
-    "state:move:ceiling": ["ice_stake", {"squash": [1.15, 0.9]}],
+    "move:grab": ["ice_stake"],
+    "state:move:wall": [{"squash": [1.15, 0.9]}],
+    "state:move:ceiling": [{"squash": [1.15, 0.9]}],
     "move:climb": ["ice_shards"],
     "state:move:hurt": [{"blink": 0.8}]
   }

@@ -47,6 +47,10 @@ public:
     MUSH2D_EXPORT(glm::vec2, ledgeHop, glm::vec2(2.0f, 7.0f)) // x toward the ledge, y up
     MUSH2D_EXPORT(float, ceilingMoveSpeed, 3.0f)
     MUSH2D_EXPORT(float, climbParticleInterval, 0.1f) // s between "climb" cues while moving on a wall or ceiling
+    MUSH2D_EXPORT(float, wallGripHalf, 0.1f)      // half height of the band at the body's middle that grabs a wall
+                                                  // (and half width for a ceiling)
+    MUSH2D_EXPORT(float, ceilingGrabReach, 0.3f)  // up held this close under an ice ceiling grabs it (u)
+    MUSH2D_EXPORT(float, ceilingStickSpeed, 8.0f) // u/s up while hanging: snaps in from the grab reach
     // Damage. hurtKnockback: x along the sign of the hit's direction.x, y along direction.y (up when it is 0).
     MUSH2D_EXPORT(float, hurtDuration, 0.35f)
     MUSH2D_EXPORT(glm::vec2, hurtKnockback, glm::vec2(6.0f, 6.0f))
@@ -81,6 +85,7 @@ public:
 
     // Input as the states see it (Hurt and Dead ignore it).
     float moveX() const { return float(input_.moveRight.down) - float(input_.moveLeft.down); }
+    int moveSide() const { return int(moveX()); } // -1, 0 or +1
     bool jumpHeld() const { return input_.jump.down; }
     bool downHeld() const { return input_.moveDown.down; }
     bool upHeld() const { return input_.moveUp.down; }
@@ -106,11 +111,13 @@ public:
     bool iceWall(int side, bool grip) const;
     bool anyWall(int side) const; // ice or not
     bool iceCeiling() const;      // under the middle of the body, within the grab reach
+    bool canGrabCeiling() const { return upHeld() && !ceilingBlocked_ && iceCeiling(); }
     void wallJump();              // away from wallSide, input locked for wallJumpLock
     void hopLedge();              // the ice ended climbing up with nothing above: onto the ledge
     void letGoWall();             // fall; wall coyote, no re-grab of this wall until its direction is pressed anew
     void letGoCeiling();          // fall; no re-grab of a ceiling until up is pressed anew
     void climbCue(float dt, bool moving, glm::vec2 offset); // "climb" every climbParticleInterval while moving
+    void grabCue(glm::vec2 offset);                         // "grab" at the stakes (offset from the feet)
 
 private:
     StateMachine<IkiObject> machine_;

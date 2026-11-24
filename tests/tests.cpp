@@ -4243,6 +4243,12 @@ TEST(iki_wall_cling_requires_ability) {
     const glm::vec2 at = iki.transform.position;
     stepIki(scene, iki, {}, 180);
     CHECK(inState(iki, "wall") && glm::length(iki.transform.position - at) < 1e-3f && iki.facing == 1.0f);
+    // Grabbing emits "grab" at the hands (the prefab plays ice_stake there).
+    std::vector<MovementCue> grabs;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { if (c.name == "grab") grabs.push_back(c); });
+    iki.states().change(iki, "wall");
+    scene.flush();
+    CHECK(grabs.size() == 1 && !grabs.empty() && grabs[0].position && glm::length(*grabs[0].position - (at + glm::vec2(0.3f, 1.2f))) < 1e-4f);
 }
 
 TEST(iki_wall_climb_up_down) {
@@ -4473,6 +4479,20 @@ TEST(iki_hurt_releases_cling) {
     for (int f = 0; f < 18; ++f) {
         stepIki(scene, iki, keys(false, true, true, false, f % 2 == 0, true));
         CHECK(inState(iki, "hurt") && iki.velocity_.y < 6.5f);
+    }
+
+    // Hanging from a ceiling: the hit lets go too, and up held does not grab again while hurt.
+    Scene2D scene2;
+    WorldState state2;
+    IkiObject& hanging = iceIki(scene2, state2, iceCeilingGrid(), {3.0f, -3.85f});
+    const InputState up = keys(false, false, true, false);
+    CHECK(stepUntil(scene2, hanging, up, "ceiling", 3));
+    stepIki(scene2, hanging, up, 5);
+    hanging.hurt({1, {1.0f, 0.0f}});
+    CHECK(inState(hanging, "hurt") && hanging.velocity_.x == 6.0f);
+    for (int f = 0; f < 18; ++f) {
+        stepIki(scene2, hanging, keys(false, false, true, false, f % 2 == 0, true));
+        CHECK(inState(hanging, "hurt"));
     }
 }
 

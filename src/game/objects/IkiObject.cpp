@@ -25,8 +25,6 @@ namespace {
 float moveTowards(float value, float target, float maxStep) {
     return value < target ? std::min(value + maxStep, target) : std::max(value - maxStep, target);
 }
-constexpr float GripHalf = 0.1f;          // half height (wall) / width (ceiling) of the grab band at the body's middle
-constexpr float CeilingGrabReach = 0.3f;  // up held this close under an ice ceiling grabs it (the Iki snaps up)
 } // namespace
 
 void IkiObject::onCreate(Scene2D&) {
@@ -250,7 +248,7 @@ bool IkiObject::iceStakes() const {
 bool IkiObject::iceWall(int side, bool grip) const {
     if (!iceStakes()) return false;
     Body b = bodyHere();
-    if (grip) b.halfSize.y = GripHalf;
+    if (grip) b.halfSize.y = wallGripHalf;
     return probeWall(b, side, query(1.0f)).surface == Surface::IceClimb;
 }
 
@@ -259,13 +257,13 @@ bool IkiObject::anyWall(int side) const { return probeWall(bodyHere(), side, que
 bool IkiObject::iceCeiling() const {
     if (!iceStakes()) return false;
     Body b = bodyHere();
-    b.halfSize.x = GripHalf;
-    return probeCeiling(b, query(1.0f), CeilingGrabReach).surface == Surface::IceClimb;
+    b.halfSize.x = wallGripHalf;
+    return probeCeiling(b, query(1.0f), ceilingGrabReach).surface == Surface::IceClimb;
 }
 
 const char* IkiObject::nextGrab() {
     if (grounded) return nullptr;
-    const int side = moveX() > 0.0f ? 1 : moveX() < 0.0f ? -1 : 0;
+    const int side = moveSide();
     const bool justLeft = wallJumpLockLeft_ > 0.0f && side == wallSide; // the wall just jumped or hopped from
     if (side != 0 && side != wallBlockedSide_ && !justLeft && iceWall(side, true)) {
         wallSide = side;
@@ -273,7 +271,7 @@ const char* IkiObject::nextGrab() {
         wallJump();
         return nullptr;
     }
-    if (upHeld() && !ceilingBlocked_ && iceCeiling()) return "ceiling";
+    if (canGrabCeiling()) return "ceiling";
     return nullptr;
 }
 
@@ -318,4 +316,8 @@ void IkiObject::climbCue(float dt, bool moving, glm::vec2 offset) {
     if (climbCueLeft_ > 0.0f || !scene_) return;
     climbCueLeft_ = climbParticleInterval;
     emitMovementCue(*scene_, *this, "climb", 1.0f, transform.position + offset);
+}
+
+void IkiObject::grabCue(glm::vec2 offset) {
+    if (scene_) emitMovementCue(*scene_, *this, "grab", 1.0f, transform.position + offset);
 }

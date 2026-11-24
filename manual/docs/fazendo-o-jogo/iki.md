@@ -40,8 +40,8 @@ O movimento é uma **máquina de estados** chamada `"move"`. Em cada momento o I
 | `fall` | No ar, descendo. O coyote time ainda deixa pular. | `idle`, `run`, `jump`, `wall`, `ceiling` | `fall` |
 | `hurt` | Levou dano. Sem controle por `hurtDuration`, empurrado por `hurtKnockback`. | o estado de movimento certo | `attack_leave` (provisório) |
 | `dead` | Vida em 0. Sem controle. Só `respawn()` tira dele. | `idle` (no renascimento) | `fall` (provisório) |
-| `wall` | Agarrado a uma parede de gelo. Sem gravidade. | `jump`, `fall`, `ceiling`, `idle`, `hurt` | `push` (provisório) |
-| `ceiling` | Pendurado num teto de gelo. Sem gravidade. | `fall`, `wall`, `hurt` | `balance_back` (provisório) |
+| `wall` | Agarrado a uma parede de gelo. Sem gravidade. | `jump`, `fall`, `ceiling`, `idle`, `run`, `hurt` | `push` (provisório) |
+| `ceiling` | Pendurado num teto de gelo. Sem gravidade. | `fall`, `wall`, `idle`, `run`, `hurt` | `balance_back` (provisório) |
 
 - O nome do estado é também a chave da animação no prefab (`animations`). Ao trocar de estado, o Iki chama `SpriteAnimator::setState`.
 - A máquina aparece no inspetor F1, na janela "Cena (F1)", com o Iki selecionado: `move: run (0.50 s)`.
@@ -91,6 +91,9 @@ Todos são atributos exportados: aparecem no inspetor F1, mudam ao vivo e podem 
 | `ledgeHop` | `[2, 7]` | Impulso ao chegar no topo de uma parede de gelo sem nada acima: x para a beirada, y para cima. |
 | `ceilingMoveSpeed` | `3` | Andar pendurado no teto (u/s). |
 | `climbParticleInterval` | `0.1` | Segundos entre as farpas (`move:climb`) enquanto ele se move na parede ou no teto. |
+| `wallGripHalf` | `0.1` | Meia altura da faixa no meio do corpo que agarra a parede (e meia largura para o teto). |
+| `ceilingGrabReach` | `0.3` | Distância até um teto de gelo em que `↑` já o agarra (u). |
+| `ceilingStickSpeed` | `8` | Velocidade para cima com que ele encosta no teto ao pendurar (u/s). |
 | `hurtDuration` | `0.35` | Segundos sem controle após o dano. |
 | `hurtKnockback` | `[6, 6]` | Empurrão do dano: x no sentido do golpe, y para cima. |
 | `invulnerableTime` | `0.8` | Segundos sem levar dano novo. O piscar do prefab (`state:move:hurt`) usa o mesmo tempo. |
@@ -116,13 +119,13 @@ Valem numa superfície `IceClimb` (IntGrid valor 9, ou `Terrain` com `iceClimb`;
     - subindo, sem parede acima: `ledgeHop` o põe na beirada;
     - subindo com uma parede comum acima, ou descendo pelo fim do gelo: ele solta (`fall`). Por `coyoteTime`, `Z` ainda dá o salto da parede. Ele só reagarra essa parede depois de soltar e apertar de novo a direção dela;
     - descendo até o chão: `idle`.
-- **Teto:** no ar, com `↑` e um teto de gelo a até 0,3 u acima do meio do corpo, ele entra em `ceiling` e encosta no teto. `←`/`→` anda a `ceilingMoveSpeed`. `↓` ou `Z` solta (cai, não pula; o `Z` é consumido). Se o meio do corpo sai do gelo, ele solta. Depois de soltar, só reagarra um teto depois de soltar e apertar `↑` de novo.
+- **Teto:** no ar, com `↑` e um teto de gelo a até `ceilingGrabReach` acima do meio do corpo, ele entra em `ceiling` e encosta no teto. `←`/`→` anda a `ceilingMoveSpeed`. `↓` ou `Z` solta (cai, não pula; o `Z` é consumido). Se o meio do corpo sai do gelo, ele solta. Depois de soltar, só reagarra um teto depois de soltar e apertar `↑` de novo.
 - **Canto interno:**
     - na parede, só `↑` até um teto de gelo: passa para `ceiling`;
     - no teto, segurando a direção de uma parede de gelo: passa para `wall`;
     - com `↑` e a direção da parede juntos, a parede ganha e o estado não alterna.
 - **Dano** na parede ou no teto: solta, empurra e entra em `hurt`. Durante `hurt`, nada reagarra e não há salto da parede (o buffer e o coyote de parede são zerados).
-- **Juice:** `state:move:wall` e `state:move:ceiling` tocam `ice_stake` e um squash; `move:climb` toca `ice_shards` a cada `climbParticleInterval` enquanto ele se move. Travessia nunca gasta energia.
+- **Juice:** ao agarrar, o Iki emite `move:grab` nas mãos (parede) ou na cabeça (teto), que toca `ice_stake`; `state:move:wall` e `state:move:ceiling` tocam um squash; `move:climb` toca `ice_shards` a cada `climbParticleInterval` enquanto ele se move. Travessia nunca gasta energia.
 
 ## Habilidades
 
@@ -161,8 +164,9 @@ O Iki não tem código de efeito. Ele só avisa o que aconteceu (`jumped`, `turn
   "move:jumped": ["jump_dust", {"squash": [1.2, 0.8]}, {"squash": [0.8, 1.25], "delay": 0.033}],
   "move:turned": ["turn_dust"],
   "anim:step":   ["run_dust"],
-  "state:move:wall":    ["ice_stake", {"squash": [1.15, 0.9]}],
-  "state:move:ceiling": ["ice_stake", {"squash": [1.15, 0.9]}],
+  "move:grab":          ["ice_stake"],
+  "state:move:wall":    [{"squash": [1.15, 0.9]}],
+  "state:move:ceiling": [{"squash": [1.15, 0.9]}],
   "move:climb":         ["ice_shards"],
   "state:move:hurt": [{"blink": 0.8}]
 }
