@@ -1,0 +1,72 @@
+site_name: Manual Mush2D
+docs_dir: docs
+site_dir: site
+
+validation:
+  anchors: warn
+
+theme:
+  name: material
+  language: pt
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Modo escuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Modo claro
+  features:
+    - navigation.sections
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search:
+      lang: pt
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Início: index.md
+  - Primeiros passos: primeiros-passos.md
+  - Conceitos:
+      - GameMaker → Mush2D: conceitos/gamemaker.md
+      - Ciclo do jogo: conceitos/ciclo-do-jogo.md
+      - C++ mínimo: conceitos/cpp-minimo.md
+  - Fazendo o jogo:
+      - Mundo e salas: fazendo-o-jogo/mundo-e-salas.md
+      - Colisão e rampas: fazendo-o-jogo/colisao-e-rampas.md
+      - Terreno: fazendo-o-jogo/terreno.md
+      - Prefabs: fazendo-o-jogo/prefabs.md
+      - Objeto novo: fazendo-o-jogo/objeto-novo.md
+      - Comunicação entre objetos: fazendo-o-jogo/comunicacao.md
+      - Painel F1 e inspetor: fazendo-o-jogo/inspetor.md
+  - Objetos do jogo: objetos.md
+  - Referência de sistemas:
+      - core: sistemas/core.md
+      - platform: sistemas/platform.md
+      - world: sistemas/world.md
+      - graphics e assets: sistemas/graficos-e-assets.md
+      - render e shaders: sistemas/render.md
+      - gpu: sistemas/gpu.md
+      - tools: sistemas/tools.md
+      - reflect: sistemas/reflect.md
+  - Desempenho: desempenho.md
