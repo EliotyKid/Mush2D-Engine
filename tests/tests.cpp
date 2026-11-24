@@ -3246,9 +3246,22 @@ TEST(resources_spend_regen_delay) {
     CHECK(r.energy(Element::Ice) == 70.0f);
     r.spend(Element::Fire, 10.0f); // fire's delay restarts, ice's does not
     r.update(scene, 0.6f);         // ice waited 1.1 s: regenerates; fire waited 0.6 s
-    CHECK(r.energy(Element::Ice) > 70.0f && r.energy(Element::Fire) == 80.0f);
+    CHECK(r.energy(Element::Ice) == 76.0f && r.energy(Element::Fire) == 80.0f); // 70 + 10/s * 0.6 s
     for (int i = 0; i < 100; ++i) r.update(scene, 0.1f);
     CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f); // capped at the max
+    CHECK(r.spend(Element::Ice, 0.0f) && !r.spend(Element::Ice, -1.0f) && r.energy(Element::Ice) == 100.0f);
+}
+
+TEST(resources_on_step_updates_once_per_step) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    scene.flush();
+    CHECK(r.spend(Element::Ice, 10.0f));
+    scene.step(0.5f); // 0.5 s since the spend: still waiting (two updates per step would regenerate already)
+    CHECK(r.energy(Element::Ice) == 90.0f);
+    scene.step(0.5f); // 1 s: one update of 0.5 s regenerates 5
+    CHECK(r.energy(Element::Ice) == 95.0f);
 }
 
 TEST(resources_spend_both_atomic) {
@@ -3260,6 +3273,11 @@ TEST(resources_spend_both_atomic) {
     CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 20.0f);
     CHECK(r.spendBoth(30.0f, 20.0f));
     CHECK(r.energy(Element::Ice) == 70.0f && r.energy(Element::Fire) == 0.0f);
+    r.update(scene, 1.0f);            // both waited 1 s: both regenerate 10
+    CHECK(r.spendBoth(0.0f, 5.0f));   // ice is not spent, so its delay does not restart
+    r.update(scene, 0.5f);
+    CHECK(r.energy(Element::Ice) == 85.0f && r.energy(Element::Fire) == 5.0f);
+    CHECK(!r.spendBoth(-1.0f, 1.0f) && r.energy(Element::Fire) == 5.0f);
     r.refill();
     CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f);
 }

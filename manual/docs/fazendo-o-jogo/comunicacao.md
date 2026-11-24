@@ -14,6 +14,7 @@ Funções de busca da cena:
 | Função | Devolve |
 |---|---|
 | `scene.find(id)` | o `GameObject*` com esse id, ou `nullptr` |
+| `scene.findObject(id)` | o mesmo, mas `nullptr` também para um objeto que vai ser destruído (o jeito do jogo) |
 | `scene.findObjectAs<T>(id)` | o objeto com esse id, se for do tipo `T`, ou `nullptr` |
 | `scene.findFirstObjectOfType<T>()` | o primeiro objeto do tipo `T`, ou `nullptr` |
 | `scene.findAllObjectsOfType<T>()` | todos os objetos do tipo `T` |

@@ -27,9 +27,9 @@ public:
     void heal(int amount);
     void refill(); // health and both energies back to the max (respawn)
 
-    // False, spending nothing, when there is not enough energy.
+    // False, spending nothing, when there is not enough energy or the amount is negative. 0 is true, no effect.
     bool spend(Element element, float amount);
-    bool spendBoth(float ice, float fire); // both or neither
+    bool spendBoth(float ice, float fire); // both or neither; a 0 side is left alone
 
     void update(Scene2D& scene, float dt);
 

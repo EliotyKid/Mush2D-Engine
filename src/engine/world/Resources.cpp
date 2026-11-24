@@ -41,7 +41,8 @@ void Resources::refill() {
 }
 
 bool Resources::spend(Element element, float amount) {
-    if (element == Element::None || energy(element) < amount) return false;
+    if (amount == 0.0f) return true; // nothing spent: no event, the regen delay keeps running
+    if (amount < 0.0f || element == Element::None || energy(element) < amount) return false;
     used_[slot(element)] += amount;
     sinceSpend_[slot(element)] = 0.0f;
     emitEnergy(element);
@@ -49,7 +50,7 @@ bool Resources::spend(Element element, float amount) {
 }
 
 bool Resources::spendBoth(float ice, float fire) {
-    if (energy(Element::Ice) < ice || energy(Element::Fire) < fire) return false;
+    if (ice < 0.0f || fire < 0.0f || energy(Element::Ice) < ice || energy(Element::Fire) < fire) return false;
     spend(Element::Ice, ice);
     spend(Element::Fire, fire);
     return true;
