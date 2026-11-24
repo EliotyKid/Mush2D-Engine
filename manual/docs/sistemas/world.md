@@ -10,7 +10,7 @@
 - Move personagens sobre o cenário com rampas e plataformas (`CharacterController`).
 - Organiza o comportamento em estados com nome (`StateMachine`).
 - Cria objetos a partir de prefabs (`PrefabLibrary`) e salva edições do inspetor (`PrefabSave`).
-- Dá vida aos sprites: partículas, squash e stretch, piscar, inclinação e eventos por quadro (veja [Game juice](../fazendo-o-jogo/game-juice.md)).
+- Dá vida aos sprites: partículas, squash e stretch, piscar, inclinação, eventos por quadro e efeitos reaproveitáveis ligados pelo prefab (veja [Game juice](../fazendo-o-jogo/game-juice.md)).
 
 ## Tipos principais
 
@@ -27,7 +27,7 @@
 | `Component` | Comportamento anexável: `addComponent<T>()`, `getComponent<T>()`. Eventos `onAttach`, `onStep` (logo depois do `onStep` do dono), `onDetach`. Atributo `enabled`. |
 | `Scene2D` | A cena. `createObject<T>()`, `destroy(id)`, `find(id)`, `findObjectAs<T>(id)`, `findFirstObjectOfType<T>()`, `findAllObjectsOfType<T>()`, `findObjectsByTag(tag)`, `setParent(filho, pai)`, `forEach(fn)`, `step(dt)`, `lateStep(dt)`, `events()`, `service<T>()` / `setService<T>()`. Criar e destruir valem no fim da etapa (`flush`). |
 | `StateMachine<Owner>` | Estados com nome (`State<Owner>`: `name`, `enter`, `exit`, `update` devolve o próximo nome ou `nullptr` para ficar). `add`, `start(dono, nome)`, `update(dono, dt)` (no máximo uma transição por chamada), `change(dono, nome)` (forçada: dano, morte), `current()`, `timeInState()`, `onChange(de, para)` (o `start` chama com `de` = `""`, para o animador pegar o primeiro estado). Nome desconhecido: aviso uma vez em stderr, e o estado fica. Um objeto pode ter várias máquinas (`"move"`, `"action"`). `shared<Base, Derivado>(estado)` roda um `State<Base>` numa máquina do derivado. |
-| `StateMachineBase` | Vista sem template para ferramentas: `current()`, `timeInState()`. `GameObject::registerStateMachine("move", &maquina)` faz o inspetor F1 mostrar "move: fall (0.32 s)", só leitura. |
+| `StateMachineBase` | Vista sem template para ferramentas: `current()`, `timeInState()`. `GameObject::registerStateMachine("move", &maquina)` faz o inspetor F1 mostrar "move: fall (0.32 s)", só leitura, e faz a máquina emitir `StateChanged{object, label, from, to}` a cada mudança (uma máquina já iniciada emite o estado atual ao ser registrada). |
 | `EventBus` | Eventos tipados e adiados: `subscribe<E>(fn)` devolve uma `Subscription` (guarde-a), `emit(E{...})`. Veja [Comunicação](../fazendo-o-jogo/comunicacao.md). |
 
 ### Colisão e movimento
@@ -69,6 +69,10 @@
 | `SquashStretch` | Molas em x e y que voltam a {1, 1}: `kick({0.8, 1.25})`, `current()`, `apply(sprite)` (multiplica `drawSize` mantendo a base do sprite; sem acumular). Aplica-se sozinho a cada passo, e o `SpriteAnimator` o aplica depois de cada quadro. `stiffness` 300, `damping` 18. Nunca mexe em `transform.scale`. |
 | `Blink` | `start(segundos)` alterna `visible` `rate` vezes por segundo (16) e devolve a visibilidade do começo ao terminar. `active()`. |
 | `VelocityLean` | Inclina `transform.rotation` pela velocidade horizontal medida pela posição: até `maxDegrees` (4) a partir de `fullSpeed` (5 u/s), suavizado por `smoothing` (12/s); um salto maior que `teleportDistance` (1 u) num passo é ignorado. O `SpriteBatch` gira o sprite em torno do pivô (os pés). |
+| `EffectLibrary` (`Effects.hpp`) | Serviço da cena com os efeitos de `assets/effects/<nome>.effect.json`: `scan(pasta)`, `find(nome)` (nome desconhecido avisa uma vez), `reload(arquivo)` (arquivo inválido mantém a versão anterior). Hot reload no Debug. |
+| `playEffect` | `playEffect(scene, obj, item, força, posição, direção)`: `item` é um nome de efeito ou uma ação inline (`particles`, `squash` com `scaleByStrength`, `blink`, `effect`; qualquer uma com `delay`). Cria os componentes que faltam. |
+| `EffectTriggers` | Componente da seção `effects` do prefab: `triggers` (gatilho → itens). Ouve `StateChanged` (`state:<label>:<estado>`), `AnimationEvent` (`anim:<nome>`) e `MovementCue` (`move:<nome>`) do dono. |
+| `MovementCue` | `{object, name, strength, position, direction}`. `emitMovementCue(scene, obj, nome, força, posição)`; `emitMovementCues(scene, obj, anterior, atual, velocidade, maxFallSpeed, turnThreshold = 2)` (`CharacterController.hpp`) emite `landed`, `left_ground` e `turned`. |
 
 ## Casos de uso
 
@@ -134,4 +138,4 @@ Com `MUSH2D_COMPONENT`, ele pode ser listado em `"components"` de um prefab.
 
 ## Arquivos
 
-`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`, `Particles.*`, `SquashStretch.*`, `Blink.hpp`, `VelocityLean.hpp`.
+`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`, `Particles.*`, `SquashStretch.*`, `Blink.hpp`, `VelocityLean.hpp`, `Effects.*`.

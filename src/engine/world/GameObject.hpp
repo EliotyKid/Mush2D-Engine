@@ -151,8 +151,9 @@ public:
     const std::vector<std::unique_ptr<Component>>& components() const { return components_; }
 
     // State machines the F1 inspector lists, read only ("move: fall (0.32 s)"). The machines must outlive
-    // the object (usually its members).
-    void registerStateMachine(std::string label, StateMachineBase* machine) { stateMachines_.emplace_back(std::move(label), machine); }
+    // the object (usually its members). Every change of a registered machine emits StateChanged (Effects.hpp);
+    // a machine started before it was registered emits its current state now.
+    void registerStateMachine(std::string label, StateMachineBase* machine); // Scene2D.cpp
     const std::vector<std::pair<std::string, StateMachineBase*>>& stateMachines() const { return stateMachines_; }
 
     bool pendingDestroy() const { return pendingDestroy_; }

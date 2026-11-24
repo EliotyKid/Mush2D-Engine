@@ -1,6 +1,7 @@
 #include "engine/world/Prefab.hpp"
 
 #include "engine/assets/AssetRegistry.hpp"
+#include "engine/world/Effects.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/SpriteAnimator.hpp"
 // Included so their MUSH2D_COMPONENT registration is linked in: prefabs name them in "components".
@@ -22,8 +23,8 @@ namespace {
 constexpr int MaxDepth = 16; // children of children...: also stops a child that instantiates its own parent
 
 const std::set<std::string> KnownKeys = {"version", "base", "type", "props", "extra", "sprite", "collider",
-                                         "animations", "animationEvents", "components", "children", "name", "position", "prefab", "remove"};
-const std::set<std::string> KeyedSections = {"props", "extra", "sprite", "collider", "animations", "animationEvents"};
+                                         "animations", "animationEvents", "effects", "components", "children", "name", "position", "prefab", "remove"};
+const std::set<std::string> KeyedSections = {"props", "extra", "sprite", "collider", "animations", "animationEvents", "effects"};
 
 // Prefab section field -> GameObject attribute.
 const std::map<std::string, std::string> SpriteFields = {{"atlas", "spriteAtlas"}, {"frame", "spriteFrame"},
@@ -318,6 +319,20 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
         if (!animator) animator = &o.addComponent<SpriteAnimator>();
         for (auto& [state, anim] : animations) animator->animations[state] = anim;
         for (auto& [anim, frames] : animationEvents) animator->animationEvents[anim] = frames;
+    }
+
+    if (doc.contains("effects")) { // trigger -> [effect name or inline action]
+        if (!doc["effects"].is_object()) warn(where + ": effects: expected {trigger: [effects]}");
+        else for (const auto& [trigger, items] : doc["effects"].items()) {
+            const bool known = trigger.starts_with("state:") || trigger.starts_with("anim:") || trigger.starts_with("move:");
+            if (!known) warn(where + ": effects." + trigger + ": a trigger starts with state:, anim: or move:");
+            else if (!items.is_array()) warn(where + ": effects." + trigger + ": expected a list of effects");
+            else {
+                EffectTriggers* triggers = o.getComponent<EffectTriggers>();
+                if (!triggers) triggers = &o.addComponent<EffectTriggers>();
+                triggers->triggers[trigger] = items.get<std::vector<json>>();
+            }
+        }
     }
 
     if (!prefab.empty()) lineage.push_back(prefab); // the prefabs being spawned, root first

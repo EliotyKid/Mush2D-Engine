@@ -26,6 +26,8 @@ void IkigaiGame::init(EngineServices& s) {
     s.scene.setService(&gameAssets);
     s.scene.setService(&gameAssets.registry);
     s.scene.setService(&prefabs);
+    effects.scan(sourceAssetPath("assets/effects"));
+    s.scene.setService(&effects);
     s.scene.setService(&world);
     s.scene.setService(&world.state);
     regions.init(s.materials, sourceAssetPath("assets/regions")); // Debug: the source tree, so panel saves survive rebuilds
@@ -56,6 +58,7 @@ void IkigaiGame::init(EngineServices& s) {
     loadScene(s, SceneId::Showcase);
     levelFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), sourceAssetPath("assets/regions"), ".region.json");
     prefabFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), prefabs.dir(), ".prefab.json"); // only .dir is used
+    effectFiles.watch(sourceAssetPath("assets/levels/showcase.ldtk"), sourceAssetPath("assets/effects"), ".effect.json"); // only .dir is used
 
     // Debug (MUSH2D_CAMERA_X=<world x>): park the camera there, e.g. for parallax screenshots.
     if (const char* camX = std::getenv("MUSH2D_CAMERA_X")) {
@@ -68,6 +71,7 @@ void IkigaiGame::update(EngineServices& s, float deltaTime) {
 
     handleGlobalInput(s, deltaTime);
 #ifndef NDEBUG
+    if (effectFiles.poll(deltaTime).dir) effects.scan(sourceAssetPath("assets/effects"));
     if (currentSceneId == SceneId::Showcase) {
         if (const FileWatcher::Change change = levelFiles.poll(deltaTime)) hotReload(s, !change.dir);
         // A saved prefab: reload the rooms like F5 (unsaved inspector edits are lost; the WorldState stays).
@@ -190,6 +194,7 @@ void IkigaiGame::shutdown(EngineServices& s) {
     s.scene.setService<GameAssets>(nullptr);
     s.scene.setService<AssetRegistry>(nullptr);
     s.scene.setService<PrefabLibrary>(nullptr);
+    s.scene.setService<EffectLibrary>(nullptr);
     s.scene.setService<World>(nullptr);
     s.scene.setService<WorldState>(nullptr);
 }

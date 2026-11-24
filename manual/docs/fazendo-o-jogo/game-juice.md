@@ -2,6 +2,8 @@
 
 "Juice" é o retorno visual que faz o controle parecer vivo: poeira ao pousar, o corpo amassando e esticando, o sprite piscando ao levar dano. No Mush2D, cada efeito é um componente da engine (`src/engine/world/`). Qualquer objeto pode usar esses componentes, não só o player.
 
+O jeito normal de usar é sem código: um arquivo de efeito descreve o efeito uma vez, e a seção `effects` do prefab diz quando tocá-lo. Veja [Efeitos reaproveitáveis](#efeitos-reaproveitaveis).
+
 | Efeito | Onde | Parâmetros (exportados) |
 |---|---|---|
 | Squash e stretch | componente `SquashStretch`: mexe só em `SpriteData::drawSize` e volta à escala 1 com mola | `stiffness` (300), `damping` (18) |
@@ -88,3 +90,78 @@ sub = scene.events().subscribe<AnimationEvent>([this](const AnimationEvent& e) {
     if (e.object == id && e.name == "step") { /* poeira de passo */ }
 });
 ```
+
+## Efeitos reaproveitáveis
+
+Todo efeito pode ser usado por qualquer entidade só editando o prefab. O Iki usa o mesmo caminho que um slime usaria, sem código de efeito próprio.
+
+### Arquivos de efeito
+
+Um efeito fica em `assets/effects/<nome>.effect.json`. Ele é definido uma vez e usado pelo nome:
+
+```json
+{"version": 1, "actions": [
+  {"particles": {"count": 6, "speed": [1, 3], "angle": [100, 170], "lifetime": [0.2, 0.4], "gravity": -4,
+                 "size": [0.12, 0.0], "color": [[0.8,0.75,0.65,0.9],[0.8,0.75,0.65,0]]}},
+  {"squash": [1.3, 0.7], "scaleByStrength": true}
+]}
+```
+
+| Ação | O que faz |
+|---|---|
+| `particles` | Uma rajada com a configuração de partícula acima (formato de `parseParticleConfig`). Usa o `ParticleEmitter` do objeto e cria um se faltar. |
+| `squash` | `SquashStretch::kick([x, y])`. Com `"scaleByStrength": true`, o desvio de 1 é multiplicado pela força do gatilho, limitada a 1: um pouso a meia velocidade amassa pela metade. |
+| `blink` | `Blink::start(segundos)`. |
+| `effect` | Toca outro efeito pelo nome. Efeitos dentro de efeitos vão até 8 níveis: mais fundo (um ciclo, por exemplo) é pulado com aviso. |
+
+- Qualquer ação aceita `"delay": segundos` e toca depois desse tempo. Exemplo, a antecipação do pulo: `{"squash": [1.2, 0.8]}` agora e `{"squash": [0.8, 1.25], "delay": 0.033}` dois quadros depois.
+- Uma ação desconhecida avisa uma vez no stderr, com o nome do arquivo, e é ignorada. As outras ações do arquivo continuam valendo.
+- Um arquivo inválido (JSON quebrado, sem a lista `actions`) avisa e mantém a versão anterior.
+- No Debug, salvar um `.effect.json` recarrega a biblioteca na hora (hot reload). A sala não recarrega, porque o efeito é procurado pelo nome cada vez que toca.
+- Um nome de efeito que não existe avisa uma vez.
+
+### Gatilhos no prefab
+
+A seção `"effects"` do prefab liga gatilhos a uma lista. Cada item da lista é o nome de um arquivo de efeito ou uma ação inline:
+
+```json
+"effects": {
+  "move:landed":       ["land_dust"],
+  "move:jumped":       ["jump_dust", {"squash": [1.2, 0.8]}, {"squash": [0.8, 1.25], "delay": 0.033}],
+  "move:turned":       ["turn_dust"],
+  "anim:step":         ["run_dust"],
+  "state:move:wall":   ["ice_stake", {"squash": [1.15, 0.9]}],
+  "state:move:hurt":   [{"blink": 0.8}]
+}
+```
+
+| Gatilho | Quando dispara |
+|---|---|
+| `state:<máquina>:<estado>` | Uma máquina de estados registrada com `registerStateMachine("<máquina>", ...)` entra no estado. O primeiro estado (o `start`) também conta. |
+| `anim:<evento>` | O `SpriteAnimator` entra num quadro de `animationEvents` com esse nome (veja [Eventos por quadro](#eventos-por-quadro)). |
+| `move:<nome>` | Um `MovementCue` do objeto. `landed`, `left_ground` e `turned` vêm de `emitMovementCues`; os outros, o próprio objeto emite. |
+
+- O efeito toca na posição do gatilho. Sem posição, toca nos pés do objeto: a base do collider ou, sem collider, a posição.
+- A direção é o lado para onde o objeto olha (`flipX` espelha as partículas).
+- A seção vira um componente `EffectTriggers`. Ele cria o `ParticleEmitter`, o `SquashStretch` e o `Blink` só quando um efeito precisa.
+- Na herança, `effects` é mesclado por gatilho: o filho troca a lista inteira de um gatilho.
+
+### Dar juice a um objeto
+
+1. Crie os efeitos em `assets/effects/` ou use os que já existem.
+2. No prefab do objeto, acrescente a seção `effects` com os gatilhos.
+3. Se o objeto tem estados, registre a máquina no `onCreate`: `registerStateMachine("move", &move);`. Toda máquina registrada avisa as mudanças de estado (`StateChanged`), em qualquer ordem de criação dos componentes.
+4. Se ele anda com o `CharacterController`, chame a cada passo:
+
+```cpp
+#include "engine/world/Effects.hpp"
+
+MoveResult now = move(body, velocity, dt, query, last.grounded, jumped);
+emitMovementCues(scene, *this, last, now, velocity, maxFallSpeed); // landed, left_ground, turned
+if (jumped) emitMovementCue(scene, *this, "jumped");               // movimentos próprios do objeto
+last = now;
+```
+
+- `landed`: força = |velocity.y| / |maxFallSpeed|, limitada a 1.
+- `turned`: no chão, inverteu o sentido vindo de pelo menos `turnThreshold` (2 u/s).
+- Em código, `playEffect(scene, obj, "land_dust", força, posição, direção)` toca na hora um efeito ou uma ação inline.

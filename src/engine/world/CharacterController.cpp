@@ -1,5 +1,7 @@
 #include "CharacterController.hpp"
 
+#include "Effects.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -327,4 +329,15 @@ SurfaceHit probeCeiling(const Body& body, const CollisionQuery& query, float rea
     const glm::vec2 lo{body.position.x - h.x + kProbeInset, body.position.y + h.y};
     const glm::vec2 hi{body.position.x + h.x - kProbeInset, body.position.y + h.y + reach};
     return probeBox(body, lo, hi, query, [](glm::vec2 n, int) { return n.y < -0.5f; }, 0);
+}
+
+void emitMovementCues(Scene2D& scene, const GameObject& obj, const MoveResult& prev, const MoveResult& now,
+                      glm::vec2 velocity, float maxFallSpeed, float turnThreshold) {
+    if (!prev.grounded && now.grounded) {
+        const float fall = std::abs(maxFallSpeed) > 0.0f ? std::abs(velocity.y) / std::abs(maxFallSpeed) : 1.0f;
+        emitMovementCue(scene, obj, "landed", std::min(fall, 1.0f));
+    }
+    if (prev.grounded && !now.grounded) emitMovementCue(scene, obj, "left_ground");
+    if (prev.grounded && now.grounded && std::abs(prev.velocity.x) >= turnThreshold && prev.velocity.x * velocity.x < 0.0f)
+        emitMovementCue(scene, obj, "turned");
 }

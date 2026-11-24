@@ -4,6 +4,7 @@
 #include "engine/world/PrefabSave.hpp"
 #include "engine/world/SpriteAnimator.hpp"
 #include "engine/world/Blink.hpp"
+#include "engine/world/Effects.hpp"
 #include "engine/world/Particles.hpp"
 #include "engine/world/SquashStretch.hpp"
 #include "engine/world/VelocityLean.hpp"
@@ -3472,6 +3473,194 @@ TEST(particles_trim_when_max_lowered) {
     e.maxParticles = 4; // F1 inspector
     scene.step(0.01f);
     CHECK(e.alive() == 4);
+}
+
+// --- Reusable effects: library and prefab triggers (D2 Task 3) -----------------------------------------------
+
+namespace {
+const std::filesystem::path TestEffects = MUSH2D_TEST_DATA "/effects";
+
+// Captures std::cerr while alive.
+struct CerrCapture {
+    std::ostringstream out;
+    std::streambuf* old = std::cerr.rdbuf(out.rdbuf());
+    ~CerrCapture() { std::cerr.rdbuf(old); }
+    std::string str() const { return out.str(); }
+};
+
+std::size_t countOf(const std::string& text, const std::string& part) {
+    std::size_t n = 0;
+    for (std::size_t i = text.find(part); i != std::string::npos; i = text.find(part, i + 1)) ++n;
+    return n;
+}
+}
+
+// A test object with a state machine and no effect code: its juice comes from test_effects.prefab.json.
+// Started before registration, so the first StateChanged comes from registerStateMachine.
+class TestMover : public GameObject {
+    MUSH2D_OBJECT(TestMover, GameObject)
+public:
+    struct Named : State<TestMover> {
+        const char* n;
+        explicit Named(const char* n) : n(n) {}
+        const char* name() const override { return n; }
+        const char* update(TestMover&, float) override { return nullptr; }
+    };
+    StateMachine<TestMover> move;
+    void onCreate(Scene2D&) override {
+        move.add(std::make_unique<Named>("idle"));
+        move.add(std::make_unique<Named>("run"));
+        move.start(*this, "idle");
+        registerStateMachine("move", &move);
+    }
+};
+
+TEST(effect_file_loads_and_warns_unknown_action) {
+    EffectLibrary lib;
+    CerrCapture err;
+    lib.scan(TestEffects);
+    const Effect* dust = lib.find("test_dust");
+    CHECK(dust && dust->actions.size() == 2); // the unknown "wiggle" is dropped
+    if (dust) CHECK(dust->actions[0].contains("particles") && dust->actions[1].contains("squash"));
+    CHECK(countOf(err.str(), "wiggle") == 1 && err.str().find("test_dust.effect.json") != std::string::npos);
+    CHECK(!lib.find("nope") && !lib.find("nope"));
+    CHECK(countOf(err.str(), "'nope'") == 1);
+}
+
+TEST(effect_includes_other_effect) {
+    Scene2D scene;
+    EffectLibrary lib;
+    { CerrCapture quiet; lib.scan(TestEffects); }
+    scene.setService(&lib);
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    playEffect(scene, o, "test_outer", 1.0f, {0.0f, 0.0f}, 1);
+    auto* e = o.getComponent<ParticleEmitter>();
+    auto* b = o.getComponent<Blink>();
+    auto* s = o.getComponent<SquashStretch>();
+    CHECK(e && e->alive() == 3 && b && b->active() && s && s->current() == glm::vec2(1.3f, 0.7f));
+
+    // A cycle stops at depth 8: loop_a plays at depths 0, 2, 4 and 6 (one particle each), warned once.
+    GameObject& c = scene.createObject<GameObject>();
+    scene.flush();
+    CerrCapture err;
+    playEffect(scene, c, "test_loop_a", 1.0f, {0.0f, 0.0f}, 1);
+    playEffect(scene, c, nlohmann::json{{"effect", "test_loop_a"}}, 1.0f, {0.0f, 0.0f}, 1);
+    auto* ce = c.getComponent<ParticleEmitter>();
+    CHECK(ce && ce->alive() == 8);
+    CHECK(countOf(err.str(), "deeper than 8") == 1);
+}
+
+TEST(effect_invalid_file_keeps_previous) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_invalid";
+    std::filesystem::create_directories(dir);
+    const auto file = dir / "puff.effect.json";
+    std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": [{"blink": 0.2}]})";
+    EffectLibrary lib;
+    lib.scan(dir);
+    CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 1);
+    CerrCapture err;
+    std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": [{"blink": )";
+    lib.reload(file);
+    std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": {"blink": 1}})";
+    lib.reload(file);
+    const Effect* kept = lib.find("puff");
+    CHECK(kept && kept->actions.size() == 1 && kept->actions[0]["blink"] == 0.2);
+    CHECK(countOf(err.str(), "puff.effect.json") == 2);
+    std::ofstream(file, std::ios::trunc) << R"({"version": 1, "actions": [{"blink": 0.4}, {"squash": [1, 1]}]})";
+    lib.reload(file);
+    CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 2);
+}
+
+TEST(effect_triggers_state_anim_and_move) {
+    PrefabScene t;
+    EffectLibrary lib;
+    { CerrCapture quiet; lib.scan(TestEffects); }
+    t.scene.setService(&lib);
+    GameObject* made = t.prefabs.instantiate(t.scene, "test_effects");
+    CHECK(made && t.prefabs.warnings().empty());
+    if (!made) return;
+    auto& o = static_cast<TestMover&>(*made);
+    CHECK(o.getComponent<EffectTriggers>() && !o.getComponent<ParticleEmitter>());
+
+    t.scene.flush(); // state:move:idle (start, before registration) -> test_dust: particles at the feet
+    auto* e = o.getComponent<ParticleEmitter>();
+    CHECK(e && e->alive() == 3);
+    if (e && e->alive()) CHECK(e->particles()[0].position == o.transform.position);
+
+    o.move.change(o, "run"); // state:move:run -> blink
+    t.scene.flush();
+    auto* b = o.getComponent<Blink>();
+    CHECK(b && b->active());
+
+    t.scene.step(0.01f);
+    t.scene.step(0.1f); // walk frame 1: anim:step -> squash
+    auto* s = o.getComponent<SquashStretch>();
+    CHECK(s && s->current() == glm::vec2(1.2f, 0.8f));
+
+    emitMovementCue(t.scene, o, "jumped"); // squash now, stretch 0.033 s later (the jump anticipation)
+    t.scene.flush();
+    if (!s) return;
+    CHECK(s->current() == glm::vec2(1.2f, 0.8f));
+    t.scene.step(0.02f);
+    CHECK(s->current().y < 1.0f); // delay not elapsed
+    t.scene.step(0.02f);
+    CHECK(s->current().y > 1.1f && s->current().x < 0.9f);
+
+    // Another object's events do not reach it.
+    GameObject* other = t.prefabs.instantiate(t.scene, "test_effects");
+    t.scene.flush();
+    const std::size_t before = e ? e->alive() : 0;
+    if (other) emitMovementCue(t.scene, *other, "jumped");
+    t.scene.flush();
+    CHECK(e && e->alive() == before && s->current().y > 1.0f);
+}
+
+TEST(movement_cues_landed_strength_and_turned) {
+    Scene2D scene;
+    std::vector<MovementCue> got;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { got.push_back(c); });
+    GameObject& o = scene.createObject<GameObject>();
+    o.flipX = true;
+    scene.flush();
+    MoveResult air, ground;
+    ground.grounded = true;
+    emitMovementCues(scene, o, air, ground, {0.0f, -6.0f}, 12.0f);
+    emitMovementCues(scene, o, air, ground, {0.0f, -30.0f}, 12.0f);
+    scene.flush();
+    CHECK(got.size() == 2);
+    if (got.size() == 2) {
+        CHECK(got[0].name == "landed" && std::abs(got[0].strength - 0.5f) < 1e-5f && got[0].object == o.id);
+        CHECK(got[0].direction == -1 && !got[0].position);
+        CHECK(got[1].strength == 1.0f); // limited to 1
+    }
+    got.clear();
+    emitMovementCues(scene, o, ground, air, {0.0f, 5.0f}, 12.0f);
+    MoveResult runRight = ground;
+    runRight.velocity = {3.0f, 0.0f};
+    emitMovementCues(scene, o, runRight, ground, {-3.0f, 0.0f}, 12.0f); // reversed above the threshold
+    MoveResult slowRight = ground;
+    slowRight.velocity = {1.0f, 0.0f};
+    emitMovementCues(scene, o, slowRight, ground, {-1.0f, 0.0f}, 12.0f); // too slow: no turn
+    emitMovementCues(scene, o, ground, ground, {0.0f, 0.0f}, 12.0f);     // nothing happened
+    scene.flush();
+    CHECK(got.size() == 2);
+    if (got.size() == 2) CHECK(got[0].name == "left_ground" && got[1].name == "turned");
+}
+
+TEST(squash_scale_by_strength) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    const auto squash = nlohmann::json::parse(R"({"squash": [1.4, 0.6], "scaleByStrength": true})");
+    playEffect(scene, o, squash, 0.5f, {0.0f, 0.0f}, 1);
+    auto* s = o.getComponent<SquashStretch>();
+    CHECK(s && std::abs(s->current().x - 1.2f) < 1e-5f && std::abs(s->current().y - 0.8f) < 1e-5f);
+    if (!s) return;
+    playEffect(scene, o, squash, 3.0f, {0.0f, 0.0f}, 1); // strength limited to 1
+    CHECK(std::abs(s->current().x - 1.4f) < 1e-5f && std::abs(s->current().y - 0.6f) < 1e-5f);
+    playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.4, 0.6]})"), 0.5f, {0.0f, 0.0f}, 1); // not scaled
+    CHECK(std::abs(s->current().x - 1.4f) < 1e-5f && std::abs(s->current().y - 0.6f) < 1e-5f);
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

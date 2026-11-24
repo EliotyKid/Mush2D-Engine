@@ -1,6 +1,8 @@
 #include "Scene2D.hpp"
 
 #include "Collision.hpp"
+#include "Effects.hpp"
+#include "StateMachine.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -174,6 +176,14 @@ void GameObject::attach(std::unique_ptr<Component> component) {
     Component& ref = *component;
     components_.push_back(std::move(component));
     ref.onAttach(*this, *scene_);
+}
+
+void GameObject::registerStateMachine(std::string label, StateMachineBase* machine) {
+    machine->registeredChange = [this, label](const char* from, const char* to) {
+        if (scene_) scene_->events().emit(StateChanged{id, label, from, to});
+    };
+    if (*machine->current()) machine->registeredChange("", machine->current()); // started before registration
+    stateMachines_.emplace_back(std::move(label), machine);
 }
 
 void GameObject::markRemoved(Component& component) {

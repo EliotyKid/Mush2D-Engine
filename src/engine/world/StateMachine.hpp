@@ -15,6 +15,8 @@ public:
     virtual ~StateMachineBase() = default;
     virtual const char* current() const = 0; // "" before start
     virtual float timeInState() const = 0;
+    // Set by GameObject::registerStateMachine: emits StateChanged on every change, start included.
+    std::function<void(const char* from, const char* to)> registeredChange;
 };
 
 template<class Owner>
@@ -41,6 +43,7 @@ public:
             time_ = 0.0f;
             s->enter(owner);
             if (onChange) onChange("", s->name());
+            if (registeredChange) registeredChange("", s->name());
         }
     }
 
@@ -61,6 +64,7 @@ public:
         time_ = 0.0f;
         s->enter(owner);
         if (onChange) onChange(from, s->name());
+        if (registeredChange) registeredChange(from, s->name());
     }
 
     const char* current() const override { return current_ ? current_->name() : ""; }
