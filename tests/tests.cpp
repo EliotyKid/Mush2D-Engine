@@ -23,6 +23,8 @@
 #include "engine/world/Region.hpp"
 #include "engine/world/RegionSet.hpp"
 #include "engine/world/JumpAssist.hpp"
+#include "engine/world/IPlayer.hpp"
+#include "engine/world/Resources.hpp"
 #include "engine/world/StateMachine.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/TerrainMesh.hpp"
@@ -3223,6 +3225,85 @@ TEST(world_state_global_flag_survives_room_restore) {
     CHECK(state.find(WorldState::GlobalIid) != nullptr);
     state.setFlag("ability.ice.stakes", false);
     CHECK(!state.flag("ability.ice.stakes"));
+}
+
+// --- Resources, damage and the player found by tag (D2 Task 4) -----------------------------------------------
+
+TEST(resources_spend_regen_delay) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    std::vector<EnergyChanged> seen;
+    auto sub = scene.events().subscribe<EnergyChanged>([&](const EnergyChanged& e) { seen.push_back(e); });
+    CHECK(r.health() == 5 && r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f);
+    CHECK(r.spend(Element::Ice, 30.0f) && r.energy(Element::Ice) == 70.0f);
+    CHECK(!r.spend(Element::Ice, 71.0f) && r.energy(Element::Ice) == 70.0f); // not enough: nothing spent
+    CHECK(r.spend(Element::Fire, 10.0f));
+    scene.flush();
+    CHECK(seen.size() == 2 && seen[0].id == o.id && seen[0].element == Element::Ice && seen[0].value == 70.0f &&
+          seen[0].max == 100.0f);
+    r.update(scene, 0.5f); // still within regenDelay (1 s) of the spend
+    CHECK(r.energy(Element::Ice) == 70.0f);
+    r.spend(Element::Fire, 10.0f); // fire's delay restarts, ice's does not
+    r.update(scene, 0.6f);         // ice waited 1.1 s: regenerates; fire waited 0.6 s
+    CHECK(r.energy(Element::Ice) > 70.0f && r.energy(Element::Fire) == 80.0f);
+    for (int i = 0; i < 100; ++i) r.update(scene, 0.1f);
+    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f); // capped at the max
+}
+
+TEST(resources_spend_both_atomic) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    CHECK(r.spend(Element::Fire, 80.0f));
+    CHECK(!r.spendBoth(30.0f, 30.0f)); // fire has 20: neither is spent
+    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 20.0f);
+    CHECK(r.spendBoth(30.0f, 20.0f));
+    CHECK(r.energy(Element::Ice) == 70.0f && r.energy(Element::Fire) == 0.0f);
+    r.refill();
+    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f);
+}
+
+TEST(resources_death_event) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    int died = 0;
+    std::vector<HealthChanged> health;
+    auto a = scene.events().subscribe<Died>([&](const Died& e) { died += e.id == o.id; });
+    auto b = scene.events().subscribe<HealthChanged>([&](const HealthChanged& e) { health.push_back(e); });
+    DamageInfo hit;
+    CHECK(hit.amount == 1 && hit.element == Element::None && hit.direction == glm::vec2(0.0f));
+    r.damage(3);
+    scene.flush();
+    CHECK(r.health() == 2 && died == 0 && health.size() == 1 && health[0].health == 2 && health[0].max == 5);
+    r.heal(1);
+    r.damage(10); // clamps at 0 and dies once
+    r.damage(1);  // already dead: nothing
+    scene.flush();
+    CHECK(r.health() == 0 && died == 1 && health.size() == 3 && health[2].health == 0);
+    r.refill();
+    CHECK(r.health() == 5);
+}
+
+TEST(item_ability_kind_sets_flag) {
+    Scene2D scene;
+    WorldState state;
+    scene.setService(&state);
+    GameObject& player = scene.createObject<GameObject>();
+    player.addTag("player");
+    GameObject& other = scene.createObject<GameObject>();
+    ItemObject& item = scene.createObject<ItemObject>();
+    item.kind = "ability.ice.stakes";
+    item.onTriggerEnter(scene, other); // not the player
+    CHECK(!state.flag("ability.ice.stakes"));
+    item.onTriggerEnter(scene, player); // found by tag, not by type
+    CHECK(state.flag("ability.ice.stakes"));
+    ItemObject& coin = scene.createObject<ItemObject>();
+    coin.kind = "coin";
+    coin.onTriggerEnter(scene, player);
+    CHECK(!state.flag("coin"));
+    CHECK(findPlayer(scene) == &player);
 }
 
 // --- Juice: particles, squash and stretch, blink, lean, frame events (D2 Task 2) -----------------------------

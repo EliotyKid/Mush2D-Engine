@@ -55,8 +55,9 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 **Casos de uso:**
 
 - Ajustar a altura do pulo ao vivo: `F1` → "Cena (F1)" → player → `jumpSpeed`. O ápice é `jumpSpeed² / (2 × |gravity|)` unidades.
-- Mandar o player para outro lugar em código: `player->teleport(posicao)`.
-- Saber se o player apertou ↓ neste frame (para interagir): `player->interactPressed()`.
+- Mandar o player para outro lugar em código: `player->teleport(posicao)`, ou `respawnAt(posicao)` pela interface `IPlayer`.
+- Saber se o player apertou ↓ neste frame (para interagir): `downPressedThisFrame()` (`IPlayer`), o mesmo que `interactPressed()`.
+- Os outros objetos acham o player pela tag `player` e falam com ele pela interface `IPlayer`, nunca pelo tipo `PlayerObject`. Veja [Comunicação](fazendo-o-jogo/comunicacao.md).
 
 **Arquivos:** `src/game/objects/PlayerObject.hpp`, `src/game/spawners/Spawn.cpp`.
 
@@ -122,12 +123,13 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 
 | Atributo | Tipo | Padrão | Efeito |
 |---|---|---|---|
-| `kind` | String | `""` (prefab: `"coin"`) | Tipo do item. Hoje só informativo. |
+| `kind` | String | `""` (prefab: `"coin"`) | Tipo do item. Começando por `ability.` (ex.: `ability.ice.stakes`), pegar o item liga a flag global de mesmo nome no `WorldState` e desbloqueia a habilidade. Fora isso, só informativo. |
 
 **Casos de uso:**
 
 - Uma moeda que nunca volta: campo `persistence` = `permanent`.
 - Uma vida que volta depois de um tempo: campo `respawn` ligado.
+- Um item de habilidade: `kind` = `ability.ice.stakes`. A flag não volta atrás na morte; o componente da habilidade lê `flag(kind)`.
 
 **Arquivos:** `src/game/objects/ItemObject.hpp`, `assets/prefabs/item.prefab.json`.
 

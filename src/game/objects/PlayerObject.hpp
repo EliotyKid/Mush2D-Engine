@@ -9,6 +9,7 @@
 #include "engine/world/CharacterController.hpp"
 #include "engine/world/Collision.hpp"
 #include "engine/world/GameObject.hpp"
+#include "engine/world/IPlayer.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/platform/InputState.hpp"
 
@@ -21,7 +22,7 @@ MUSH2D_ENUM(PlayerMovementMode, TopDown, Platformer)
 
 // The player keeps its own animation code until D2; its movement values are exported attributes (the
 // inspector edits them live). Config is the code way to set them all at creation (scenes, PlayerStart).
-class PlayerObject : public GameObject {
+class PlayerObject : public GameObject, public IPlayer {
     MUSH2D_OBJECT(PlayerObject, GameObject)
 public:
     struct Config {
@@ -122,7 +123,7 @@ public:
         applyCurrentAnimationFrame(scene);
     }
 
-    void applyInput(const InputState& input) {
+    void applyInput(const InputState& input) override {
         inputDir = {0.0f, 0.0f};
 
         if (input.moveLeft.down) inputDir.x -= 1.0f;
@@ -152,6 +153,7 @@ public:
 
     // Down was pressed this frame (levers read it during the step).
     bool interactPressed() const { return interact; }
+    bool downPressedThisFrame() const override { return interact; }
 
     void onStep(Scene2D& scene, float dt) override {
         if (platformer()) {
@@ -220,7 +222,10 @@ public:
         return checkpointPosition;
     }
 
-    void respawnAtCheckpoint() {
+    void setCheckpoint(glm::vec2 position) override { setCheckpointPosition(position); }
+    void respawnAt(glm::vec2 position) override { teleport(position); }
+
+    void respawnAtCheckpoint() override {
         teleport(checkpointPosition);
     }
 

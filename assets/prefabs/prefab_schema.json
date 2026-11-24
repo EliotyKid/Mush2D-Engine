@@ -71,6 +71,11 @@
       "component": false,
       "props": []
     },
+    "EffectTriggers": {
+      "base": "Component",
+      "component": true,
+      "props": []
+    },
     "GameObject": {
       "base": "",
       "component": false,

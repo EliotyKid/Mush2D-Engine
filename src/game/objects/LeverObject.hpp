@@ -2,9 +2,9 @@
 
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
-#include "game/objects/PlayerObject.hpp"
 
 #include "engine/world/GameObject.hpp"
+#include "engine/world/IPlayer.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/WorldState.hpp"
 
@@ -34,13 +34,13 @@ public:
     void onPrefabApplied(Scene2D&) override { refresh(); }
 
     void onStep(Scene2D& scene, float) override {
-        auto* player = scene.findObjectAs<PlayerObject>(playerId);
-        if (player && player->interactPressed()) toggle();
+        auto* player = scene.findObjectAs<IPlayer>(playerId);
+        if (player && player->downPressedThisFrame()) toggle();
         refresh();
     }
 
     void onTriggerEnter(Scene2D&, GameObject& other) override {
-        if (dynamic_cast<PlayerObject*>(&other)) playerId = other.id;
+        if (other.hasTag("player")) playerId = other.id;
     }
     void onTriggerExit(Scene2D&, GameObject& other) override {
         if (other.id == playerId) playerId = InvalidGameObjectId;

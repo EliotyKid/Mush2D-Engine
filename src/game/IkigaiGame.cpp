@@ -3,6 +3,7 @@
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
 #include "engine/world/Collision.hpp"
+#include "engine/world/IPlayer.hpp"
 #include "game/objects/PlayerObject.hpp"
 #include "game/scenes/SceneRegistry.hpp"
 #include "game/spawners/Spawn.hpp"
@@ -19,6 +20,18 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+
+// The player is the object tagged "player" (spec D2 decision 4): the remembered one, else the first one found.
+static GameObject* livePlayer(Scene2D& scene, GameObjectId& id) {
+    GameObject* player = scene.findObject(id);
+    if (!player || !player->hasTag("player")) {
+        player = findPlayer(scene);
+        if (player) {
+            id = player->id;
+        }
+    }
+    return player;
+}
 
 void IkigaiGame::init(EngineServices& s) {
     gameAssets.registerDefaults();
@@ -88,13 +101,7 @@ void IkigaiGame::update(EngineServices& s, float deltaTime) {
         submitRenderData(s);
         return;
     }
-    auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
-    if (!player) {
-        player = scene.findFirstObjectOfType<PlayerObject>();
-        if (player) {
-            playerObjectId = player->id;
-        }
-    }
+    auto* player = dynamic_cast<IPlayer*>(livePlayer(scene, playerObjectId));
     // A death fade only exists in the Showcase world; leaving it mid-fade must not freeze other scenes.
     const bool dying = currentSceneId == SceneId::Showcase && world.dying();
     if (player && !dying) { // a dying player stands still
@@ -212,15 +219,16 @@ bool IkigaiGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTra
 void IkigaiGame::hotReload(EngineServices& s, bool ldtkOnly) {
     keepRegions = ldtkOnly; // only the .ldtk changed: keep the panel's unsaved look
     const bool wasDying = world.dying();
-    const auto* old = s.scene.findObjectAs<PlayerObject>(playerObjectId);
-    const glm::vec2 at = old ? old->transform.position : glm::vec2(0.0f);
-    const bool hadPlayer = old != nullptr;
+    const GameObject* old = s.scene.findObject(playerObjectId);
+    const bool hadPlayer = old && old->hasTag("player");
+    const glm::vec2 at = hadPlayer ? old->transform.position : glm::vec2(0.0f);
     std::fprintf(stderr, "Hot reload: level files changed\n");
     const bool loaded = tryLoadScene(s, SceneId::Showcase, currentSceneTransitionData);
     keepRegions = false;
     if (!loaded || !hadPlayer) return;
-    auto* player = s.scene.findObjectAs<PlayerObject>(playerObjectId);
-    if (!player || !player->collider) return;
+    GameObject* player = s.scene.findObject(playerObjectId);
+    auto* control = dynamic_cast<IPlayer*>(player);
+    if (!control || !player->collider) return;
 
     // Spec decision 8: same place, pushed out of new geometry up to 2 u, else the checkpoint.
     if (const int room = world.roomAt(at); room >= 0) world.loadAround(room);
@@ -234,7 +242,7 @@ void IkigaiGame::hotReload(EngineServices& s, bool ldtkOnly) {
     glm::vec2 target = respawnPoint();
     if (!wasDying && depenetrate(body, query)) target = body.position - player->collider->offset;
     else if (const int room = world.roomAt(target); room >= 0) world.loadAround(room);
-    player->teleport(target);
+    control->respawnAt(target);
     s.camera.position = target + s.camera.followOffset;
 }
 
@@ -266,7 +274,7 @@ void IkigaiGame::loadScene(EngineServices& s, SceneId sceneId, const SceneTransi
         activeSceneDefinition->onEnter(scene, currentSceneTransitionData);
     }
 
-    auto* player = scene.findFirstObjectOfType<PlayerObject>();
+    GameObject* player = findPlayer(scene);
     if (player) {
         playerObjectId = player->id;
         camera.position = player->transform.position;
@@ -325,18 +333,13 @@ void IkigaiGame::handleGlobalInput(EngineServices& s, float deltaTime) {
         camera.followEnabled = !camera.followEnabled;
     }
 
-    auto* player = scene.findObjectAs<PlayerObject>(playerObjectId);
-    if (!player) {
-        player = scene.findFirstObjectOfType<PlayerObject>();
-        if (player) {
-            playerObjectId = player->id;
-        }
-    }
+    GameObject* player = livePlayer(scene, playerObjectId);
+    auto* control = dynamic_cast<IPlayer*>(player);
 
     if (state.respawn.pressed && player && currentSceneId == SceneId::Showcase) {
         killPlayer(s, player->id); // through World: restore, stream, fade
-    } else if (state.respawn.pressed && player) {
-        player->respawnAtCheckpoint();
+    } else if (state.respawn.pressed && control) {
+        control->respawnAtCheckpoint();
 
         if (camera.followEnabled) {
             camera.position = player->transform.position + camera.followOffset;
@@ -475,7 +478,7 @@ void IkigaiGame::setupInitialScene(EngineServices& s) {
 // Critter, Prop, Crystal, ...) creates assets/prefabs/<snake_case name>.prefab.json (LevelLoader::spawnEntity).
 void IkigaiGame::registerLevelEntities() {
     levelLoader.registerEntity("PlayerStart", [](const LdtkEntity& e, glm::vec2 pos, EngineServices& s) {
-        if (s.scene.findFirstObjectOfType<PlayerObject>()) return; // its room streamed in again
+        if (findPlayer(s.scene)) return; // its room streamed in again
         PlayerObject::Config c{};
         c.movementMode = PlayerObject::Config::MovementMode::Platformer;
         c.moveSpeed = 4.5f;
@@ -530,11 +533,12 @@ void IkigaiGame::loadShowcaseLevel(EngineServices& s) {
 
 void IkigaiGame::killPlayer(EngineServices& s, GameObjectId id) {
     if (world.dying()) return;
-    if (auto* p = s.scene.findObjectAs<PlayerObject>(id)) p->active = false; // frozen until the teleport
+    if (auto* p = s.scene.findObject(id)) p->active = false; // frozen until the teleport
     world.killPlayer(respawnPoint(), [&scene = s.scene, &camera = s.camera, id](glm::vec2 at) {
-        if (auto* p = scene.findObjectAs<PlayerObject>(id)) {
+        GameObject* p = scene.findObject(id);
+        if (auto* player = dynamic_cast<IPlayer*>(p)) {
             p->active = true;
-            p->teleport(at);
+            player->respawnAt(at);
             camera.position = at + camera.followOffset;
         }
     });

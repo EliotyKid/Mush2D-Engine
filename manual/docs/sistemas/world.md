@@ -28,6 +28,7 @@
 | `Scene2D` | A cena. `createObject<T>()`, `destroy(id)`, `find(id)`, `findObjectAs<T>(id)`, `findFirstObjectOfType<T>()`, `findAllObjectsOfType<T>()`, `findObjectsByTag(tag)`, `setParent(filho, pai)`, `forEach(fn)`, `step(dt)`, `lateStep(dt)`, `events()`, `service<T>()` / `setService<T>()`. Criar e destruir valem no fim da etapa (`flush`). |
 | `StateMachine<Owner>` | Estados com nome (`State<Owner>`: `name`, `enter`, `exit`, `update` devolve o próximo nome ou `nullptr` para ficar). `add`, `start(dono, nome)`, `update(dono, dt)` (no máximo uma transição por chamada), `change(dono, nome)` (forçada: dano, morte), `current()`, `timeInState()`, `onChange(de, para)` (o `start` chama com `de` = `""`, para o animador pegar o primeiro estado). Nome desconhecido: aviso uma vez em stderr, e o estado fica. Um objeto pode ter várias máquinas (`"move"`, `"action"`). `shared<Base, Derivado>(estado)` roda um `State<Base>` numa máquina do derivado. |
 | `StateMachineBase` | Vista sem template para ferramentas: `current()`, `timeInState()`. `GameObject::registerStateMachine("move", &maquina)` faz o inspetor F1 mostrar "move: fall (0.32 s)", só leitura, e faz a máquina emitir `StateChanged{object, label, from, to}` a cada mudança (uma máquina já iniciada emite o estado atual ao ser registrada). |
+| `IPlayer` (`IPlayer.hpp`) | O que os objetos pedem ao player, seja qual for o tipo dele: `applyInput(input)`, `respawnAt(posição)` (teleporte, sem velocidade nem chão), `downPressedThisFrame()`, `setCheckpoint(posição)`, `respawnAtCheckpoint()`. O player é o objeto com a tag `player`; `dynamic_cast<IPlayer*>(&objeto)` chega nesses métodos. `findPlayer(scene)` devolve o primeiro objeto com a tag, ou `nullptr`. |
 | `EventBus` | Eventos tipados e adiados: `subscribe<E>(fn)` devolve uma `Subscription` (guarde-a), `emit(E{...})`. Veja [Comunicação](../fazendo-o-jogo/comunicacao.md). |
 
 ### Colisão e movimento
@@ -59,6 +60,15 @@
 | `PrefabLibrary` | Carrega e mescla prefabs (`resolved`), cria objetos (`instantiate(scene, nome, overrides, entityIid)`), `clear()` no hot reload. Serviço da cena. |
 | `PrefabSave` | `diffAgainstBase`, `savePrefab`, usados pelo inspetor para "Salvar no prefab" e "Salvar como novo prefab". |
 | `SpriteAnimator` | Componente que toca a animação do estado atual (`setState("walk")`), usando o mapa `animations` do prefab, com o pivô do frame na posição do objeto. `animationEvents` (animação → {quadro → nome}) emite `AnimationEvent{object, animation, name}` no `scene.events()` cada vez que o quadro entra: a cada volta do loop e também nos quadros pulados por um `dt` grande. |
+
+### Recursos e dano
+
+| Tipo | Papel |
+|---|---|
+| `Resources` (`Resources.hpp`) | Componente de vida e energias de gelo e fogo. Começa cheio. `health()`, `energy(Element)`, `damage(n)` (ignorado depois da morte), `heal(n)`, `refill()` (tudo ao máximo, no renascimento), `spend(Element, quantia)` (falso e nada gasto sem energia suficiente), `spendBoth(gelo, fogo)` (os dois ou nenhum). Cada energia recarrega `regenPerSecond` (10/s) depois de `regenDelay` (1 s) sem gastar aquele elemento; o `onStep` chama `update(scene, dt)`. Atributos: `maxHealth` 5, `maxIce` 100, `maxFire` 100, `regenPerSecond`, `regenDelay`. |
+| Eventos | `HealthChanged{id, health, max}`, `EnergyChanged{id, element, value, max}`, `Died{id}` (vida chegou a 0), no `scene.events()`. |
+| `Element` (`Damage.hpp`) | `None`, `Ice`, `Fire` (`MUSH2D_ENUM`). |
+| `DamageInfo` | Um golpe: `amount` (1), `direction` (para onde empurra o alvo), `element` (`None`). O D3 acrescenta campos. |
 
 ### Juice
 
@@ -104,6 +114,17 @@ ws->setFlag("ability.ice.stakes", true);
 if (ws->flag("ability.ice.stakes")) { /* pode usar */ }
 ```
 
+Um `Item` com `kind` começando por `ability.` faz isso ao ser pego (veja [Item](../objetos.md#item)).
+
+### Gastar energia e tomar dano
+
+```cpp
+auto& r = obj.addComponent<Resources>();
+if (r.spend(Element::Ice, 30.0f)) { /* lança a estaca */ }
+r.damage(1);
+auto sub = scene.events().subscribe<Died>([](const Died& e) { /* morte de e.id */ });
+```
+
 ### Estados de um objeto
 
 ```cpp
@@ -138,4 +159,4 @@ Com `MUSH2D_COMPONENT`, ele pode ser listado em `"components"` de um prefab.
 
 ## Arquivos
 
-`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`, `Particles.*`, `SquashStretch.*`, `Blink.hpp`, `VelocityLean.hpp`, `Effects.*`.
+`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `Resources.*`, `Damage.hpp`, `IPlayer.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`, `Particles.*`, `SquashStretch.*`, `Blink.hpp`, `VelocityLean.hpp`, `Effects.*`.

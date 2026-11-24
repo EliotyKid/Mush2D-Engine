@@ -2,7 +2,6 @@
 
 #include "game/assets/GameAssets.hpp"
 #include "game/assets/GameSpriteId.hpp"
-#include "game/objects/PlayerObject.hpp"
 #include "game/objects/Tracked.hpp"
 
 #include "engine/world/GameObject.hpp"
@@ -11,8 +10,9 @@
 
 #include <string>
 
-// Collected on touch. No inventory yet: collecting only records the state (persistence policy) in the
-// WorldState service. Prefab: assets/prefabs/item.prefab.json; LDtk field `kind`.
+// Collected on touch by the player (tag "player"). No inventory yet: collecting only records the state (persistence
+// policy) in the WorldState service. A `kind` starting with "ability." also sets that global flag (an unlock).
+// Prefab: assets/prefabs/item.prefab.json; LDtk field `kind`.
 class ItemObject : public GameObject {
     MUSH2D_OBJECT(ItemObject, GameObject)
 public:
@@ -33,8 +33,10 @@ public:
     }
 
     void onTriggerEnter(Scene2D& scene, GameObject& other) override {
-        if (!dynamic_cast<PlayerObject*>(&other)) return;
-        if (WorldState* state = scene.service<WorldState>()) removeTracked(scene, *state, *this, state->clock);
+        if (!other.hasTag("player")) return;
+        WorldState* state = scene.service<WorldState>();
+        if (state && kind.starts_with("ability.")) state->setFlag(kind, true);
+        if (state) removeTracked(scene, *state, *this, state->clock);
         else scene.destroy(id);
     }
 };
