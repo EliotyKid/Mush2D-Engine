@@ -56,6 +56,7 @@ ctest --test-dir build/debug
 | `Z` | Pular. Nas cenas Sandbox e Test, a seta para cima também pula; o Iki (vitrine) só pula com `Z`. |
 | `↓` + pulo sobre plataforma atravessável | Descer por ela. Em chão sólido é um pulo normal. |
 | `↓` sobre uma alavanca | Abre ou fecha a porta ligada a ela. |
+| `←`/`→`, `↑`/`↓` numa parede ou teto de gelo (Iki, com a habilidade) | Agarrar, subir, descer, andar pendurado. Veja [Estacas de gelo](fazendo-o-jogo/iki.md#estacas-de-gelo). |
 | `Espaço` | Dash. Só nas cenas Sandbox e Test, não na sala vitrine. |
 | `H` | Golpe. Só nas cenas Sandbox e Test. |
 | `R` | Voltar ao checkpoint. Na vitrine é uma morte (escurece e restaura a sala); nas cenas Sandbox e Test só teleporta. |

@@ -18,6 +18,8 @@ e depois `http://127.0.0.1:8000`.
 | `←` `→` | Correr. |
 | `Z` | Pular (só `Z`: a seta para cima não pula o Iki). |
 | `↓` + `Z` | Descer por uma plataforma atravessável. |
+| `←`/`→` contra uma parede de gelo (no ar) | Cravar as estacas e agarrar a parede (precisa da habilidade). Na parede, `↑`/`↓` sobe e desce; `Z` salta para longe. |
+| `↑` sob um teto de gelo (no ar) | Pendurar no teto. Pendurado, `←`/`→` anda; `↓` ou `Z` solta. |
 | `J` (só Debug) | 1 de dano no Iki. |
 | `L` (só Debug) | Gasta 30 de gelo e 30 de fogo. |
 | `F1` | Painel e inspetor (mostra o estado do Iki). |

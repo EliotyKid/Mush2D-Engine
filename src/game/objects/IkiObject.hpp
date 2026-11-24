@@ -7,6 +7,7 @@
 #include "engine/world/IPlayer.hpp"
 #include "engine/world/JumpAssist.hpp"
 #include "engine/world/StateMachine.hpp"
+#include "game/abilities/IceStakesAbility.hpp" // here so all_objects.cpp registers the component
 
 #include <glm/glm.hpp>
 
@@ -39,12 +40,13 @@ public:
     MUSH2D_EXPORT(float, coyoteTime, 0.1f)
     MUSH2D_EXPORT(float, jumpBuffer, 0.12f)
     MUSH2D_EXPORT(float, cornerCorrection, 0.2f) // rising into a ceiling corner: side shift allowed (units)
-    // Ice stakes (used by the wall and ceiling states, D2 Task 6).
+    // Ice stakes (states "wall" and "ceiling", with the IceStakesAbility component unlocked).
     MUSH2D_EXPORT(float, wallClimbSpeed, 3.0f)
     MUSH2D_EXPORT(glm::vec2, wallJumpVelocity, glm::vec2(6.0f, 10.0f)) // x away from the wall, y up
-    MUSH2D_EXPORT(float, wallJumpLock, 0.15f)
-    MUSH2D_EXPORT(glm::vec2, ledgeHop, glm::vec2(2.0f, 7.0f))
+    MUSH2D_EXPORT(float, wallJumpLock, 0.15f) // s of ignored horizontal input after a wall jump or a ledge hop
+    MUSH2D_EXPORT(glm::vec2, ledgeHop, glm::vec2(2.0f, 7.0f)) // x toward the ledge, y up
     MUSH2D_EXPORT(float, ceilingMoveSpeed, 3.0f)
+    MUSH2D_EXPORT(float, climbParticleInterval, 0.1f) // s between "climb" cues while moving on a wall or ceiling
     // Damage. hurtKnockback: x along the sign of the hit's direction.x, y along direction.y (up when it is 0).
     MUSH2D_EXPORT(float, hurtDuration, 0.35f)
     MUSH2D_EXPORT(glm::vec2, hurtKnockback, glm::vec2(6.0f, 6.0f))
@@ -81,14 +83,34 @@ public:
     float moveX() const { return float(input_.moveRight.down) - float(input_.moveLeft.down); }
     bool jumpHeld() const { return input_.jump.down; }
     bool downHeld() const { return input_.moveDown.down; }
+    bool upHeld() const { return input_.moveUp.down; }
 
     // Physics shared by the states, in this order each step: runHorizontal, tryJump, applyGravity, moveAndCollide.
     void applyGravity(float dt);
-    void runHorizontal(float dt, float inputX); // eases velocity_.x to inputX * runSpeed; faces the input
-    bool tryJump();                              // buffered Z on the ground or in coyote time (down + Z drops through)
-    void moveAndCollide(float dt);               // controller move, corner correction, slime stomp
+    // Eases velocity_.x to inputX * runSpeed; faces the input. Does nothing during wallJumpLock.
+    void runHorizontal(float dt, float inputX);
+    // Buffered Z on the ground or in coyote time (down + Z drops through); in wall coyote time, a wall jump.
+    bool tryJump();
+    // Controller move, corner correction (off on a wall or ceiling: it would slide the Iki off), slime stomp.
+    void moveAndCollide(float dt, bool cornerCorrect = true);
     // The locomotion state the body is in now (idle, run, jump or fall); nullptr when it is `current`.
     const char* nextLocomotion(const char* current) const;
+
+    // Ice stakes. Grabbing (spec decision 5), called by the air states after moveAndCollide: in the air, holding
+    // toward an ice wall -> "wall" (even with up held); else up held under an ice ceiling -> "ceiling". A
+    // buffered Z on grabbing a wall wall-jumps at once (returns nullptr: the Iki is rising, "jump").
+    const char* nextGrab();
+    int wallSide = 1; // the wall being clung to: -1 left, +1 right
+    // An ice wall on `side` (stakes unlocked). grip: only the band at the body's middle counts (grabbing: no
+    // grab beside a plain wall over ice); else any touch (holding on until the whole body is past the ice).
+    bool iceWall(int side, bool grip) const;
+    bool anyWall(int side) const; // ice or not
+    bool iceCeiling() const;      // under the middle of the body, within the grab reach
+    void wallJump();              // away from wallSide, input locked for wallJumpLock
+    void hopLedge();              // the ice ended climbing up with nothing above: onto the ledge
+    void letGoWall();             // fall; wall coyote, no re-grab of this wall until its direction is pressed anew
+    void letGoCeiling();          // fall; no re-grab of a ceiling until up is pressed anew
+    void climbCue(float dt, bool moving, glm::vec2 offset); // "climb" every climbParticleInterval while moving
 
 private:
     StateMachine<IkiObject> machine_;
@@ -101,6 +123,14 @@ private:
     float invulnerableLeft_ = 0.0f;
     bool jumped_ = false; // left the ground this step (the controller must not snap it back down)
     bool placed_ = true;  // just created or teleported: no movement cues for the first step (no landing puff)
+    float wallJumpLockLeft_ = 0.0f;
+    float wallCoyoteLeft_ = 0.0f; // after letting go of a wall: Z wall-jumps (JumpAssist runs the same coyote)
+    int wallBlockedSide_ = 0;     // let go of this wall: no re-grab until its direction is released
+    bool ceilingBlocked_ = false; // let go of a ceiling: no re-grab until up is released
+    float climbCueLeft_ = 0.0f;
 
     bool stompBelow(Scene2D& scene);
+    bool iceStakes() const;
+    Body bodyHere() const;            // the collider box at transform.position
+    CollisionQuery query(float reach) const; // static geometry and solids within reach of the body
 };

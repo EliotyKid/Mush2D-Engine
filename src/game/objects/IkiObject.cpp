@@ -5,12 +5,14 @@
 #include "engine/world/Resources.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/SpriteAnimator.hpp"
+#include "game/iki/states/CeilingHangState.hpp"
 #include "game/iki/states/DeadState.hpp"
 #include "game/iki/states/FallState.hpp"
 #include "game/iki/states/HurtState.hpp"
 #include "game/iki/states/IdleState.hpp"
 #include "game/iki/states/JumpState.hpp"
 #include "game/iki/states/RunState.hpp"
+#include "game/iki/states/WallClingState.hpp"
 #include "game/objects/SlimeEnemy.hpp"
 
 #include <algorithm>
@@ -23,6 +25,8 @@ namespace {
 float moveTowards(float value, float target, float maxStep) {
     return value < target ? std::min(value + maxStep, target) : std::max(value - maxStep, target);
 }
+constexpr float GripHalf = 0.1f;          // half height (wall) / width (ceiling) of the grab band at the body's middle
+constexpr float CeilingGrabReach = 0.3f;  // up held this close under an ice ceiling grabs it (the Iki snaps up)
 } // namespace
 
 void IkiObject::onCreate(Scene2D&) {
@@ -38,6 +42,8 @@ void IkiObject::onCreate(Scene2D&) {
     machine_.add(std::make_unique<FallState>());
     machine_.add(std::make_unique<HurtState>());
     machine_.add(std::make_unique<DeadState>());
+    machine_.add(std::make_unique<WallClingState>());
+    machine_.add(std::make_unique<CeilingHangState>());
     // The state name is the animation key (prefab "animations").
     machine_.onChange = [this](const char*, const char* to) {
         if (auto* animator = getComponent<SpriteAnimator>()) animator->setState(to);
@@ -64,6 +70,10 @@ void IkiObject::onStep(Scene2D& scene, float dt) {
     jump.coyoteTime = coyoteTime;
     jump.jumpBuffer = jumpBuffer;
     jump.tick(dt, grounded, input_.jump.pressed);
+    wallJumpLockLeft_ = grounded ? 0.0f : std::max(0.0f, wallJumpLockLeft_ - dt);
+    wallCoyoteLeft_ = grounded ? 0.0f : std::max(0.0f, wallCoyoteLeft_ - dt);
+    if (grounded || moveX() * float(wallBlockedSide_) <= 0.0f) wallBlockedSide_ = 0;
+    if (grounded || !upHeld()) ceilingBlocked_ = false;
     const MoveResult previous = lastMove_;
     const int previousFacing = int(facing);
     machine_.update(*this, dt);
@@ -81,7 +91,7 @@ void IkiObject::applyGravity(float dt) {
 }
 
 void IkiObject::runHorizontal(float dt, float inputX) {
-
+    if (wallJumpLockLeft_ > 0.0f) return; // a wall jump or a ledge hop keeps its push: no steering back to the wall
     if (inputX != 0.0f) facing = inputX > 0.0f ? 1.0f : -1.0f;
     const float target = inputX * runSpeed;
     // Speeding up toward the input uses the acceleration; slowing down or turning uses the deceleration.
@@ -92,6 +102,10 @@ void IkiObject::runHorizontal(float dt, float inputX) {
 
 bool IkiObject::tryJump() {
     if (!jump.consumeJump()) return false;
+    if (wallCoyoteLeft_ > 0.0f) {
+        wallJump();
+        return true;
+    }
     if (downHeld() && requestDropThrough(body_, lastMove_)) return false; // down + Z on a one-way: drop through
     velocity_.y = jumpSpeed;
     jumped_ = true;
@@ -100,20 +114,32 @@ bool IkiObject::tryJump() {
     return true;
 }
 
-void IkiObject::moveAndCollide(float dt) {
+Body IkiObject::bodyHere() const {
+    Body b = body_;
+    if (collider) {
+        b.position = transform.position + collider->offset;
+        b.halfSize = collider->size * 0.5f;
+    }
+    return b;
+}
+
+CollisionQuery IkiObject::query(float reach) const {
+    if (!scene_) return {};
+    const Body b = bodyHere();
+    const Collision2D::AABB area{b.position - b.halfSize - reach, b.position + b.halfSize + reach};
+    return {&scene_->collision, Collision2D::solidBoxes(*scene_, id, area)};
+}
+
+void IkiObject::moveAndCollide(float dt, bool cornerCorrect) {
     if (!scene_ || !collider) return;
     Scene2D& scene = *scene_;
-    body_.position = transform.position + collider->offset;
-    body_.halfSize = collider->size * 0.5f;
+    body_ = bodyHere();
     stepVelocity_ = velocity_;
-
-    const float reach = glm::length(velocity_) * dt + 1.0f + cornerCorrection;
-    const Collision2D::AABB area{body_.position - body_.halfSize - reach, body_.position + body_.halfSize + reach};
-    const CollisionQuery query{&scene.collision, Collision2D::solidBoxes(scene, id, area)};
+    const CollisionQuery query = this->query(glm::length(velocity_) * dt + 1.0f + cornerCorrection);
 
     // Corner correction: rising into the corner of a ceiling, slide sideways up to cornerCorrection when that
     // frees the way up (the nearest free shift wins, left first on a tie).
-    if (velocity_.y > 0.0f && cornerCorrection > 0.0f) {
+    if (cornerCorrect && velocity_.y > 0.0f && cornerCorrection > 0.0f) {
         auto bumps = [&](glm::vec2 at) {
             Body probe = body_;
             probe.position = at;
@@ -177,6 +203,8 @@ void IkiObject::hurt(const DamageInfo& info) {
     if (!resources || invulnerable() || resources->health() == 0 || info.amount <= 0) return;
     resources->damage(info.amount); // health 0: Resources emits Died (the game runs the death)
     invulnerableLeft_ = invulnerableTime;
+    wallJumpLockLeft_ = wallCoyoteLeft_ = 0.0f; // the hit ends a wall or ceiling grab: no wall jump from it
+    jump.clearBuffer();
     if (resources->health() == 0) {
         machine_.change(*this, "dead");
         return;
@@ -206,5 +234,88 @@ void IkiObject::respawn() {
     velocity_ = glm::vec2(0.0f);
     jump = JumpAssist{};
     jumpCuttable = false;
+    wallJumpLockLeft_ = wallCoyoteLeft_ = 0.0f;
+    wallBlockedSide_ = 0;
+    ceilingBlocked_ = false;
     machine_.change(*this, "idle");
+}
+
+// --- Ice stakes ---
+
+bool IkiObject::iceStakes() const {
+    const auto* ability = getComponent<IceStakesAbility>();
+    return ability && scene_ && ability->unlocked(*scene_);
+}
+
+bool IkiObject::iceWall(int side, bool grip) const {
+    if (!iceStakes()) return false;
+    Body b = bodyHere();
+    if (grip) b.halfSize.y = GripHalf;
+    return probeWall(b, side, query(1.0f)).surface == Surface::IceClimb;
+}
+
+bool IkiObject::anyWall(int side) const { return probeWall(bodyHere(), side, query(1.0f)).hit; }
+
+bool IkiObject::iceCeiling() const {
+    if (!iceStakes()) return false;
+    Body b = bodyHere();
+    b.halfSize.x = GripHalf;
+    return probeCeiling(b, query(1.0f), CeilingGrabReach).surface == Surface::IceClimb;
+}
+
+const char* IkiObject::nextGrab() {
+    if (grounded) return nullptr;
+    const int side = moveX() > 0.0f ? 1 : moveX() < 0.0f ? -1 : 0;
+    const bool justLeft = wallJumpLockLeft_ > 0.0f && side == wallSide; // the wall just jumped or hopped from
+    if (side != 0 && side != wallBlockedSide_ && !justLeft && iceWall(side, true)) {
+        wallSide = side;
+        if (!jump.hasBufferedJump()) return "wall";
+        wallJump();
+        return nullptr;
+    }
+    if (upHeld() && !ceilingBlocked_ && iceCeiling()) return "ceiling";
+    return nullptr;
+}
+
+void IkiObject::wallJump() {
+    jump.clearBuffer();
+    wallCoyoteLeft_ = 0.0f;
+    velocity_ = {-float(wallSide) * wallJumpVelocity.x, wallJumpVelocity.y};
+    facing = -float(wallSide);
+    wallJumpLockLeft_ = wallJumpLock;
+    jumped_ = true;
+    jumpCuttable = true;
+    if (scene_) emitMovementCue(*scene_, *this, "jumped");
+}
+
+void IkiObject::hopLedge() {
+    velocity_ = {float(wallSide) * ledgeHop.x, ledgeHop.y};
+    facing = float(wallSide);
+    wallJumpLockLeft_ = wallJumpLock; // carries the Iki over the edge
+    jumped_ = true;
+    jumpCuttable = false;
+}
+
+void IkiObject::letGoWall() {
+    wallBlockedSide_ = wallSide;
+    wallCoyoteLeft_ = coyoteTime;
+    jump.startCoyote();
+    velocity_ = {0.0f, std::min(velocity_.y, 0.0f)};
+}
+
+void IkiObject::letGoCeiling() {
+    ceilingBlocked_ = true;
+    jump.clearBuffer(); // Z lets go: it must not jump on landing
+    velocity_.y = 0.0f;
+}
+
+void IkiObject::climbCue(float dt, bool moving, glm::vec2 offset) {
+    if (!moving) {
+        climbCueLeft_ = 0.0f; // the first move sheds shards at once
+        return;
+    }
+    climbCueLeft_ -= dt;
+    if (climbCueLeft_ > 0.0f || !scene_) return;
+    climbCueLeft_ = climbParticleInterval;
+    emitMovementCue(*scene_, *this, "climb", 1.0f, transform.position + offset);
 }

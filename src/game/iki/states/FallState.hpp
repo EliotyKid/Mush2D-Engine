@@ -11,6 +11,7 @@ struct FallState : State<IkiObject> {
         iki.tryJump();
         iki.applyGravity(dt);
         iki.moveAndCollide(dt);
+        if (const char* grab = iki.nextGrab()) return grab;
         return iki.nextLocomotion(name());
     }
 };

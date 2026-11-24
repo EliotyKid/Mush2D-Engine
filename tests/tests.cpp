@@ -4165,6 +4165,317 @@ TEST(iki_stomps_slime) {
     CHECK(scene.findObject(slimeId) == nullptr && state.isGone("s1") && inState(iki, "jump"));
 }
 
+// --- Ice stakes (D2 Task 6) ------------------------------------------------------------------------------
+
+namespace {
+// 24 x 16 cells of 0.5 u: cell (x, y) covers x 0.5x..0.5x+0.5, y -0.5y-0.5..-0.5y. Floor top y = -7.5.
+// A wall cell in column 12 has its left face at x = 6.0; the Iki (0.6 wide) touches it with feet x = 5.7.
+LdtkLayer iceGrid() {
+    LdtkLayer L = gridLayer(24, 16, {});
+    setCells(L, 15, 0, 23, 1);
+    return L;
+}
+void column(LdtkLayer& L, int x, int y0, int y1, int v) { for (int y = y0; y <= y1; ++y) L.intGrid[size_t(y) * L.cells.x + x] = v; }
+// An Iki with the ice stakes unlocked (flag in the WorldState service + the ability component).
+IkiObject& iceIki(Scene2D& scene, WorldState& state, const LdtkLayer& L, glm::vec2 feet) {
+    scene.collision.addRoom("r", gridSegs(L));
+    scene.setService(&state);
+    state.setFlag("ability.ice.stakes", true);
+    IkiObject& iki = makeIki(scene, feet);
+    iki.addComponent<IceStakesAbility>();
+    return iki;
+}
+InputState keys(bool left, bool right, bool up, bool down, bool zPressed = false, bool zDown = false) {
+    InputState in;
+    in.moveLeft.down = left;
+    in.moveRight.down = right;
+    in.moveUp.down = up;
+    in.moveDown.down = down;
+    in.jump.pressed = zPressed;
+    in.jump.down = zDown || zPressed;
+    return in;
+}
+// Steps until the Iki is in `state` (at most `limit` frames); true when it got there.
+bool stepUntil(Scene2D& scene, IkiObject& iki, const InputState& in, const char* state, int limit = 120) {
+    for (int f = 0; f < limit && !inState(iki, state); ++f) stepIki(scene, iki, in);
+    return inState(iki, state);
+}
+// Full-height ice wall at column 12 (x = 6.0), rows 3..14, standing on the floor.
+LdtkLayer iceWallGrid() {
+    LdtkLayer L = iceGrid();
+    column(L, 12, 3, 14, 9);
+    return L;
+}
+} // namespace
+
+TEST(iki_wall_cling_requires_ability) {
+    // service / flag / component / ice: all four are needed. Without them the ice is a plain wall: slide and land.
+    auto clings = [](bool service, bool flag, bool component, int value) {
+        Scene2D scene;
+        WorldState state;
+        LdtkLayer L = iceGrid();
+        column(L, 12, 3, 14, value);
+        scene.collision.addRoom("r", gridSegs(L));
+        if (service) scene.setService(&state);
+        state.setFlag("ability.ice.stakes", flag);
+        IkiObject& iki = makeIki(scene, {5.0f, -4.0f});
+        if (component) iki.addComponent<IceStakesAbility>();
+        const bool got = stepUntil(scene, iki, rightHeld(), "wall", 90);
+        if (!got) CHECK(iki.grounded);
+        return got;
+    };
+    CHECK(clings(true, true, true, 9));
+    CHECK(!clings(false, true, true, 9));
+    CHECK(!clings(true, false, true, 9));
+    CHECK(!clings(true, true, false, 9));
+    CHECK(!clings(true, true, true, 1));
+
+    IceStakesAbility ability;
+    Scene2D scene;
+    CHECK(ability.unlockFlag == "ability.ice.stakes" && !ability.unlocked(scene));
+
+    // Clinging holds without a direction and without a time limit; gravity is off.
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    stepIki(scene, iki, {}); // the first step closes the grab gap
+    CHECK(std::abs(iki.transform.position.x - 5.7f) < 1e-4f);
+    const glm::vec2 at = iki.transform.position;
+    stepIki(scene, iki, {}, 180);
+    CHECK(inState(iki, "wall") && glm::length(iki.transform.position - at) < 1e-3f && iki.facing == 1.0f);
+}
+
+TEST(iki_wall_climb_up_down) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    int climbs = 0;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { climbs += c.name == "climb"; });
+    float y = iki.transform.position.y;
+    stepIki(scene, iki, keys(false, false, true, false), 30); // up: 0.5 s at wallClimbSpeed 3
+    scene.flush();
+    CHECK(inState(iki, "wall") && std::abs(iki.transform.position.y - y - 1.5f) < 0.02f);
+    CHECK(climbs >= 4 && climbs <= 6); // every climbParticleInterval (0.1 s) while moving
+    climbs = 0;
+    y = iki.transform.position.y;
+    stepIki(scene, iki, {}, 30);
+    scene.flush();
+    CHECK(climbs == 0 && std::abs(iki.transform.position.y - y) < 1e-4f);
+    stepIki(scene, iki, keys(false, false, false, true), 15); // down
+    CHECK(inState(iki, "wall") && std::abs(iki.transform.position.y - y + 0.75f) < 0.02f);
+    // Down to the floor: the wall's foot lets go.
+    CHECK(stepUntil(scene, iki, keys(false, false, false, true), "idle"));
+    CHECK(iki.grounded && std::abs(iki.transform.position.y + 7.5f) < 0.01f);
+}
+
+TEST(iki_wall_jump_locks_input) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    stepIki(scene, iki, keys(false, true, false, false, true));
+    CHECK(inState(iki, "jump") && iki.facing == -1.0f);
+    CHECK(std::abs(iki.velocity_.x + 6.0f) < 1e-4f && iki.velocity_.y > 9.0f); // wallJumpVelocity, minus a frame of gravity
+    // wallJumpLock 0.15 s: holding the wall's direction changes nothing (no air accel or decel either).
+    for (int f = 0; f < 7; ++f) {
+        stepIki(scene, iki, keys(false, true, false, false, false, true));
+        CHECK(std::abs(iki.velocity_.x + 6.0f) < 1e-4f);
+    }
+    stepIki(scene, iki, keys(false, true, false, false, false, true), 4);
+    CHECK(iki.velocity_.x > -5.7f); // steering again (airDecel 20 against the push)
+}
+
+TEST(iki_wall_coyote) {
+    // Ice over a pit (rows 3..8, bottom y = -4.5): climbing down past its end lets go; Z within coyoteTime
+    // still wall-jumps, later it does nothing.
+    for (int late : {3, 10}) {
+        Scene2D scene;
+        WorldState state;
+        LdtkLayer L = iceGrid();
+        column(L, 12, 3, 8, 9);
+        IkiObject& iki = iceIki(scene, state, L, {5.0f, -3.0f});
+        CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+        CHECK(stepUntil(scene, iki, keys(false, false, false, true), "fall"));
+        stepIki(scene, iki, {}, late - 1);
+        stepIki(scene, iki, zPress());
+        if (late == 3) CHECK(inState(iki, "jump") && iki.velocity_.x < -5.9f && iki.velocity_.y > 9.0f);
+        else CHECK(inState(iki, "fall") && iki.velocity_.y < 0.0f && iki.velocity_.x == 0.0f);
+    }
+}
+
+TEST(iki_buffered_jump_on_cling_wall_jumps) {
+    auto run = [](int pressAt, bool& clung, float& vx) {
+        Scene2D scene;
+        WorldState state;
+        IkiObject& iki = iceIki(scene, state, iceWallGrid(), {4.5f, -4.0f});
+        int touch = -1;
+        for (int f = 0; f < 60 && touch < 0; ++f) {
+            InputState in = rightHeld();
+            if (f == pressAt) in.jump.pressed = in.jump.down = true;
+            stepIki(scene, iki, in);
+            if (inState(iki, "wall")) clung = true;
+            if (inState(iki, "wall") || iki.velocity_.x < 0.0f) touch = f;
+        }
+        vx = iki.velocity_.x;
+        return touch;
+    };
+    bool clung = false;
+    float vx = 0.0f;
+    const int touch = run(-1, clung, vx);
+    CHECK(touch > 10 && clung);
+    clung = false;
+    run(touch - 5, clung, vx);
+    CHECK(!clung && vx < -5.9f); // the buffered Z wall-jumps on contact
+    clung = false;
+    run(touch - 10, clung, vx);
+    CHECK(clung); // 0.17 s before: expired
+}
+
+namespace {
+// Ice ceiling at row 3 (bottom face y = -2.0) over x 1..6.5, plain ceiling over x 6.5..9.
+LdtkLayer iceCeilingGrid() {
+    LdtkLayer L = iceGrid();
+    setCells(L, 3, 2, 12, 9);
+    setCells(L, 3, 13, 17, 1);
+    return L;
+}
+} // namespace
+
+TEST(iki_ceiling_hang_moves_and_releases) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceCeilingGrid(), {3.0f, -3.85f}); // head 0.25 below the ice
+    const InputState up = keys(false, false, true, false);
+    CHECK(stepUntil(scene, iki, up, "ceiling", 3));
+    stepIki(scene, iki, {}, 30);
+    CHECK(inState(iki, "ceiling") && std::abs(iki.transform.position.y + 3.6f) < 1e-3f); // snapped up, no gravity
+    int climbs = 0;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { climbs += c.name == "climb"; });
+    stepIki(scene, iki, rightHeld(), 30);
+    scene.flush();
+    CHECK(inState(iki, "ceiling") && std::abs(iki.transform.position.x - 4.5f) < 0.02f && iki.facing == 1.0f);
+    CHECK(climbs >= 4 && climbs <= 6);
+    // Down lets go.
+    stepIki(scene, iki, keys(false, false, false, true));
+    CHECK(inState(iki, "fall"));
+    // Z lets go too (falls, no jump), and holding up does not grab again until up is pressed anew.
+    iki.respawnAt({3.0f, -3.85f});
+    stepIki(scene, iki, {});
+    CHECK(stepUntil(scene, iki, up, "ceiling", 3));
+    stepIki(scene, iki, keys(false, false, true, false, true));
+    CHECK(inState(iki, "fall") && iki.velocity_.y <= 0.0f);
+    for (int f = 0; f < 10; ++f) {
+        stepIki(scene, iki, keys(false, false, true, false, false, true));
+        CHECK(!inState(iki, "ceiling") && iki.velocity_.y <= 0.0f);
+    }
+    // The ice ends at x = 6.5: past it the Iki lets go.
+    iki.respawnAt({6.0f, -3.85f});
+    stepIki(scene, iki, {});
+    CHECK(stepUntil(scene, iki, up, "ceiling", 3));
+    CHECK(stepUntil(scene, iki, keys(false, true, true, false), "fall", 60));
+    CHECK(std::abs(iki.transform.position.x - 6.5f) < 0.15f); // the middle of the body left the ice
+}
+
+namespace {
+// Ice wall at x = 6.0 (rows 3..14) under an ice ceiling at y = -1.5 (row 2, x 1..6): an inner corner.
+LdtkLayer iceCornerGrid() {
+    LdtkLayer L = iceWallGrid();
+    setCells(L, 2, 2, 12, 9);
+    return L;
+}
+} // namespace
+
+TEST(iki_wall_to_ceiling_inner_corner) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceCornerGrid(), {5.0f, -5.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    CHECK(stepUntil(scene, iki, keys(false, false, true, false), "ceiling", 120)); // up only: into the ceiling
+    stepIki(scene, iki, {}, 5); // snaps up from the grab reach
+    CHECK(inState(iki, "ceiling") && std::abs(iki.transform.position.y + 3.1f) < 1e-3f);
+    InputState left;
+    left.moveLeft.down = true;
+    stepIki(scene, iki, left, 20);
+    CHECK(inState(iki, "ceiling") && iki.transform.position.x < 5.0f);
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall", 60)); // back to the wall, holding its direction
+    stepIki(scene, iki, {});
+    CHECK(inState(iki, "wall") && std::abs(iki.transform.position.x - 5.7f) < 1e-3f);
+}
+
+TEST(iki_wall_ceiling_corner_no_flicker) {
+    // Up and toward the wall held in the corner: the wall wins and the state never changes again.
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceCornerGrid(), {5.0f, -5.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    int changes = 0;
+    auto sub = scene.events().subscribe<StateChanged>([&](const StateChanged&) { ++changes; });
+    const InputState upRight = keys(false, true, true, false);
+    stepIki(scene, iki, upRight, 120);
+    scene.flush();
+    CHECK(changes == 0 && inState(iki, "wall") && std::abs(iki.transform.position.y + 3.1f) < 1e-3f);
+    // From the ceiling, the same keys: one change to the wall, then none.
+    iki.states().change(iki, "ceiling");
+    scene.flush();
+    changes = 0;
+    stepIki(scene, iki, upRight, 60);
+    scene.flush();
+    CHECK(changes == 1 && inState(iki, "wall"));
+}
+
+TEST(iki_ice_ends_on_plain_wall) {
+    // Column 12: plain rows 3..8 over ice rows 9..14 (ice top y = -4.5).
+    LdtkLayer L = iceGrid();
+    column(L, 12, 3, 8, 1);
+    column(L, 12, 9, 14, 9);
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, L, {5.0f, -3.0f});
+    // Beside the plain part: no grab. It grabs once its centre (feet + 0.8) is beside the ice.
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    CHECK(iki.transform.position.y < -5.2f && iki.transform.position.y > -5.6f);
+    // Climbing up past the ice with a wall above: let go (no ledge hop) and no re-grab while holding.
+    CHECK(stepUntil(scene, iki, keys(false, true, true, false), "fall"));
+    CHECK(iki.velocity_.y <= 0.0f && std::abs(iki.transform.position.x - 5.7f) < 1e-3f);
+    for (int f = 0; f < 10; ++f) {
+        stepIki(scene, iki, keys(false, true, true, false));
+        CHECK(inState(iki, "fall"));
+    }
+    // Pressing the direction anew grabs again.
+    stepIki(scene, iki, {});
+    stepIki(scene, iki, rightHeld());
+    CHECK(inState(iki, "wall"));
+}
+
+TEST(iki_ledge_hop_at_top) {
+    // An ice block x 6.0..8.0, top y = -4.5, nothing above: climbing over its top hops onto it.
+    LdtkLayer L = iceGrid();
+    for (int x = 12; x <= 15; ++x) column(L, x, 9, 14, 9);
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, L, {5.0f, -5.5f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    CHECK(stepUntil(scene, iki, keys(false, false, true, false), "jump"));
+    CHECK(iki.velocity_.x > 0.0f && iki.velocity_.y > 5.0f); // ledgeHop
+    CHECK(stepUntil(scene, iki, {}, "idle", 90));
+    CHECK(iki.grounded && std::abs(iki.transform.position.y + 4.5f) < 1e-3f && iki.transform.position.x > 5.9f);
+}
+
+TEST(iki_hurt_releases_cling) {
+    Scene2D scene;
+    WorldState state;
+    IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+    CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
+    iki.hurt({1, {-1.0f, 0.0f}});
+    CHECK(inState(iki, "hurt") && iki.velocity_.x == -6.0f && iki.velocity_.y == 6.0f);
+    // During hurtDuration: no re-grab, no wall jump, whatever is held.
+    for (int f = 0; f < 18; ++f) {
+        stepIki(scene, iki, keys(false, true, true, false, f % 2 == 0, true));
+        CHECK(inState(iki, "hurt") && iki.velocity_.y < 6.5f);
+    }
+}
+
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
