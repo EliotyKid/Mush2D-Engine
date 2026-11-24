@@ -189,6 +189,17 @@
         }
       ]
     },
+    "IceStakesAbility": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": "ability.ice.stakes",
+          "name": "unlockFlag",
+          "type": "String"
+        }
+      ]
+    },
     "IkiObject": {
       "base": "GameObject",
       "component": false,
@@ -297,6 +308,26 @@
         {
           "default": 3.0,
           "name": "ceilingMoveSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "name": "climbParticleInterval",
+          "type": "Float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "name": "wallGripHalf",
+          "type": "Float"
+        },
+        {
+          "default": 0.30000001192092896,
+          "name": "ceilingGrabReach",
+          "type": "Float"
+        },
+        {
+          "default": 8.0,
+          "name": "ceilingStickSpeed",
           "type": "Float"
         },
         {

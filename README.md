@@ -26,6 +26,10 @@ e depois `http://127.0.0.1:8000`.
 
 A lista completa está em `manual/docs/primeiros-passos.md`.
 
+## Mundo
+
+`assets/levels/showcase.ldtk` é um mundo contínuo: `Showcase` (início), `Forest2` e `Cave1` à direita, e `IceTest` à esquerda. Para chegar à `IceTest`, saia da vitrine pela porta na parede esquerda. Lá estão o item das estacas de gelo, uma parede de gelo de 8 u, um teto de gelo de 6 u sobre um vão e uma plataforma alta com checkpoint, que só se alcança com a habilidade. No LDtk, o gelo escalável é o valor `9` (`IceClimb`, azul-gelo) da camada `Collision`, ou o campo `iceClimb` de um `Terrain`. Detalhes em `manual/docs/fazendo-o-jogo/mundo-e-salas.md`.
+
 ## Prerequisites
 
 - Arch Linux: `sudo pacman -S vulkan-devel cmake ninja gcc libxrandr libxinerama libxcursor libxi libxkbcommon wayland wayland-protocols shaderc`

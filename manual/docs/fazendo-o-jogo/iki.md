@@ -141,7 +141,7 @@ public:
 ```
 
 - **Flags:** `WorldState::flag(nome)` e `setFlag(nome, bool)` guardam valores globais sob o iid reservado `"_global"`. A restauração da sala na morte não mexe neles, então a habilidade não se perde ao morrer.
-- **Desbloquear:** um `ItemObject` com `kind` começando por `ability.` chama `setFlag(kind, true)` ao ser pego. Na sala de teste, o item `ability.ice.stakes` fica antes da parede de gelo.
+- **Desbloquear:** um `ItemObject` com `kind` começando por `ability.` chama `setFlag(kind, true)` ao ser pego. Na sala de teste [`IceTest`](mundo-e-salas.md#a-sala-icetest), o item `ability.ice.stakes` fica antes da parede de gelo.
 - O Iki pergunta `getComponent<IceStakesAbility>()` e `unlocked(scene)`. Sem o componente, sem o serviço ou sem a flag, as estacas não valem.
 
 ### Como criar uma habilidade nova

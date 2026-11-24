@@ -102,12 +102,12 @@ Vem primeiro porque tudo o que vier depois será criado com ele.
 ### D2: Iki se move (estados e poderes de movimento)
 
 **Entra:**
-- [ ] **Máquina de estados** reutilizável, usada pelo Iki: parado, correndo, pulando, caindo, preso na parede, escalando, atacando, ferido, morto.
-- [ ] **Sistema de habilidades**: cada poder é um componente, e o desbloqueio fica no `WorldState` (`ability.ice.stakes`).
-- [ ] **Gelo: estacas.** Cria pontos de apoio para escalar **certas** paredes e tetos, marcados como superfície escalável no LDtk.
-- [ ] **Recursos**: vida e energia elemental. A decisão em aberto sobre o modelo de energia está no fim deste documento.
-- [ ] **Ajustes finos do pulo**: coyote time, buffer de pulo e altura variável.
-- [ ] **Animação por estado** com eventos por frame (passo, golpe), usando as tags do Aseprite.
+- [x] **Máquina de estados** reutilizável, usada pelo Iki: parado, correndo, pulando, caindo, preso na parede, escalando (parede e teto), ferido, morto. O estado de ataque entra no D3, como uma classe nova.
+- [x] **Sistema de habilidades**: cada poder é um componente, e o desbloqueio fica no `WorldState` (`ability.ice.stakes`).
+- [x] **Gelo: estacas.** Cria pontos de apoio para escalar **certas** paredes e tetos, marcados como superfície escalável no LDtk.
+- [x] **Recursos**: vida e energia elemental. Decidido no D2: uma barra para cada elemento (gelo, fogo), e a travessia não gasta energia (veja "Decisões resolvidas").
+- [x] **Ajustes finos do pulo**: coyote time, buffer de pulo e altura variável.
+- [x] **Animação por estado** com eventos por frame (passo, golpe), usando as tags do Aseprite.
 
 **Cresce para:**
 - fogo: pulo duplo;
@@ -117,7 +117,7 @@ Vem primeiro porque tudo o que vier depois será criado com ele.
 
 Tudo isso entra como novos componentes de habilidade e novos estados, sem mudar a máquina.
 
-**Pronto quando:** o Iki escala uma parede de gelo para chegar a uma área antes inacessível.
+**Pronto quando:** o Iki escala uma parede de gelo para chegar a uma área antes inacessível. Feito na sala `IceTest` do `showcase.ldtk`.
 
 ### D3: Combate e "peso" (feedback)
 
@@ -290,11 +290,16 @@ Cada uma será decidida no design da fase indicada.
 
 | Decisão | Fase | Opções |
 |---|---|---|
-| Energia elemental | D2 | Uma barra compartilhada, ou uma barra para cada elemento |
 | Formato dos diálogos | D7 | JSON próprio, Yarn Spinner ou ink |
 | Formato das cutscenes | D8 | JSON próprio editado no painel, ou o mesmo formato dos diálogos |
 | Origem da arte da demo | D12 | Arte nova do Ikigai, ou o kaa como placeholder |
 | Controle principal | D9 | Gamepad primeiro, ou teclado primeiro |
+
+## Decisões resolvidas
+
+| Decisão | Fase | Resolução |
+|---|---|---|
+| Energia elemental | D2 | Uma barra para cada elemento (`Element::Ice`, `Element::Fire`), com recarga própria. A travessia (escalar, pendurar no teto) nunca gasta energia; a energia fica para o combate e as combinações. |
 
 ## Pendências técnicas registradas
 

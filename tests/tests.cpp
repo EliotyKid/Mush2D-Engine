@@ -3192,6 +3192,37 @@ TEST(intgrid_ice_climb_surface) {
     CHECK(countIf(c, [&](auto& s) { return hasNormal(s, {0, -1}) && ice(s); }) == 1);
 }
 
+TEST(showcase_ice_test_room_loads) {
+    // tools/add_ice_test_room.py: IceTest left of Showcase, entered by the doorway in its left wall
+    auto p = loadLdtkProject(sourceAssetPath("assets/levels/showcase.ldtk"));
+    const LdtkLevel* ice = nullptr;
+    const LdtkLevel* showcase = nullptr;
+    for (auto& lv : p.levels) {
+        if (lv.identifier == "IceTest") ice = &lv;
+        if (lv.identifier == "Showcase") showcase = &lv;
+    }
+    CHECK(ice && showcase);
+    if (!ice || !showcase) return;
+    CHECK(ice->worldPx.x + ice->pxSize.x == showcase->worldPx.x);
+    int iceSegments = 0, abilityItems = 0, checkpoints = 0;
+    for (auto& L : ice->layers) {
+        if (L.type == "IntGrid" && L.identifier == "Collision")
+            iceSegments = countIf(gridSegs(L), [](auto& s) { return s.surface == Surface::IceClimb; });
+        for (auto& e : L.entities) {
+            if (e.identifier == "Item" && e.fields.value("kind", "") == "ability.ice.stakes") ++abilityItems;
+            if (e.identifier == "Checkpoint") ++checkpoints;
+        }
+    }
+    CHECK(iceSegments > 0);
+    CHECK(abilityItems == 1 && checkpoints == 1);
+    for (auto& L : showcase->layers) // the doorway: cols 0-1, rows 23-26 open, the floor row 27 solid
+        if (L.type == "IntGrid" && L.identifier == "Collision") {
+            const int w = L.cells.x;
+            for (int y = 23; y <= 26; ++y) CHECK(L.intGrid[y * w] == 0 && L.intGrid[y * w + 1] == 0);
+            CHECK(L.intGrid[22 * w] == 1 && L.intGrid[27 * w] == 1);
+        }
+}
+
 TEST(terrain_ice_climb_field) {
     auto e = terrainEntity({0, 0}, {{0, 8}, {8, 8}, {8, 0}}, true, 3.0f, false);
     auto plain = segmentsFromTerrain(e, {0, 0}, 4, "r");
