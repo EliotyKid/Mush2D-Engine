@@ -378,6 +378,16 @@
           "default": 5.0,
           "name": "fullSpeed",
           "type": "Float"
+        },
+        {
+          "default": 12.0,
+          "name": "smoothing",
+          "type": "Float"
+        },
+        {
+          "default": 1.0,
+          "name": "teleportDistance",
+          "type": "Float"
         }
       ]
     },

@@ -3318,6 +3318,39 @@ TEST(squash_stretch_anchors_feet) {
     CHECK(std::abs(sp.drawSize.x + 1.3f) < 1e-5f && std::abs(sp.drawSize.y - 0.35f) < 1e-5f);
     CHECK(std::abs((sp.offset.y - sp.drawSize.y * 0.5f) - (-0.1f)) < 1e-5f); // the bottom stays put
     CHECK(std::abs(sp.offset.x - 0.26f) < 1e-5f);                             // spreads from the feet
+    s.apply(sp); // idempotent: a second call starts from the unsquashed size
+    CHECK(std::abs(sp.drawSize.x + 1.3f) < 1e-5f && std::abs(sp.offset.x - 0.26f) < 1e-5f);
+}
+
+TEST(squash_stretch_applies_itself_with_animator) {
+    // No owner code: the animator places the frame, the squash follows, in either component order.
+    for (bool squashFirst : {true, false}) {
+        Scene2D scene;
+        scene.setService(&testAssets());
+        GameObject& o = scene.createObject<GameObject>();
+        o.sprite = SpriteData{};
+        o.sprite->atlasName = "test_atlas";
+        SquashStretch* s = squashFirst ? &o.addComponent<SquashStretch>() : nullptr;
+        o.addComponent<SpriteAnimator>().animations = {{"idle", "test_atlas/rest"}}; // 16x16 frame, 0.5 u
+        if (!s) s = &o.addComponent<SquashStretch>();
+        scene.flush();
+        scene.step(0.0f);
+        s->kick({1.4f, 0.6f});
+        scene.step(0.0f); // dt 0: the springs stay at the kick
+        CHECK(std::abs(o.sprite->drawSize.x - 0.7f) < 1e-5f && std::abs(o.sprite->drawSize.y - 0.3f) < 1e-5f);
+        for (int i = 0; i < 120; ++i) scene.step(1.0f / 60.0f);
+        CHECK(std::abs(o.sprite->drawSize.x - 0.5f) < 0.005f && std::abs(o.sprite->drawSize.y - 0.5f) < 0.005f);
+    }
+    // Without an animator nothing compounds: the sprite keeps its own size as the base.
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    o.sprite = SpriteData{.drawSize = {1.0f, 1.0f}};
+    auto& s = o.addComponent<SquashStretch>();
+    scene.flush();
+    s.kick({2.0f, 0.5f});
+    scene.step(0.0f);
+    scene.step(0.0f);
+    CHECK(o.sprite->drawSize == glm::vec2(2.0f, 0.5f));
 }
 
 TEST(blink_toggles_and_restores) {
@@ -3340,6 +3373,13 @@ TEST(blink_toggles_and_restores) {
     b.start(0.2f);
     for (int i = 0; i < 5; ++i) scene.step(0.1f);
     CHECK(!o.visible);
+    o.visible = true;
+    b.start(1.0f);
+    scene.step(0.01f);
+    CHECK(!o.visible);
+    o.removeComponent<Blink>(); // removed mid-blink: visibility comes back
+    scene.flush();
+    CHECK(o.visible && !o.getComponent<Blink>());
 }
 
 TEST(velocity_lean_follows_motion) {
@@ -3353,6 +3393,9 @@ TEST(velocity_lean_follows_motion) {
     for (int i = 0; i < 60; ++i) { o.transform.position.x -= 2.5f * dt; scene.step(dt); }
     CHECK(std::abs(o.transform.rotation - 0.5f * full) < 0.01f * full); // half of fullSpeed
     for (int i = 0; i < 60; ++i) scene.step(dt);
+    CHECK(std::abs(o.transform.rotation) < 0.01f * full);
+    o.transform.position.x += 3.0f; // respawn: beyond teleportDistance, no lean
+    scene.step(dt);
     CHECK(std::abs(o.transform.rotation) < 0.01f * full);
 }
 
@@ -3409,6 +3452,26 @@ TEST(prefab_reads_animation_events) {
     auto* anim = o ? o->getComponent<SpriteAnimator>() : nullptr;
     CHECK(anim && anim->animationEvents["walk"].size() == 2);
     if (anim) CHECK(anim->animationEvents["walk"][0] == "start" && anim->animationEvents["walk"][1] == "step");
+    // Inherited per animation: the child's "walk" replaces the base's frame map, "rest" is added.
+    GameObject* c = t.prefabs.instantiate(t.scene, "test_anim_events_child");
+    CHECK(c && t.prefabs.warnings().empty());
+    auto* canim = c ? c->getComponent<SpriteAnimator>() : nullptr;
+    CHECK(canim && canim->animationEvents.size() == 2 && canim->animationEvents["walk"].size() == 1);
+    if (canim) CHECK(canim->animationEvents["walk"][1] == "stomp" && canim->animationEvents["rest"][0] == "sit");
+}
+
+TEST(particles_trim_when_max_lowered) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& e = o.addComponent<ParticleEmitter>();
+    scene.flush();
+    ParticleConfig c;
+    c.count = 10;
+    c.lifetime = {5.0f, 5.0f};
+    e.burst(c, {0.0f, 0.0f});
+    e.maxParticles = 4; // F1 inspector
+    scene.step(0.01f);
+    CHECK(e.alive() == 4);
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

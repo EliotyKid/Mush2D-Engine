@@ -66,9 +66,9 @@
 |---|---|
 | `ParticleEmitter` (`Particles.hpp`) | Partículas na CPU, em coordenadas de mundo. `burst(config, posição, direção)` (direção `-1` espelha os ângulos), `alive()`, `maxParticles` (128; acima disso a mais velha sai). Desenhadas como sprites pelo `appendSceneSprites`: sem `frame`, um pixel branco tingido. Sem luz e sem emissão. |
 | `ParticleConfig` | `count`, `speed`, `angle` (graus) e `lifetime` como [min, max], `gravity`, `drag`, `size` [início, fim], `colorStart`/`colorEnd`, `frame` (do atlas do sprite do dono), `additive`, `layer`. `parseParticleConfig(json, config, erro)` lê o formato JSON (`"color": [início, fim]`). |
-| `SquashStretch` | Molas em x e y que voltam a {1, 1}: `kick({0.8, 1.25})`, `current()`, `apply(sprite)` (multiplica `drawSize` mantendo a base do sprite; chame depois do `SpriteAnimator`). `stiffness` 300, `damping` 18. Nunca mexe em `transform.scale`. |
+| `SquashStretch` | Molas em x e y que voltam a {1, 1}: `kick({0.8, 1.25})`, `current()`, `apply(sprite)` (multiplica `drawSize` mantendo a base do sprite; sem acumular). Aplica-se sozinho a cada passo, e o `SpriteAnimator` o aplica depois de cada quadro. `stiffness` 300, `damping` 18. Nunca mexe em `transform.scale`. |
 | `Blink` | `start(segundos)` alterna `visible` `rate` vezes por segundo (16) e devolve a visibilidade do começo ao terminar. `active()`. |
-| `VelocityLean` | Inclina `transform.rotation` pela velocidade horizontal medida pela posição: até `maxDegrees` (4) a partir de `fullSpeed` (5 u/s). O `SpriteBatch` gira o sprite em torno do pivô (os pés). |
+| `VelocityLean` | Inclina `transform.rotation` pela velocidade horizontal medida pela posição: até `maxDegrees` (4) a partir de `fullSpeed` (5 u/s), suavizado por `smoothing` (12/s); um salto maior que `teleportDistance` (1 u) num passo é ignorado. O `SpriteBatch` gira o sprite em torno do pivô (os pés). |
 
 ## Casos de uso
 

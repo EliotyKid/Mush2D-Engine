@@ -5,12 +5,9 @@
 | Efeito | Onde | Parâmetros (exportados) |
 |---|---|---|
 | Squash e stretch | componente `SquashStretch`: mexe só em `SpriteData::drawSize` e volta à escala 1 com mola | `stiffness` (300), `damping` (18) |
-| Inclinação | componente `VelocityLean`: gira o sprite levemente pela velocidade horizontal, medida pela variação da posição | `maxDegrees` (4), `fullSpeed` (5) |
+| Inclinação | componente `VelocityLean`: gira o sprite levemente pela velocidade horizontal, medida pela variação da posição | `maxDegrees` (4), `fullSpeed` (5), `smoothing` (12), `teleportDistance` (1) |
 | Piscar | componente `Blink`: alterna a visibilidade do sprite por um tempo (invulnerabilidade agora, golpe em inimigos no D3) | `rate` (16) |
-| Aceleração e desaceleração | física do Iki | veja o `IkiObject` em [Objetos do jogo](../objetos.md) |
-| Gravidade no topo, queda rápida, correção de quina | física do Iki | idem |
 | Partículas | componente `ParticleEmitter` | `maxParticles` (128) e a configuração de cada rajada |
-| Antecipação | squash curto de 2 quadros no pulo saindo do chão | `jumpAnticipation` (Iki) |
 
 Os números exportados aparecem no inspetor F1 e podem ir para o prefab (`components` → `props`).
 
@@ -53,13 +50,12 @@ As chaves que faltam ficam com o padrão. Uma chave desconhecida ou um tipo erra
 ```cpp
 auto& ss = obj.addComponent<SquashStretch>();
 ss.kick({0.8f, 1.25f});      // estica (pulo); {1.3f, 0.7f} amassa (pouso)
-// a cada quadro, depois do SpriteAnimator posicionar o quadro:
-ss.apply(*obj.sprite);
 ```
 
 - As molas de x e de y são independentes e andam no `onStep` do componente.
-- `apply` multiplica `drawSize` pelo fator atual e ajusta `offset`, para a base do sprite ficar no mesmo lugar.
-- `apply` não guarda o tamanho original. Chame-o só depois de algo reescrever `drawSize` no quadro (o `SpriteAnimator`), senão o fator se acumula.
+- O componente se aplica sozinho ao sprite do dono a cada passo. O `SpriteAnimator` também o aplica logo depois de posicionar o quadro. Assim, a ordem dos componentes não importa, e um objeto só de prefab também amassa.
+- `apply(sprite)` multiplica `drawSize` pelo fator atual e ajusta `offset`, para a base do sprite ficar no mesmo lugar. Ele lembra o que escreveu: chamar de novo, ou num sprite que ninguém redimensionou, parte do tamanho sem squash, sem acumular.
+- Um sprite com `drawSize` {0, 0} (só a escala) não amassa.
 - `transform.scale` nunca muda.
 
 ## Piscar
@@ -72,7 +68,7 @@ O sprite começa escondido e alterna `rate` vezes por segundo. No fim, volta à 
 
 ## Inclinação
 
-Com `VelocityLean`, o objeto inclina para a frente ao correr: até `maxDegrees` a partir de `fullSpeed` u/s, suavizado. A velocidade vem da variação da posição de mundo, então funciona com qualquer movimento. O sprite gira em torno do pivô (os pés).
+Com `VelocityLean`, o objeto inclina para a frente ao correr: até `maxDegrees` a partir de `fullSpeed` u/s, suavizado por `smoothing` (por segundo). A velocidade vem da variação da posição de mundo, então funciona com qualquer movimento. Um salto maior que `teleportDistance` num passo (respawn, teletransporte) não conta como velocidade. O sprite gira em torno do pivô (os pés). Os filhos do objeto giram junto.
 
 ## Eventos por quadro
 

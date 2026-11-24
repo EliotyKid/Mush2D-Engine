@@ -2,6 +2,7 @@
 
 #include "engine/assets/AssetRegistry.hpp"
 #include "engine/world/Scene2D.hpp"
+#include "engine/world/SquashStretch.hpp"
 
 #include <tuple>
 
@@ -43,4 +44,5 @@ void SpriteAnimator::onStep(GameObject& owner, Scene2D& scene, float dt) {
     owner.sprite->atlasTextureIndex = *index;
     owner.sprite->frameName = f.name;
     placeFrameAtPivot(owner, f, {0.0f, 0.0f}, owner.flipX);
+    if (auto* squash = owner.getComponent<SquashStretch>(); squash && squash->enabled) squash->apply(*owner.sprite);
 }

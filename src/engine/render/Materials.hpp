@@ -26,7 +26,7 @@ bool mapMatchesAlbedo(int aw, int ah, int mw, int mh);
 
 class MaterialLibrary {
 public:
-    void init(GpuContext& gpu, Bindless& bindless); // creates the 3 neutral 1x1 textures
+    void init(GpuContext& gpu, Bindless& bindless); // creates the 3 neutral 1x1 maps and the white albedo
     void shutdown();                                // destroys every image (waits for device idle)
 
     // Albedo sRGB; missing or size-mismatched maps fall back to the neutral index. Cached by path (level reloads).

@@ -55,6 +55,8 @@ void ParticleEmitter::burst(const ParticleConfig& config, glm::vec2 position, in
 }
 
 void ParticleEmitter::onStep(GameObject&, Scene2D&, float dt) {
+    const std::size_t cap = std::size_t(std::max(maxParticles, 0));
+    if (particles_.size() > cap) particles_.erase(particles_.begin(), particles_.end() - cap); // maxParticles lowered
     for (Particle& p : particles_) {
         p.age += dt;
         p.velocity.y += p.config->gravity * dt;

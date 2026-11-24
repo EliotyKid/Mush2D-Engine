@@ -30,7 +30,8 @@ struct AnimationEvent {
 // Loops the animation of the current state (prefab "animations": state -> animation) on the owner's sprite,
 // standing with the frame pivot on transform.position and mirrored by the owner's flipX. An animation is a
 // name in the sprite's atlas (spriteAtlas) or an "atlas/animation" ref. Needs the AssetRegistry scene service
-// and a sprite on the owner; otherwise (or for an unknown state / animation) it does nothing.
+// and a sprite on the owner; otherwise (or for an unknown state / animation) it does nothing. After placing the
+// frame it applies the owner's SquashStretch, if any.
 class SpriteAnimator : public Component {
     MUSH2D_COMPONENT(SpriteAnimator)
 public:
