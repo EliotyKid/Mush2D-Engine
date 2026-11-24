@@ -122,6 +122,15 @@ public:
 - Estados são classes pequenas no jogo (`src/game/iki/states/*.hpp`). Os estados compartilham a física através de métodos do `IkiObject` (`applyGravity`, `runHorizontal`, `tryJump`), não por herança entre estados.
 - O inspetor F1 mostra o estado atual e o tempo nele, só leitura.
 
+**Reaproveitamento (pedido do autor):**
+
+1. **Base sem template para ferramentas:** `class StateMachineBase { virtual const char* current() const; virtual float timeInState() const; }`. `StateMachine<Owner>` herda dela.
+   - O `GameObject` ganha `void registerStateMachine(const std::string& label, StateMachineBase*)` e `const std::vector<std::pair<std::string, StateMachineBase*>>& stateMachines() const`.
+   - O inspetor F1 lista todas as máquinas registradas de qualquer objeto ("move: fall (0,32 s)") sem código no objeto.
+   - Isso substitui um `debugState()` por objeto.
+2. **Várias máquinas por objeto:** um objeto pode ter mais de uma máquina independente (por exemplo `"move"` e `"action"`). No D2, o Iki usa só `"move"`. O D3 acrescenta `"action"` (nada, atacando, defendendo), evitando estados combinados como "PulandoAtacando". O `onChange` de cada máquina é separado. Um teste cobre duas máquinas no mesmo dono.
+3. **Estados compartilhados entre tipos:** um estado escrito como `State<Base>` funciona em `StateMachine<Derivado>` quando `Derivado` herda de `Base`. Assim, `PatrolState` escrito para `EnemyObject` (D4) serve ao slime, ao morcego e a outros. A máquina aceita `add(std::unique_ptr<State<Owner>>)`, e um adaptador `shared<Base>(std::unique_ptr<State<Base>>)` embrulha o estado da base. Um teste cobre um estado da base rodando numa máquina do derivado.
+
 ### `IkiObject` (`src/game/objects/IkiObject.hpp/.cpp`)
 
 - `MUSH2D_OBJECT(IkiObject, GameObject)`, prefab `assets/prefabs/iki.prefab.json`. A entidade `PlayerStart` passa a criar o Iki no `IkigaiGame`. Sandbox e Test continuam com o `PlayerObject`.
