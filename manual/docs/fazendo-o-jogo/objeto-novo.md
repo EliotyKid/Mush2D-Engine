@@ -145,8 +145,10 @@ As variáveis da instância, que só a classe enxerga. `state` fica `nullptr` nu
     #pragma once
 
     #include "game/objects/PlayerObject.hpp"
+    #include "game/objects/Tracked.hpp"
     #include "engine/world/GameObject.hpp"
     #include "engine/world/Scene2D.hpp"
+    #include "engine/world/WorldState.hpp"
 
     class CoinObject : public GameObject {
         MUSH2D_OBJECT(CoinObject, GameObject)
@@ -159,7 +161,10 @@ As variáveis da instância, que só a classe enxerga. `state` fica `nullptr` nu
         }
         void onStep(Scene2D&, float dt) override { transform.rotation += spin * dt; }
         void onTriggerEnter(Scene2D& scene, GameObject& other) override {
-            if (dynamic_cast<PlayerObject*>(&other)) scene.destroy(id);
+            if (!dynamic_cast<PlayerObject*>(&other)) return;
+            // removeTracked grava a coleta no WorldState (se houver política) e destrói
+            if (WorldState* state = scene.service<WorldState>()) removeTracked(scene, *state, *this, state->clock);
+            else scene.destroy(id);
         }
     };
     ```
@@ -178,7 +183,10 @@ As variáveis da instância, que só a classe enxerga. `state` fica `nullptr` nu
 !!! note "Registro automático"
     Toda classe de `src/game/objects/*.hpp` é registrada só por existir: o CMake gera um `all_objects.cpp` que inclui cada um desses headers (`CONFIGURE_DEPENDS`, então o próximo `cmake --build` já acha o arquivo novo). Um objeto fora dessa pasta não é registrado assim.
 
-Para a moeda não voltar depois de pega, dê a ela uma política de persistência (veja [Mundo e salas](mundo-e-salas.md#estado-do-mundo)).
+Para a moeda não voltar depois de pega, dê a ela uma política de persistência (veja [Mundo e salas](mundo-e-salas.md#estado-do-mundo)). Isso só funciona porque ela sai por `removeTracked`: um `scene.destroy(id)` sozinho não grava nada no `WorldState`, e a moeda voltaria toda vez que a sala recarregasse.
+
+!!! warning "Triggers só com o player"
+    `onTriggerEnter` / `onTriggerExit` só disparam entre o **player** e um objeto com `isTrigger`. Quem verifica é o jogo (`IkigaiGame::processTriggerOverlaps`), não a cena. Dois objetos que não são o player não recebem esses eventos.
 
 ### Herdar de outro objeto em C++
 

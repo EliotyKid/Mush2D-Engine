@@ -35,4 +35,4 @@ O que ainda é trabalhoso, com a solução proposta:
 
 1. **Recompilar e reabrir o jogo para testar código.** Solução proposta: hot reload de código, ou scripts (Lua) para a lógica de gameplay.
 2. **Um jogo novo exige escrever um `IkigaiGame` próprio.** Solução proposta: um "jogo padrão" da engine que já faz salas, mundo, regiões, player e câmera. Você só escreve os objetos.
-3. **Sprites e animações registrados em código** (`GameAssets.cpp`). Solução proposta: ler tudo automaticamente da pasta de atlas, pelo nome.
+3. **Ids de sprite e animação em código** (`GameSpriteId`, `GameAnimationId`, registrados em `GameAssets.cpp`) para o player e o código antigo. Prefabs já acham os atlas sozinhos pelo nome do arquivo (veja [graphics e assets](sistemas/graficos-e-assets.md)); falta o player e as cenas antigas usarem o mesmo caminho.

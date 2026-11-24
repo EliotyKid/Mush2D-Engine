@@ -58,7 +58,7 @@ ctest --test-dir build/debug
 | `↓` sobre uma alavanca | Abre ou fecha a porta ligada a ela. |
 | `Espaço` | Dash. Só nas cenas Sandbox e Test, não na sala vitrine. |
 | `H` | Golpe. Só nas cenas Sandbox e Test. |
-| `R` | Voltar ao checkpoint. |
+| `R` | Voltar ao checkpoint. Na vitrine é uma morte (escurece e restaura a sala); nas cenas Sandbox e Test só teleporta. |
 | `K` (só Debug, na vitrine) | Morrer. Veja [Mundo e salas](fazendo-o-jogo/mundo-e-salas.md#morte-e-respawn). |
 | `TAB` | Próxima cena. |
 | `F5` | Recarregar a cena atual. |

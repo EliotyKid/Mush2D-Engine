@@ -7,7 +7,7 @@
 | **Create Event** | `onCreate(Scene2D& scene)` | dentro da classe |
 | **Step Event** | `onStep(Scene2D& scene, float dt)` | dentro da classe |
 | **End Step** | `onLateStep(...)` | dentro da classe |
-| **Collision Event** (com trigger) | `onTriggerEnter` / `onTriggerExit` | dentro da classe |
+| **Collision Event** (com trigger) | `onTriggerEnter` / `onTriggerExit`. Só entre o player e um objeto trigger | dentro da classe |
 | **Destroy Event** | `onDestroy(...)` | dentro da classe |
 | `instance_create_layer` | `scene.createObject<MinhaClasse>(...)` | qualquer lugar |
 | `instance_destroy` | `scene.destroy(id)` | qualquer lugar |

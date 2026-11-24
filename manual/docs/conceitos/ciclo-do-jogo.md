@@ -22,7 +22,7 @@ main.cpp ──► cria IkigaiGame (o "jogo") e Engine (a "máquina")
 1. teclas globais (TAB troca de cena, F5 recarrega) e hot reload;
 2. passa o input para o player;
 3. **`scene.step(dt)`**: chama o `onStep` de **todos** os objetos (como o Step Event de todas as instâncias);
-4. verifica os triggers, chamando `onTriggerEnter`/`onTriggerExit`;
+4. verifica os triggers que o player toca, chamando `onTriggerEnter`/`onTriggerExit` nos dois (só pares player ↔ objeto trigger; dois objetos comuns não recebem esses eventos);
 5. **`scene.lateStep(dt)`**: o End Step;
 6. o mundo carrega e descarrega salas conforme o player anda, checa respawns e cuida da névoa e cor por região e do fade de morte;
 7. envia sprites e luzes para o renderer.

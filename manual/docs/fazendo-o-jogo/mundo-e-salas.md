@@ -38,7 +38,7 @@ Ao morrer (no Debug, a tecla `K` na vitrine força a morte):
 2. a sala da morte volta ao estado de quando o jogador entrou nela;
 3. o jogador reaparece no último `Checkpoint` ativado, ou no `PlayerStart`.
 
-`R` volta ao checkpoint sem morrer.
+`R` na vitrine também é uma morte (escurece e restaura a sala). Nas cenas Sandbox e Test, `R` só leva o player ao checkpoint.
 
 ## Casos de uso
 

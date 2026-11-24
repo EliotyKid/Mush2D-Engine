@@ -49,7 +49,9 @@ O último vence: construtor → `onCreate` → prefab (`base` primeiro) → camp
 
 ## Erros
 
-Problemas nunca param o jogo. Um atributo desconhecido, um tipo errado ou um `base` que não existe vira um aviso (arquivo e campo) no stderr, e o atributo fica com o valor do C++.
+Problemas nunca param o jogo. Um atributo desconhecido ou de tipo errado vira um aviso (arquivo e campo) no stderr, e o atributo fica com o valor do C++.
+
+Um `base` que não existe, um ciclo de `base` ou um `type` desconhecido é mais grave: o objeto **não nasce** (aviso no stderr). No hot reload, se o arquivo novo quebrar, a engine usa a última versão boa que já tinha lido.
 
 ## Prefabs atuais
 

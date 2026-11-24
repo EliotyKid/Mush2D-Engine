@@ -16,7 +16,7 @@
 
 | Tipo | Papel |
 |---|---|
-| `GameObject` | Base de todo objeto: `id`, `name`, `active` (false = pausado), `visible`, `updateOrder`, `persistent`, `entityIid`, `prefab`, `transform`, `sprite`, `collider`, `health`, `trigger`, tags, `extra()`. Eventos: `onCreate`, `onPrefabApplied`, `onStep`, `onLateStep`, `onTriggerEnter`, `onTriggerExit`, `onCollision`, `onDestroy`. |
+| `GameObject` | Base de todo objeto: `id`, `name`, `active` (false = pausado), `visible`, `updateOrder`, `persistent`, `entityIid`, `prefab`, `transform`, `sprite`, `collider`, `health`, `trigger`, tags, `extra()`. Eventos: `onCreate`, `onPrefabApplied`, `onStep`, `onLateStep`, `onTriggerEnter`, `onTriggerExit` (só entre o player e um trigger, chamados pelo jogo), `onDestroy`. `onCollision` existe mas nada o chama hoje. |
 | `GameObjectId` | Id com geração: um id velho (objeto destruído, vaga reusada) não acha o objeto novo. `InvalidGameObjectId` = nenhum. |
 | `Transform2D` | `position`, `scale`, `rotation` (radianos). Relativo ao pai quando o objeto tem pai. |
 | `SpriteData` | Atlas, frame, cor, `layer`, `orderInLayer`, `depth` (0 = gameplay, > 0 fundo com névoa, < 0 frente), `additive`. |

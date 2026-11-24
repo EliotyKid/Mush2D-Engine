@@ -41,6 +41,30 @@ E em `main.cpp`, crie `MeuJogo` no lugar de `IkigaiGame`. Veja o `IkigaiGame` pa
 
 Crie um `FileWatcher`, chame `watch(arquivo, pasta, ".sufixo")` no `init` e `poll(dt)` no `update`; recarregue quando `file` ou `dir` vier `true`. Depois de salvar o arquivo pelo jogo, chame `sync()` para não recarregar a própria gravação.
 
+## O jogo: `src/game/`
+
+O jogo atual fica fora da engine, em `src/game/`. É ali que você trabalha.
+
+| Arquivo | Papel |
+|---|---|
+| `IkigaiGame.hpp/.cpp` | O jogo. Carrega os assets; registra os serviços da cena (`WorldState`, `World`, `GameAssets`, `AssetRegistry`, prefabs) e as fábricas das entidades especiais (`PlayerStart`, `Light`); trata `TAB`, `F5`, `K` e `R`; liga o mundo e as regiões; verifica os triggers do player. |
+| `objects/*.hpp` | Os objetos (veja [Objetos do jogo](../objetos.md)). Toda classe daqui é registrada só por existir. |
+| `assets/GameAssets.*`, `Game*Id.hpp` | Os ids de atlas, sprites e animações usados pelo player e pelo código antigo. |
+| `scenes/*` | As cenas antigas montadas em código (`SandboxScene`, `TestScene`) e o registro de cenas que o `TAB` percorre. |
+| `spawners/Spawn.*` | Funções que criam objetos já configurados (`Spawn::player`, `Spawn::slime`). |
+
+## Pastas de dados e scripts
+
+| Pasta | Conteúdo |
+|---|---|
+| `assets/atlases/`, `assets/kaa/` | Atlas de sprites (`.png` + `.json`, com normal maps). `assets/kaa/` tem a arte do kaa e os tilesets. |
+| `assets/levels/showcase.ldtk` | As salas. |
+| `assets/prefabs/` | Os prefabs e o `prefab_schema.json` (gerado no Debug). |
+| `assets/regions/` | O look e o fundo de cada região. |
+| `assets/terrain/` | Texturas do terreno livre, por estilo. |
+| `assets/props/` | Atlas gerados, como o dos cristais (`crystals.png` com `_e` e `_n`). |
+| `tools/*.py` | Scripts que geraram arte e conteúdo: `import_kaa.py` importa sprites do GameMaker; `gen_showcase.py` gera a arte que faltava para a vitrine (os cristais); `add_test_rooms.py` e `add_terrain_content.py` escrevem no `.ldtk` (via `ldtk_json.py`); `gen_terrain_textures.py` gera texturas de terreno e o tileset de rampas; `migrate_showcase_parallax.py` (uso único) passou as camadas de parallax da vitrine para `assets/regions/forest.region.json`. |
+
 ## Arquivos
 
 `src/main.cpp`, `src/engine/core/IGame.hpp`, `Engine.hpp/.cpp`, `Paths.hpp/.cpp`, `FileWatcher.hpp/.cpp`.
