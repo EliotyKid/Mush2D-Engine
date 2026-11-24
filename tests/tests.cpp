@@ -17,6 +17,8 @@
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/Region.hpp"
 #include "engine/world/RegionSet.hpp"
+#include "engine/world/JumpAssist.hpp"
+#include "engine/world/StateMachine.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/TerrainMesh.hpp"
 #include "engine/world/World.hpp"
@@ -2983,6 +2985,229 @@ TEST(save_disabled_without_source_prefab) {
           nlohmann::json({{"version", 1}, {"type", "TestSlime"}, {"props", {{"speed", 3.0}}}}));
     GameObject* made = lib.instantiate(scene, "from_code");
     CHECK(made && canSaveToPrefab(*made));
+}
+
+// --- D2 movement foundations: state machine, jump assist, ice-climb surface, global flags ---
+namespace {
+struct SmOwner { std::vector<std::string> log; const char* moveNext = nullptr; const char* actionNext = nullptr; };
+// Logs enter/exit; update returns *next (the owner field this machine reads), then clears it.
+struct LogState : State<SmOwner> {
+    const char* n; const char* SmOwner::*next;
+    LogState(const char* n, const char* SmOwner::*next) : n(n), next(next) {}
+    const char* name() const override { return n; }
+    void enter(SmOwner& o) override { o.log.push_back(std::string("enter ") + n); }
+    void exit(SmOwner& o) override { o.log.push_back(std::string("exit ") + n); }
+    const char* update(SmOwner& o, float) override {
+        o.log.push_back(std::string("update ") + n);
+        return std::exchange(o.*next, nullptr);
+    }
+};
+}
+
+TEST(state_machine_transitions) {
+    SmOwner o;
+    StateMachine<SmOwner> sm;
+    sm.add(std::make_unique<LogState>("idle", &SmOwner::moveNext));
+    sm.add(std::make_unique<LogState>("run", &SmOwner::moveNext));
+    std::vector<std::string> changes;
+    sm.onChange = [&](const char* from, const char* to) { changes.push_back(std::string(from) + ">" + to); };
+    sm.start(o, "idle");
+    CHECK(std::string(sm.current()) == "idle" && changes.empty());
+    sm.update(o, 0.25f);
+    sm.update(o, 0.25f);
+    CHECK(std::abs(sm.timeInState() - 0.5f) < 1e-6f);
+    o.log.clear();
+    o.moveNext = "run";
+    sm.update(o, 0.1f); // one transition per call: run's update waits for the next call
+    CHECK(std::string(sm.current()) == "run" && sm.timeInState() == 0.0f);
+    CHECK((o.log == std::vector<std::string>{"update idle", "exit idle", "enter run"}));
+    CHECK((changes == std::vector<std::string>{"idle>run"}));
+    sm.change(o, "nope"); // unknown: warns once on stderr, the state stays
+    sm.change(o, "nope");
+    CHECK(std::string(sm.current()) == "run" && changes.size() == 1);
+    sm.change(o, "idle"); // forced
+    CHECK(std::string(sm.current()) == "idle" && changes.back() == "run>idle");
+}
+
+TEST(state_machine_two_per_owner) {
+    SmOwner o;
+    StateMachine<SmOwner> move, action;
+    move.add(std::make_unique<LogState>("idle", &SmOwner::moveNext));
+    move.add(std::make_unique<LogState>("run", &SmOwner::moveNext));
+    action.add(std::make_unique<LogState>("none", &SmOwner::actionNext));
+    action.add(std::make_unique<LogState>("attack", &SmOwner::actionNext));
+    std::vector<std::string> moveChanges, actionChanges;
+    move.onChange = [&](const char* f, const char* t) { moveChanges.push_back(std::string(f) + ">" + t); };
+    action.onChange = [&](const char* f, const char* t) { actionChanges.push_back(std::string(f) + ">" + t); };
+    move.start(o, "idle");
+    action.start(o, "none");
+    o.actionNext = "attack";
+    move.update(o, 0.1f);
+    action.update(o, 0.1f);
+    CHECK(std::string(move.current()) == "idle" && std::string(action.current()) == "attack");
+    CHECK(moveChanges.empty() && (actionChanges == std::vector<std::string>{"none>attack"}));
+    o.moveNext = "run";
+    move.update(o, 0.1f);
+    action.update(o, 0.1f);
+    CHECK(std::string(move.current()) == "run" && std::string(action.current()) == "attack");
+    CHECK(std::abs(action.timeInState() - 0.1f) < 1e-6f && move.timeInState() == 0.0f);
+    CHECK(moveChanges.size() == 1 && actionChanges.size() == 1);
+}
+
+namespace {
+struct SmBase { int hits = 0; };
+struct SmDerived : SmBase { bool derivedOnly = true; };
+struct PatrolState : State<SmBase> {
+    const char* name() const override { return "patrol"; }
+    void enter(SmBase& o) override { o.hits += 100; }
+    const char* update(SmBase& o, float) override { ++o.hits; return nullptr; }
+};
+}
+
+TEST(state_machine_shared_base_state) {
+    SmDerived d;
+    StateMachine<SmDerived> sm;
+    sm.add(shared<SmBase, SmDerived>(std::make_unique<PatrolState>()));
+    sm.start(d, "patrol");
+    sm.update(d, 0.1f);
+    sm.update(d, 0.1f);
+    CHECK(std::string(sm.current()) == "patrol" && d.hits == 102 && d.derivedOnly);
+}
+
+namespace {
+struct GoIdle : State<GameObject> {
+    const char* name() const override { return "idle"; }
+    const char* update(GameObject&, float) override { return nullptr; }
+};
+}
+
+TEST(object_lists_registered_state_machines) {
+    GameObject o;
+    CHECK(o.stateMachines().empty());
+    StateMachine<GameObject> move, action;
+    move.add(std::make_unique<GoIdle>());
+    o.registerStateMachine("move", &move);
+    o.registerStateMachine("action", &action);
+    CHECK(std::string(action.current()).empty()); // not started
+    move.start(o, "idle");
+    move.update(o, 0.32f);
+    const auto& list = o.stateMachines();
+    CHECK(list.size() == 2 && list[0].first == "move" && list[1].first == "action");
+    CHECK(list[0].second == &move && std::string(list[0].second->current()) == "idle");
+    CHECK(std::abs(list[0].second->timeInState() - 0.32f) < 1e-6f);
+}
+
+TEST(jump_assist_coyote) {
+    JumpAssist j;
+    j.tick(0.05f, true, false);
+    j.tick(0.05f, false, false); // walked off: 0.05 s into coyote
+    j.tick(0.03f, false, true);
+    CHECK(j.consumeJump());
+    j = JumpAssist{};
+    j.tick(0.05f, true, false);
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, false, true); // 0.15 s after the ledge: too late
+    CHECK(!j.consumeJump());
+    CHECK(j.hasBufferedJump());
+    j.startCoyote(); // wall coyote
+    CHECK(j.consumeJump());
+}
+
+TEST(jump_assist_buffer) {
+    JumpAssist j;
+    j.tick(0.05f, false, true); // pressed in the air, 0.12 s buffer
+    CHECK(!j.consumeJump() && j.hasBufferedJump());
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, true, false); // landed 0.1 s after the press
+    CHECK(j.consumeJump());
+    j = JumpAssist{};
+    j.tick(0.05f, false, true);
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, false, false);
+    j.tick(0.05f, true, false); // landed 0.15 s after: buffer expired
+    CHECK(!j.hasBufferedJump() && !j.consumeJump());
+    j.tick(0.05f, false, true);
+    j.clearBuffer();
+    CHECK(!j.hasBufferedJump());
+}
+
+TEST(jump_assist_no_double_consume) {
+    JumpAssist j;
+    j.tick(1.0f / 60.0f, true, true);
+    CHECK(j.consumeJump());
+    CHECK(!j.consumeJump());
+    j.tick(1.0f / 60.0f, false, true); // pressed again in the air: the jump spent the coyote time
+    CHECK(!j.consumeJump());
+}
+
+TEST(intgrid_ice_climb_surface) {
+    auto ice = [](const Segment& s) { return s.surface == Surface::IceClimb; };
+    // a 3 x 2 block of 9 collides like 1: four outer faces, all ice
+    auto a = gridSegs(gridLayer(6, 4, {{{1,1},9},{{2,1},9},{{3,1},9},{{1,2},9},{{2,2},9},{{3,2},9}}));
+    CHECK(a.size() == 4 && countIf(a, ice) == 4);
+    for (auto& s : a) CHECK(!s.oneWay);
+    // a row 1-9: the tops do not merge across surfaces
+    auto b = gridSegs(gridLayer(6, 4, {{{1,1},1},{{2,1},9}}));
+    CHECK(b.size() == 6);
+    CHECK(countIf(b, [](auto& s) { return hasNormal(s, {0, 1}); }) == 2);
+    CHECK(countIf(b, [&](auto& s) { return hasNormal(s, {0, 1}) && ice(s); }) == 1);
+    CHECK(countIf(b, [&](auto& s) { return hasNormal(s, {-1, 0}) && !ice(s); }) == 1);
+    CHECK(countIf(b, [&](auto& s) { return hasNormal(s, {1, 0}) && ice(s); }) == 1);
+    // 1 over 9: no inner face between them (9 is full like 1); the side columns split by surface
+    auto c = gridSegs(gridLayer(6, 4, {{{2,1},1},{{2,2},9}}));
+    CHECK(c.size() == 6);
+    CHECK(countIf(c, [&](auto& s) { return hasNormal(s, {0, 1}) && !ice(s); }) == 1);
+    CHECK(countIf(c, [&](auto& s) { return hasNormal(s, {0, -1}) && ice(s); }) == 1);
+}
+
+TEST(terrain_ice_climb_field) {
+    auto e = terrainEntity({0, 0}, {{0, 8}, {8, 8}, {8, 0}}, true, 3.0f, false);
+    auto plain = segmentsFromTerrain(e, {0, 0}, 4, "r");
+    CHECK(!plain.empty() && countIf(plain, [](auto& s) { return s.surface == Surface::Default; }) == int(plain.size()));
+    e.fields["iceClimb"] = true;
+    auto ice = segmentsFromTerrain(e, {0, 0}, 4, "r");
+    CHECK(ice.size() == plain.size() && countIf(ice, [](auto& s) { return s.surface == Surface::IceClimb; }) == int(ice.size()));
+}
+
+TEST(probe_wall_and_ceiling_surface) {
+    auto withSurface = [](std::vector<Segment> v, Surface s) { for (auto& seg : v) seg.surface = s; return v; };
+    CollisionWorld w;
+    w.addRoom("ice", withSurface(polySegs({{1, -5}, {3, -5}, {3, 5}, {1, 5}}), Surface::IceClimb));   // wall face x = 1
+    w.addRoom("rock", polySegs({{-3, -5}, {-1, -5}, {-1, 5}, {-3, 5}}));                                // wall face x = -1
+    w.addRoom("roof", withSurface(polySegs({{-1, 2}, {1, 2}, {1, 3}, {-1, 3}}), Surface::IceClimb));  // ceiling y = 2
+    CollisionQuery q{&w, {}};
+    Body b; // half size 0.3 x 0.8
+    CHECK(!probeWall(b, 1, q).hit && !probeWall(b, -1, q).hit && !probeCeiling(b, q).hit);
+    b.position = {0.68f, 0.0f}; // 0.02 from the ice wall
+    SurfaceHit r = probeWall(b, 1, q);
+    CHECK(r.hit && r.surface == Surface::IceClimb);
+    CHECK(!probeWall(b, -1, q).hit);
+    b.position = {-0.68f, 0.0f};
+    r = probeWall(b, -1, q);
+    CHECK(r.hit && r.surface == Surface::Default);
+    b.position = {0.0f, 1.18f}; // top 0.02 under the roof
+    r = probeCeiling(b, q);
+    CHECK(r.hit && r.surface == Surface::IceClimb);
+    CHECK(!probeWall(b, 1, q).hit);
+    b.position = {0.0f, 0.0f};
+    CollisionQuery boxes{&w, {{{0.32f, -1.0f}, {0.6f, 1.0f}}}}; // a dynamic solid is a plain wall
+    r = probeWall(b, 1, boxes);
+    CHECK(r.hit && r.surface == Surface::Default);
+}
+
+TEST(world_state_global_flag_survives_room_restore) {
+    WorldState state;
+    CHECK(!state.flag("ability.ice.stakes"));
+    const std::vector<std::string> room{"e1", "e2"};
+    const auto snap = state.snapshot(room);
+    state.setFlag("ability.ice.stakes", true);
+    state.markGone("e1", {0.0f, 0.0f}, 1.0);
+    state.restore(room, snap); // death: the room goes back, the global flag stays
+    CHECK(state.flag("ability.ice.stakes") && !state.isGone("e1"));
+    CHECK(state.find(WorldState::GlobalIid) != nullptr);
+    state.setFlag("ability.ice.stakes", false);
+    CHECK(!state.flag("ability.ice.stakes"));
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

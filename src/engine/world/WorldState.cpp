@@ -32,6 +32,10 @@ const EntityState* WorldState::find(const std::string& iid) const {
     return it != entries_.end() ? &it->second : nullptr;
 }
 
+bool WorldState::flag(const std::string& name) const { return get(GlobalIid, name, 0.0) != 0.0; }
+
+void WorldState::setFlag(const std::string& name, bool on) { set(GlobalIid, name, on ? 1.0 : 0.0); }
+
 std::map<std::string, EntityState> WorldState::snapshot(const std::vector<std::string>& iids) const {
     std::map<std::string, EntityState> out;
     for (const std::string& iid : iids)

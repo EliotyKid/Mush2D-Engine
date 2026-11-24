@@ -26,6 +26,11 @@ public:
     void set(const std::string& iid, const std::string& key, double value);
     const EntityState* find(const std::string& iid) const; // null when the iid has no entry
 
+    // Global flags ("ability.ice.stakes"), kept under the reserved iid GlobalIid: a room restore never touches them.
+    static constexpr const char* GlobalIid = "_global";
+    bool flag(const std::string& name) const;
+    void setFlag(const std::string& name, bool on);
+
     // Copies of the entries of these iids (missing ones are left out).
     std::map<std::string, EntityState> snapshot(const std::vector<std::string>& iids) const;
     // Puts these iids back as in snap: entries absent from snap are erased.

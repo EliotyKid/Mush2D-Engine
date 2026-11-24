@@ -292,3 +292,39 @@ bool depenetrate(Body& body, const CollisionQuery& query, float maxPush) {
             }
     return false;
 }
+
+namespace {
+// Segments facing the body (accepted by `faces`) or dynamic solids touching the box [lo, hi].
+SurfaceHit probeBox(const Body& body, glm::vec2 lo, glm::vec2 hi, const CollisionQuery& query, bool (*faces)(glm::vec2, int),
+                    int side) {
+    SurfaceHit r;
+    for (const Collision2D::AABB& s : query.solids)
+        if (s.min.x <= hi.x && s.max.x >= lo.x && s.min.y <= hi.y && s.max.y >= lo.y) r.hit = true;
+    std::vector<const Segment*> segs;
+    if (query.world) query.world->query({lo, hi}, segs);
+    for (const Segment* s : segs) {
+        if (s->oneWay || !faces(s->normal, side) || glm::dot(s->normal, body.position - s->a) <= 0.0f) continue;
+        if (!touchesBox(s->a, s->b, lo, hi)) continue;
+        r.hit = true;
+        if (s->surface == Surface::IceClimb) r.surface = Surface::IceClimb;
+    }
+    return r;
+}
+constexpr float kProbeInset = 0.01f; // the box stops short of the body's corners: the floor or the wall end is not a hit
+} // namespace
+
+SurfaceHit probeWall(const Body& body, int side, const CollisionQuery& query, float reach) {
+    const glm::vec2 h = body.halfSize;
+    const float x = body.position.x + float(side) * h.x;
+    const glm::vec2 lo{std::min(x, x + side * reach), body.position.y - h.y + kProbeInset};
+    const glm::vec2 hi{std::max(x, x + side * reach), body.position.y + h.y - kProbeInset};
+    return probeBox(body, lo, hi, query,
+                    [](glm::vec2 n, int s) { return n.x * float(s) < 0.0f && n.y > -0.5f && !walkable(n); }, side);
+}
+
+SurfaceHit probeCeiling(const Body& body, const CollisionQuery& query, float reach) {
+    const glm::vec2 h = body.halfSize;
+    const glm::vec2 lo{body.position.x - h.x + kProbeInset, body.position.y + h.y};
+    const glm::vec2 hi{body.position.x + h.x - kProbeInset, body.position.y + h.y + reach};
+    return probeBox(body, lo, hi, query, [](glm::vec2 n, int) { return n.y < -0.5f; }, 0);
+}

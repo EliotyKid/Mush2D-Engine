@@ -45,3 +45,10 @@ bool requestDropThrough(Body& body, const MoveResult& last);
 // Hot reload (spec decision 8): a body that overlaps the reloaded geometry moves to the nearest free spot at
 // most maxPush away (straight up first); a free body stays. False (body unchanged) when there is none.
 bool depenetrate(Body& body, const CollisionQuery& query, float maxPush = 2.0f);
+
+struct SurfaceHit { bool hit = false; Surface surface = Surface::Default; };
+// A wall (not ground, not ceiling) facing the body within `reach` of its side (-1 left, +1 right), or a
+// ceiling (normal.y < -0.5) within `reach` above it. Works while the body stands still beside it. IceClimb
+// wins when both surfaces touch; dynamic solids count as Default.
+SurfaceHit probeWall(const Body& body, int side, const CollisionQuery& query, float reach = 0.05f);
+SurfaceHit probeCeiling(const Body& body, const CollisionQuery& query, float reach = 0.05f);

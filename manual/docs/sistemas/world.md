@@ -8,6 +8,7 @@
 - Lê o `.ldtk`, transforma cada sala em tiles, linhas de colisão e objetos (`LevelLoader`), e carrega e descarrega salas conforme o player anda (`World`).
 - Lembra o estado das entidades entre salas (`WorldState`).
 - Move personagens sobre o cenário com rampas e plataformas (`CharacterController`).
+- Organiza o comportamento em estados com nome (`StateMachine`).
 - Cria objetos a partir de prefabs (`PrefabLibrary`) e salva edições do inspetor (`PrefabSave`).
 
 ## Tipos principais
@@ -24,6 +25,8 @@
 | `HealthData`, `TriggerData` | Vida (`current`, `max`) e dados de trigger (tipo, `consumed`, alvo de teleporte). |
 | `Component` | Comportamento anexável: `addComponent<T>()`, `getComponent<T>()`. Eventos `onAttach`, `onStep` (logo depois do `onStep` do dono), `onDetach`. Atributo `enabled`. |
 | `Scene2D` | A cena. `createObject<T>()`, `destroy(id)`, `find(id)`, `findObjectAs<T>(id)`, `findFirstObjectOfType<T>()`, `findAllObjectsOfType<T>()`, `findObjectsByTag(tag)`, `setParent(filho, pai)`, `forEach(fn)`, `step(dt)`, `lateStep(dt)`, `events()`, `service<T>()` / `setService<T>()`. Criar e destruir valem no fim da etapa (`flush`). |
+| `StateMachine<Owner>` | Estados com nome (`State<Owner>`: `name`, `enter`, `exit`, `update` devolve o próximo nome ou `nullptr` para ficar). `add`, `start(dono, nome)`, `update(dono, dt)` (no máximo uma transição por chamada), `change(dono, nome)` (forçada: dano, morte), `current()`, `timeInState()`, `onChange(de, para)` (não roda no `start`). Nome desconhecido: aviso uma vez em stderr, e o estado fica. Um objeto pode ter várias máquinas (`"move"`, `"action"`). `shared<Base, Derivado>(estado)` roda um `State<Base>` numa máquina do derivado. |
+| `StateMachineBase` | Vista sem template para ferramentas: `current()`, `timeInState()`. `GameObject::registerStateMachine("move", &maquina)` faz o inspetor F1 mostrar "move: fall (0.32 s)", só leitura. |
 | `EventBus` | Eventos tipados e adiados: `subscribe<E>(fn)` devolve uma `Subscription` (guarde-a), `emit(E{...})`. Veja [Comunicação](../fazendo-o-jogo/comunicacao.md). |
 
 ### Colisão e movimento
@@ -32,8 +35,9 @@
 |---|---|
 | `Collision2D` (`Collision.hpp`) | Colisão entre caixas de objetos: `buildAABB`, `intersects`, `queryAABB(scene, caixa)`, `solidBoxes(...)`. |
 | `SpatialGrid` | Grade que acha rápido quais caixas se sobrepõem a uma caixa. |
-| `CollisionWorld` | Linhas de colisão do cenário por sala, geradas do IntGrid `Collision` e das entidades `Terrain`. `query(caixa, out)`. |
-| `CharacterController` | `move(body, velocity, dt, query, wasGrounded, jumped)` anda e resolve colisões: chão até 50°, segue rampas, gruda no chão até 0,3 u abaixo, desliza no íngreme. `requestDropThrough` (↓ + pulo em plataforma), `depenetrate` (empurra para fora do chão novo no hot reload, até 2 u). |
+| `CollisionWorld` | Linhas de colisão do cenário por sala, geradas do IntGrid `Collision` e das entidades `Terrain`. `query(caixa, out)`. Cada `Segment` tem uma `surface`: `Surface::Default` ou `Surface::IceClimb` (IntGrid `9`, campo `iceClimb` do `Terrain`). |
+| `CharacterController` | `move(body, velocity, dt, query, wasGrounded, jumped)` anda e resolve colisões: chão até 50°, segue rampas, gruda no chão até 0,3 u abaixo, desliza no íngreme. `requestDropThrough` (↓ + pulo em plataforma), `depenetrate` (empurra para fora do chão novo no hot reload, até 2 u). `probeWall(body, lado, query)` e `probeCeiling(body, query)` devolvem um `SurfaceHit` (`hit`, `surface`) da parede ou do teto a até 0,05 u, mesmo com o corpo parado; `IceClimb` vence se as duas encostam. |
+| `JumpAssist` | Tempo do pulo, sem cena: `coyoteTime` (0,1 s) e `jumpBuffer` (0,12 s). `tick(dt, noChão, apertou)` por quadro, `consumeJump()` (verdadeiro com aperto guardado e chão ou coyote; limpa os dois), `hasBufferedJump`, `clearBuffer`, `startCoyote` (coyote ao sair da parede). |
 | `TerrainMesh` | Gera o visual do terreno livre (preenchimento, borda e lados) como sprites comuns. |
 
 ### LDtk, salas e mundo
@@ -43,7 +47,7 @@
 | `Ldtk` | Lê o `.ldtk`: `loadLdtkProject`, salas, camadas, tiles, entidades. Leitores de campo: `numberField`, `stringField`, `colorField` (o valor padrão volta quando o campo falta ou tem outro tipo). Os outros campos ficam em `entity.fields` (JSON). `ldtkToWorld` converte pixels em unidades (Y para cima). |
 | `LevelLoader` | `loadRoom` (tiles viram sprites estáticos, colisão vira linhas), `spawnEntity` (prefab ou fábrica), `unloadRoom`, `registerEntity(nome, fábrica)`. |
 | `World` | O mundo contínuo: mantém a sala atual e as vizinhas carregadas, descarrega as distantes, faz os respawns (`checkRespawns`) e a morte (`onPlayerDeath`: a sala volta ao estado de quando o player entrou). |
-| `WorldState` | Memória do mundo por id do LDtk: `isGone`, `markGone`, `clearGone`, `get(iid, chave, padrão)`, `set(iid, chave, valor)`, `snapshot`, `restore`. Base do save futuro. |
+| `WorldState` | Memória do mundo por id do LDtk: `isGone`, `markGone`, `clearGone`, `get(iid, chave, padrão)`, `set(iid, chave, valor)`, `snapshot`, `restore`. Flags globais `flag(nome)` e `setFlag(nome, ligado)`, guardadas no iid reservado `"_global"` (`WorldState::GlobalIid`): a morte restaura só os iids da sala, então a flag fica. Base do save futuro. |
 | `PersistentComponent` | Política (`None`, `Permanent`, `Respawn`) e `respawnDistance` de um objeto vindo do LDtk. |
 | `Region`, `RegionSet` | Regiões (`forest`, `cave`): fundo em parallax e look, com transição suave (`lerpSettings`). Arquivos `assets/regions/<nome>.region.json`. |
 
@@ -78,6 +82,28 @@ ws->set(entityIid, "baú_aberto", 1.0);
 bool aberto = ws->get(entityIid, "baú_aberto", 0.0) != 0.0;
 ```
 
+### Desbloquear uma habilidade
+
+```cpp
+ws->setFlag("ability.ice.stakes", true);
+if (ws->flag("ability.ice.stakes")) { /* pode usar */ }
+```
+
+### Estados de um objeto
+
+```cpp
+struct Idle : State<MeuObjeto> {
+    const char* name() const override { return "idle"; }
+    const char* update(MeuObjeto& o, float) override { return o.velocity.x != 0.0f ? "run" : nullptr; }
+};
+// no objeto: StateMachine<MeuObjeto> move;
+move.add(std::make_unique<Idle>());
+move.add(std::make_unique<Run>());
+move.start(*this, "idle");
+registerStateMachine("move", &move); // aparece no inspetor F1
+// em onStep: move.update(*this, dt);
+```
+
 ### Um componente reaproveitável
 
 ```cpp
@@ -97,4 +123,4 @@ Com `MUSH2D_COMPONENT`, ele pode ser listado em `"components"` de um prefab.
 
 ## Arquivos
 
-`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`.
+`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`.

@@ -17,6 +17,7 @@
 #include <glm/glm.hpp>
 
 class Scene2D;
+class StateMachineBase;
 
 struct Transform2D {
     glm::vec2 position{0.0f, 0.0f};
@@ -149,6 +150,11 @@ public:
 
     const std::vector<std::unique_ptr<Component>>& components() const { return components_; }
 
+    // State machines the F1 inspector lists, read only ("move: fall (0.32 s)"). The machines must outlive
+    // the object (usually its members).
+    void registerStateMachine(std::string label, StateMachineBase* machine) { stateMachines_.emplace_back(std::move(label), machine); }
+    const std::vector<std::pair<std::string, StateMachineBase*>>& stateMachines() const { return stateMachines_; }
+
     bool pendingDestroy() const { return pendingDestroy_; }
 
     GameObjectId parent() const { return parent_; }
@@ -172,4 +178,5 @@ private:
     std::vector<GameObjectId> children_;
     Transform2D world_{};
     nlohmann::json extra_ = nlohmann::json::object();
+    std::vector<std::pair<std::string, StateMachineBase*>> stateMachines_;
 };
