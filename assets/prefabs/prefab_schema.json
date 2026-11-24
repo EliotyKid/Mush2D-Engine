@@ -280,6 +280,16 @@
           "type": "Float"
         },
         {
+          "default": 0.6000000238418579,
+          "name": "stompBounceFactor",
+          "type": "Float"
+        },
+        {
+          "default": 2.0,
+          "name": "turnThreshold",
+          "type": "Float"
+        },
+        {
           "default": 3.0,
           "name": "wallClimbSpeed",
           "type": "Float"

@@ -8,7 +8,7 @@ Additions only, plus one approved exception (author, D2):
   - the Item "ability.ice.stakes" on the floor, between the doorway and the wall;
   - an ice wall of 8 u: the right face of a pillar (cols 30-33, rows 21-36; col 33 is value 9);
   - an ice ceiling of 6 u: a slab of 9 (cols 30-45, rows 19-20) whose underside runs 12 cells right of the wall,
-    over a floorless pit (cols 36-43, rows 37-38);
+    over a pit 1 u deep (cols 36-43, rows 37-38; row 39 stays solid): no floor at the ceiling's height;
   - a high platform (cols 44-55, top row 25, 6 u above the floor) with a Checkpoint, under the slab's end:
     hang from the ceiling, move right, drop onto it. Without the ability nothing reaches it (jump ~1.9 u).
 - the exception: Showcase's left wall gets a doorway, cols 0-1 rows 23-26 (8 Collision cells set to 0, their
@@ -49,7 +49,7 @@ def grid():
     fill(0, 1, 2, 36)               # left wall
     fill(CW - 2, CW - 1, 2, 32)     # right wall above the doorway (rows 33-36 open, world y 368..432)
     fill(0, CW - 1, 37, CH - 1)     # floor (top row 37, world y 432)
-    fill(36, 43, 37, 38, 0)         # floorless pit under the ice ceiling
+    fill(36, 43, 37, 38, 0)         # a 1 u deep pit under the ice ceiling (row 39 solid)
     fill(30, 32, 21, 36)            # pillar...
     fill(33, 33, 21, 36, 9)         # ...its right face: ice wall, rows 21-36 = 8 u
     fill(30, 45, 19, 20, 9)         # ice slab: underside cols 34-45 = 6 u of ceiling
@@ -107,8 +107,9 @@ def main():
         v.update({"value": 9, "identifier": "IceClimb", "color": ICE_COLOR})
         col_def["intGridValues"].append(v)
 
-    # 2. The doorway in Showcase's left wall (setting 0 and dropping tiles is idempotent).
-    for li in show["layerInstances"]:
+    # 2. The doorway in Showcase's left wall, only with the room: once IceTest exists, a re-run leaves the
+    # doorway as the author last painted it in LDtk.
+    for li in (show["layerInstances"] if NAME not in levels else []):
         w = li["__cWid"]
         door = {y * w + x for y in DOOR_ROWS for x in DOOR_COLS}
         if li["__identifier"] == "Collision":
@@ -168,7 +169,7 @@ def main():
     assert normalized(root) == before, "an existing part of showcase.ldtk changed"
     out = dumps(root, text)
     if out == text:
-        print("showcase.ldtk already has IceTest, value 9 and the doorway: nothing to do")
+        print("showcase.ldtk already has IceTest and value 9: nothing to do (the doorway is left as painted)")
         return
     LDTK.write_bytes(out.encode("utf-8"))
     print(f"added IntGrid 9 IceClimb, the Showcase doorway and {NAME}; nextUid = {root['nextUid']}")

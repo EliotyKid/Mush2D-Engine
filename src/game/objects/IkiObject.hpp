@@ -16,9 +16,9 @@ class Scene2D;
 // Ikigai's playable character (spec D2 "IkiObject"); prefab assets/prefabs/iki.prefab.json. Tagged "player".
 // transform.position is the feet (the frame pivot); the collider sits above it. Movement lives in the states
 // of the "move" machine (src/game/iki/states/), which call the physics helpers below. The Iki has no effect
-// code: it emits MovementCue "jumped" and calls emitMovementCues every step; the prefab's "effects" section,
-// SquashStretch, VelocityLean and Blink do the juice. Its Resources component (added here, tuned by the
-// prefab) regenerates by itself.
+// code: it emits MovementCue "jumped", "hurt" (strength = invulnerableTime) and calls emitMovementCues every
+// step; the prefab's "effects" section, SquashStretch, VelocityLean and Blink do the juice. Its Resources
+// component (added here, tuned by the prefab) regenerates by itself.
 class IkiObject : public GameObject, public IPlayer {
     MUSH2D_OBJECT(IkiObject, GameObject)
 public:
@@ -40,6 +40,8 @@ public:
     MUSH2D_EXPORT(float, coyoteTime, 0.1f)
     MUSH2D_EXPORT(float, jumpBuffer, 0.12f)
     MUSH2D_EXPORT(float, cornerCorrection, 0.2f) // rising into a ceiling corner: side shift allowed (units)
+    MUSH2D_EXPORT(float, stompBounceFactor, 0.6f) // a slime stomp bounces at jumpSpeed * this
+    MUSH2D_EXPORT(float, turnThreshold, 2.0f)     // u/s: a turn faster than this emits "turned" (turn dust)
     // Ice stakes (states "wall" and "ceiling", with the IceStakesAbility component unlocked).
     MUSH2D_EXPORT(float, wallClimbSpeed, 3.0f)
     MUSH2D_EXPORT(glm::vec2, wallJumpVelocity, glm::vec2(6.0f, 10.0f)) // x away from the wall, y up
@@ -118,6 +120,9 @@ public:
     void letGoCeiling();          // fall; no re-grab of a ceiling until up is pressed anew
     void climbCue(float dt, bool moving, glm::vec2 offset); // "climb" every climbParticleInterval while moving
     void grabCue(glm::vec2 offset);                         // "grab" at the stakes (offset from the feet)
+    // Where the stakes bite, from the feet, following the collider: the hands on `side`, the top of the head.
+    glm::vec2 handsOffset(int side) const { return {float(side) * 0.5f * collider->size.x, collider->offset.y + 0.25f * collider->size.y}; }
+    glm::vec2 headOffset() const { return {0.0f, collider->offset.y + 0.5f * collider->size.y}; }
 
 private:
     StateMachine<IkiObject> machine_;

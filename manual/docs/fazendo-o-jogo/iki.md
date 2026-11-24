@@ -45,7 +45,7 @@ O movimento é uma **máquina de estados** chamada `"move"`. Em cada momento o I
 
 - O nome do estado é também a chave da animação no prefab (`animations`). Ao trocar de estado, o Iki chama `SpriteAnimator::setState`.
 - A máquina aparece no inspetor F1, na janela "Cena (F1)", com o Iki selecionado: `move: run (0.50 s)`.
-- Toda troca de estado emite `StateChanged`, que os efeitos usam (`state:move:hurt` faz o Iki piscar).
+- Toda troca de estado emite `StateChanged`, que os efeitos usam (`state:move:wall` amassa o Iki ao agarrar a parede).
 
 ## A ordem de cada passo
 
@@ -85,6 +85,8 @@ Todos são atributos exportados: aparecem no inspetor F1, mudam ao vivo e podem 
 | `coyoteTime` | `0.1` | Segundos em que o pulo ainda vale depois de sair de uma borda. |
 | `jumpBuffer` | `0.12` | Segundos em que um `Z` apertado antes de tocar o chão ainda vale. |
 | `cornerCorrection` | `0.2` | Subindo, a cabeça que bate na quina de um teto desliza até isto para o lado e continua subindo. |
+| `stompBounceFactor` | `0.6` | Pisar num slime faz o Iki quicar a `jumpSpeed` vezes isto. |
+| `turnThreshold` | `2` | Virar mais rápido que isto (u/s) emite `move:turned` (a poeira da virada). |
 | `wallClimbSpeed` | `3` | Subir e descer a parede (u/s). |
 | `wallJumpVelocity` | `[6, 10]` | Salto da parede: x para longe dela, y para cima. |
 | `wallJumpLock` | `0.15` | Segundos em que `←`/`→` é ignorado depois do salto da parede (e do `ledgeHop`), para ele não voltar colado. |
@@ -96,7 +98,7 @@ Todos são atributos exportados: aparecem no inspetor F1, mudam ao vivo e podem 
 | `ceilingStickSpeed` | `8` | Velocidade para cima com que ele encosta no teto ao pendurar (u/s). |
 | `hurtDuration` | `0.35` | Segundos sem controle após o dano. |
 | `hurtKnockback` | `[6, 6]` | Empurrão do dano: x no sentido do golpe, y para cima. |
-| `invulnerableTime` | `0.8` | Segundos sem levar dano novo. O piscar do prefab (`state:move:hurt`) usa o mesmo tempo. |
+| `invulnerableTime` | `0.8` | Segundos sem levar dano novo. O dano emite `move:hurt` com este número como força, e o piscar do prefab (`"scaleByStrength": true`) dura o mesmo tempo. |
 
 Os números de juice (squash, inclinação, piscar, partículas) não ficam no Iki: ficam nos componentes do prefab e nos arquivos de efeito. Veja [Game juice](game-juice.md).
 
@@ -125,7 +127,7 @@ Valem numa superfície `IceClimb` (IntGrid valor 9, ou `Terrain` com `iceClimb`;
     - no teto, segurando a direção de uma parede de gelo: passa para `wall`;
     - com `↑` e a direção da parede juntos, a parede ganha e o estado não alterna.
 - **Dano** na parede ou no teto: solta, empurra e entra em `hurt`. Durante `hurt`, nada reagarra e não há salto da parede (o buffer e o coyote de parede são zerados).
-- **Juice:** ao agarrar, o Iki emite `move:grab` nas mãos (parede) ou na cabeça (teto), que toca `ice_stake`; `state:move:wall` e `state:move:ceiling` tocam um squash; `move:climb` toca `ice_shards` a cada `climbParticleInterval` enquanto ele se move. Travessia nunca gasta energia.
+- **Juice:** ao agarrar, o Iki emite `move:grab` nas mãos (parede) ou na cabeça (teto), que toca `ice_stake` (as mãos e a cabeça são calculadas do `collider`: um corpo maior no prefab leva as estacas junto); `state:move:wall` e `state:move:ceiling` tocam um squash; `move:climb` toca `ice_shards` a cada `climbParticleInterval` enquanto ele se move. Travessia nunca gasta energia.
 
 ## Habilidades
 
@@ -156,7 +158,7 @@ Exemplo: o pulo duplo de fogo.
 
 ## Juice
 
-O Iki não tem código de efeito. Ele só avisa o que aconteceu (`jumped`, `turned`, a troca de estado, o evento `step` da animação de corrida), e o prefab diz o que tocar:
+O Iki não tem código de efeito. Ele só avisa o que aconteceu (`jumped`, `turned`, `hurt`, a troca de estado, o evento `step` da animação de corrida), e o prefab diz o que tocar:
 
 ```json
 "effects": {
@@ -168,7 +170,7 @@ O Iki não tem código de efeito. Ele só avisa o que aconteceu (`jumped`, `turn
   "state:move:wall":    [{"squash": [1.15, 0.9]}],
   "state:move:ceiling": [{"squash": [1.15, 0.9]}],
   "move:climb":         ["ice_shards"],
-  "state:move:hurt": [{"blink": 0.8}]
+  "move:hurt":          [{"blink": 1.0, "scaleByStrength": true}]
 }
 ```
 

@@ -2808,6 +2808,22 @@ TEST(ldtk_prefab_entity_tracking_parallax_and_missing_prefab) {
     CHECK(loader.warnings().size() == 2 && hasWarning(loader.warnings(), "names prefab 'nope_prefab'"));
 }
 
+namespace {
+// Captures std::cerr while alive.
+struct CerrCapture {
+    std::ostringstream out;
+    std::streambuf* old = std::cerr.rdbuf(out.rdbuf());
+    ~CerrCapture() { std::cerr.rdbuf(old); }
+    std::string str() const { return out.str(); }
+};
+
+std::size_t countOf(const std::string& text, const std::string& part) {
+    std::size_t n = 0;
+    for (std::size_t i = text.find(part); i != std::string::npos; i = text.find(part, i + 1)) ++n;
+    return n;
+}
+}
+
 TEST(game_prefabs_load_without_warnings) {
     // The real assets/prefabs with the real atlases: a typo in a prefab file fails here, not at runtime.
     AssetRegistry assets;
@@ -2850,10 +2866,21 @@ TEST(game_prefabs_load_without_warnings) {
         for (int i = 0; i < 5; ++i) CHECK(typeOf(*iki->components()[i]).name == order[i]);
         CHECK(iki->getComponent<SpriteAnimator>()->state == "idle" && iki->getComponent<SpriteAnimator>()->animations.size() == 8);
     }
+    // Every effect the Iki's triggers name (directly or by an "effect" action) has a valid, non-empty file.
     EffectLibrary effects;
+    CerrCapture err;
     effects.scan(sourceAssetPath("assets/effects"));
-    for (const char* name : {"land_dust", "run_dust", "turn_dust", "jump_dust", "ice_stake", "ice_shards"})
-        CHECK(effects.find(name) && !effects.find(name)->actions.empty());
+    int named = 0;
+    if (auto* triggers = iki ? iki->getComponent<EffectTriggers>() : nullptr)
+        for (const auto& [key, items] : triggers->triggers)
+            for (const nlohmann::json& item : items) {
+                const nlohmann::json* name = item.is_string() ? &item : item.contains("effect") ? &item["effect"] : nullptr;
+                if (!name) continue;
+                ++named;
+                const Effect* effect = effects.find(name->get<std::string>());
+                CHECK(effect && !effect->actions.empty());
+            }
+    CHECK(named >= 6 && err.str().empty());
 }
 
 // --- Inspector save (D1 Task 4) -------------------------------------------------------------------------
@@ -3204,6 +3231,7 @@ TEST(showcase_ice_test_room_loads) {
     CHECK(ice && showcase);
     if (!ice || !showcase) return;
     CHECK(ice->worldPx.x + ice->pxSize.x == showcase->worldPx.x);
+    CHECK(ice->worldPx.y + 33 * 16 == showcase->worldPx.y + 23 * 16); // IceTest's opening rows 33-36 = Showcase's 23-26
     int iceSegments = 0, abilityItems = 0, checkpoints = 0;
     for (auto& L : ice->layers) {
         if (L.type == "IntGrid" && L.identifier == "Collision")
@@ -3623,20 +3651,6 @@ TEST(particles_trim_when_max_lowered) {
 
 namespace {
 const std::filesystem::path TestEffects = MUSH2D_TEST_DATA "/effects";
-
-// Captures std::cerr while alive.
-struct CerrCapture {
-    std::ostringstream out;
-    std::streambuf* old = std::cerr.rdbuf(out.rdbuf());
-    ~CerrCapture() { std::cerr.rdbuf(old); }
-    std::string str() const { return out.str(); }
-};
-
-std::size_t countOf(const std::string& text, const std::string& part) {
-    std::size_t n = 0;
-    for (std::size_t i = text.find(part); i != std::string::npos; i = text.find(part, i + 1)) ++n;
-    return n;
-}
 }
 
 // A test object with a state machine and no effect code: its juice comes from test_effects.prefab.json.
@@ -3724,6 +3738,26 @@ TEST(effect_invalid_file_keeps_previous) {
     lib.scan(dir);
     CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 2);
     CHECK(!lib.find("gone"));
+
+    // A folder that cannot be listed (gone, locked) keeps every effect.
+    lib.scan(dir / "missing");
+    CHECK(lib.find("puff") && lib.find("puff")->actions.size() == 2);
+    CHECK(countOf(err.str(), "cannot list") == 1);
+}
+
+TEST(blink_scale_by_strength) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    // strength = seconds (the Iki's "hurt" cue carries invulnerableTime), not limited to 1 like a squash.
+    playEffect(scene, o, nlohmann::json::parse(R"({"blink": 1.0, "scaleByStrength": true})"), 1.5f, {0.0f, 0.0f}, 1);
+    auto* b = o.getComponent<Blink>();
+    CHECK(b && b->active());
+    if (!b) return;
+    scene.step(1.4f);
+    CHECK(b->active());
+    scene.step(0.2f);
+    CHECK(!b->active());
 }
 
 TEST(effect_triggers_state_anim_and_move) {
@@ -3806,12 +3840,13 @@ TEST(effect_bad_modifiers_warn_and_never_throw) {
     std::filesystem::create_directories(dir);
     std::ofstream(dir / "typo.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [
         {"squash": [1.2, 0.8], "delay": "0.03"}, {"squash": [1.2, 0.8], "scaleByStrength": 1}, {"delay": 0.1},
-        {"blink": 0.1}]})";
+        {"blink": 0.1}, {"particles": {"count": 2, "lifetme": [1, 2]}}]})";
     EffectLibrary lib;
     CerrCapture err;
     lib.scan(dir);
     const Effect* typo = lib.find("typo");
     CHECK(typo && typo->actions.size() == 1);
+    CHECK(countOf(err.str(), "typo.effect.json: particles: unknown key 'lifetme'") == 1); // found at load
     CHECK(countOf(err.str(), "typo.effect.json: delay") == 1 && countOf(err.str(), "typo.effect.json: scaleByStrength") == 1);
     CHECK(countOf(err.str(), "typo.effect.json: no action") == 1);
 
@@ -3847,9 +3882,27 @@ TEST(effect_delayed_self_include_stops_at_depth) {
     CHECK(countOf(err.str(), "test_delay_loop' nested deeper than 8") == 1);
 }
 
+TEST(prefab_effects_inherited_per_trigger) {
+    PrefabScene t;
+    GameObject* o = t.prefabs.instantiate(t.scene, "test_effects_child");
+    CHECK(o && t.prefabs.warnings().empty());
+    auto* triggers = o ? o->getComponent<EffectTriggers>() : nullptr;
+    CHECK(triggers && triggers->triggers.size() == 5);
+    if (!triggers) return;
+    // The child's "state:move:run" replaces the base's list, "move:landed" is added, the rest stay.
+    CHECK(triggers->triggers["state:move:run"].size() == 1 && triggers->triggers["state:move:run"][0]["blink"] == 0.2);
+    CHECK(triggers->triggers["move:landed"].size() == 1 && triggers->triggers["move:landed"][0] == "test_dust");
+    CHECK(triggers->triggers["state:move:idle"].size() == 1 && triggers->triggers["move:jumped"].size() == 2);
+}
+
 TEST(prefab_effects_section_warnings) {
     PrefabScene t;
-    GameObject* o = t.prefabs.instantiate(t.scene, "test_effects_bad");
+    GameObject* o = nullptr;
+    {
+        CerrCapture err;
+        o = t.prefabs.instantiate(t.scene, "test_effects_bad");
+        CHECK(countOf(err.str(), "test_effects_bad") == 5);
+    }
     const auto& w = t.prefabs.warnings();
     CHECK(o && w.size() == 5);
     CHECK(hasWarning(w, "effects.jump: a trigger starts with") && hasWarning(w, "effects.move:a: expected a list"));
@@ -4130,6 +4183,14 @@ TEST(iki_hurt_knockback_and_invulnerability) {
     stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
     iki.hurt({1, {0.0f, -1.0f}}); // a hit from above pushes down, not up
     CHECK(resources->health() == 2 && iki.velocity_.y == -6.0f && iki.velocity_.x == 0.0f);
+    // "hurt" carries invulnerableTime: the prefab's blink lasts as long as the invulnerability.
+    stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
+    std::vector<MovementCue> cues;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { if (c.name == "hurt") cues.push_back(c); });
+    iki.invulnerableTime = 1.25f;
+    iki.hurt({1, {}});
+    scene.flush();
+    CHECK(cues.size() == 1 && !cues.empty() && cues[0].strength == 1.25f);
 }
 
 TEST(iki_death_emits_died) {
@@ -4185,6 +4246,7 @@ TEST(iki_stomps_slime) {
     ground.collider = ColliderData{.size = {2.0f, 0.2f}};
     trackEntity(slime, entity("Slime", "s1", {}, {{"respawn", false}}), {0.0f, 0.0f});
     IkiObject& iki = makeIki(scene, {0.0f, 0.7f}); // feet at 0.7, slime top at 0.4
+    iki.stompBounceFactor = 0.5f;
     const GameObjectId slimeId = slime.id;
     bool bounced = false;
     for (int i = 0; i < 60 && !bounced; ++i) {
@@ -4192,7 +4254,7 @@ TEST(iki_stomps_slime) {
         bounced = iki.velocity_.y > 0.0f;
     }
     scene.flush();
-    CHECK(bounced && std::abs(iki.velocity_.y - 6.6f) < 0.6f); // jumpSpeed * 0.6, minus up to a frame of gravity
+    CHECK(bounced && std::abs(iki.velocity_.y - 5.5f) < 0.6f); // jumpSpeed * stompBounceFactor, minus up to a frame of gravity
     CHECK(scene.findObject(slimeId) == nullptr && state.isGone("s1") && inState(iki, "jump"));
 }
 
@@ -4280,6 +4342,12 @@ TEST(iki_wall_cling_requires_ability) {
     iki.states().change(iki, "wall");
     scene.flush();
     CHECK(grabs.size() == 1 && !grabs.empty() && grabs[0].position && glm::length(*grabs[0].position - (at + glm::vec2(0.3f, 1.2f))) < 1e-4f);
+    // The hands follow the collider: a prefab with a bigger body puts the stakes at its hands.
+    iki.collider->size = {1.0f, 2.0f};
+    iki.collider->offset = {0.0f, 1.0f};
+    iki.states().change(iki, "wall");
+    scene.flush();
+    CHECK(grabs.size() == 2 && grabs[1].position && glm::length(*grabs[1].position - (at + glm::vec2(0.5f, 1.5f))) < 1e-4f);
 }
 
 TEST(iki_wall_climb_up_down) {

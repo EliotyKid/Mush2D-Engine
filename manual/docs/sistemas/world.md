@@ -80,7 +80,7 @@
 | `Blink` | `start(segundos)` alterna `visible` `rate` vezes por segundo (16) e devolve a visibilidade do começo ao terminar. `active()`. |
 | `VelocityLean` | Inclina `transform.rotation` pela velocidade horizontal medida pela posição: até `maxDegrees` (4) a partir de `fullSpeed` (5 u/s), suavizado por `smoothing` (12/s); um salto maior que `teleportDistance` (1 u) num passo é ignorado. O `SpriteBatch` gira o sprite em torno do pivô (os pés). |
 | `EffectLibrary` (`Effects.hpp`) | Serviço da cena com os efeitos de `assets/effects/<nome>.effect.json`: `scan(pasta)`, `find(nome)` (nome desconhecido avisa uma vez), `reload(arquivo)` (arquivo inválido mantém a versão anterior). Hot reload no Debug. |
-| `playEffect` | `playEffect(scene, obj, item, força, posição, direção)`: `item` é um nome de efeito ou uma ação inline (`particles`, `squash` com `scaleByStrength`, `blink`, `effect`; qualquer uma com `delay`). Cria os componentes que faltam. |
+| `playEffect` | `playEffect(scene, obj, item, força, posição, direção)`: `item` é um nome de efeito ou uma ação inline (`particles`, `squash` e `blink` com `scaleByStrength`, `effect`; qualquer uma com `delay`). Cria os componentes que faltam. |
 | `EffectTriggers` | Componente da seção `effects` do prefab: `triggers` (gatilho → itens). Ouve `StateChanged` (`state:<label>:<estado>`), `AnimationEvent` (`anim:<nome>`) e `MovementCue` (`move:<nome>`) do dono. |
 | `MovementCue` | `{object, name, strength, position, direction}`. `emitMovementCue(scene, obj, nome, força, posição)`; `emitMovementCues(scene, obj, anterior, atual, velocidade, maxFallSpeed, turnThreshold = 2)` (`CharacterController.hpp`) emite `landed`, `left_ground` e `turned`. |
 

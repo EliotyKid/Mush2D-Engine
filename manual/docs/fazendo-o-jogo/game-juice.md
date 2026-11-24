@@ -113,14 +113,16 @@ Um efeito fica em `assets/effects/<nome>.effect.json`. Ele é definido uma vez e
 |---|---|
 | `particles` | Uma rajada com a configuração de partícula acima (formato de `parseParticleConfig`). Usa o `ParticleEmitter` do objeto e cria um se faltar. |
 | `squash` | `SquashStretch::kick([x, y])`. Com `"scaleByStrength": true`, o desvio de 1 é multiplicado pela força do gatilho, limitada a 1: um pouso a meia velocidade amassa pela metade. |
-| `blink` | `Blink::start(segundos)`. |
+| `blink` | `Blink::start(segundos)`. Com `"scaleByStrength": true`, os segundos são multiplicados pela força do gatilho, sem limite: o Iki manda `move:hurt` com força `invulnerableTime`, e `{"blink": 1, "scaleByStrength": true}` pisca esse tempo todo. |
 | `effect` | Toca outro efeito pelo nome. Efeitos dentro de efeitos vão até 8 níveis: mais fundo (um ciclo, por exemplo) é pulado com aviso. |
 
 - Qualquer ação aceita `"delay": segundos` e toca depois desse tempo. Exemplo, a antecipação do pulo: `{"squash": [1.2, 0.8]}` agora e `{"squash": [0.8, 1.25], "delay": 0.033}` dois quadros depois.
 - Uma ação desconhecida avisa uma vez no stderr, com o nome do arquivo, e é ignorada. As outras ações do arquivo continuam valendo. O mesmo vale para um modificador de tipo errado (`"delay": "0.03"`, `"scaleByStrength": 1`) e para uma ação só com modificadores (`{"delay": 0.1}`), no arquivo, no prefab ou em código.
+- No arquivo, um `particles` com chave errada (`"lifetme"`) ou valor errado também avisa ao carregar, com o arquivo e a chave, e a ação é ignorada.
 - Um efeito que se inclui com `delay` também para no limite de 8 níveis: a espera não zera a contagem.
 - Um arquivo inválido (JSON quebrado, sem a lista `actions`) avisa e mantém a versão anterior.
 - No Debug, salvar ou criar um `.effect.json` recarrega a biblioteca na hora (hot reload). A recarga lê a pasta inteira: um arquivo apagado some na próxima recarga. A sala não recarrega, porque o efeito é procurado pelo nome cada vez que toca.
+- Se a pasta não puder ser lida (apagada, ou travada pelo OneDrive), a recarga avisa e mantém todos os efeitos.
 - Um nome de efeito que não existe avisa uma vez.
 
 ### Gatilhos no prefab
@@ -134,7 +136,7 @@ A seção `"effects"` do prefab liga gatilhos a uma lista. Cada item da lista é
   "move:turned":       ["turn_dust"],
   "anim:step":         ["run_dust"],
   "state:move:wall":   ["ice_stake", {"squash": [1.15, 0.9]}],
-  "state:move:hurt":   [{"blink": 0.8}]
+  "move:hurt":         [{"blink": 1.0, "scaleByStrength": true}]
 }
 ```
 

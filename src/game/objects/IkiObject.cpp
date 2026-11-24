@@ -77,7 +77,7 @@ void IkiObject::onStep(Scene2D& scene, float dt) {
     machine_.update(*this, dt);
     flipX = facing < 0.0f;
     // The facing tells "turned" apart from braking: the Iki slows down before its velocity flips.
-    if (!placed_) emitMovementCues(scene, *this, previous, lastMove_, stepVelocity_, maxFallSpeed, DefaultTurnThreshold, previousFacing, int(facing));
+    if (!placed_) emitMovementCues(scene, *this, previous, lastMove_, stepVelocity_, maxFallSpeed, turnThreshold, previousFacing, int(facing));
     placed_ = false;
 }
 
@@ -189,7 +189,7 @@ bool IkiObject::stompBelow(Scene2D& scene) {
         stomped = true;
     }
     if (stomped) {
-        velocity_.y = jumpSpeed * 0.6f;
+        velocity_.y = jumpSpeed * stompBounceFactor;
         jumped_ = true;
         jumpCuttable = false;
     }
@@ -201,6 +201,7 @@ void IkiObject::hurt(const DamageInfo& info) {
     if (!resources || invulnerable() || resources->health() == 0 || info.amount <= 0) return;
     resources->damage(info.amount); // health 0: Resources emits Died (the game runs the death)
     invulnerableLeft_ = invulnerableTime;
+    if (scene_) emitMovementCue(*scene_, *this, "hurt", invulnerableTime); // the prefab blinks this long
     wallJumpLockLeft_ = wallCoyoteLeft_ = 0.0f; // the hit ends a wall or ceiling grab: no wall jump from it
     jump.clearBuffer();
     if (resources->health() == 0) {

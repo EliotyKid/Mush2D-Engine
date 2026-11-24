@@ -12,8 +12,8 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <fstream>
+#include <iostream>
 #include <set>
 
 using json = nlohmann::json;
@@ -141,7 +141,7 @@ void PrefabLibrary::clear() {
 }
 
 void PrefabLibrary::warn(std::string message) {
-    std::fprintf(stderr, "Prefab: %s\n", message.c_str());
+    std::cerr << "Prefab: " << message << '\n'; // std::cerr, so a test can capture it
     warnings_.push_back(std::move(message));
 }
 

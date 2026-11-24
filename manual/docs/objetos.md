@@ -34,7 +34,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 
 ## Iki
 
-**O que faz:** o personagem jogável da vitrine (`IkiObject`). Corre com aceleração, pula só com `Z` (coyote time, buffer, altura variável, topo flutuante, queda rápida, correção de quina), leva dano, morre e renasce cheio. Tem a máquina de estados `move` (`idle`, `run`, `jump`, `fall`, `hurt`, `dead`), vida e energias (`Resources`) e todo o juice pelo prefab. Tags: `player`.
+**O que faz:** o personagem jogável da vitrine (`IkiObject`). Corre com aceleração, pula só com `Z` (coyote time, buffer, altura variável, topo flutuante, queda rápida, correção de quina), leva dano, morre e renasce cheio. Tem a máquina de estados `move` (`idle`, `run`, `jump`, `fall`, `hurt`, `dead`, `wall` agarrado numa parede de gelo, `ceiling` pendurado num teto de gelo), vida e energias (`Resources`) e todo o juice pelo prefab. Tags: `player`.
 
 **Atributos:** os números de movimento e de dano estão na página [Iki: estados e habilidades](fazendo-o-jogo/iki.md#parametros).
 

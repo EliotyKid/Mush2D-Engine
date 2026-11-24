@@ -6,6 +6,7 @@
 //       {"particles": {"count": 6, "speed": [1, 3], "angle": [100, 170], ...}},   // ParticleConfig (Particles.hpp)
 //       {"squash": [1.3, 0.7], "scaleByStrength": true},                          // SquashStretch::kick
 //       {"blink": 0.8},                                                           // Blink::start(seconds)
+//       {"blink": 1.0, "scaleByStrength": true},                                  // seconds * strength (no limit)
 //       {"effect": "other_effect"},                                               // includes another effect
 //       {"squash": [0.8, 1.25], "delay": 0.033}]}                                 // any action, later
 //
@@ -56,11 +57,12 @@ struct Effect {
 // <dir>/<name>.effect.json by name. Registered as a Scene2D service. Not thread-safe.
 class EffectLibrary {
 public:
-    // Loads (reloads) every *.effect.json in dir.
+    // Loads (reloads) every *.effect.json in dir. A folder that cannot be listed keeps every effect and warns.
     void scan(const std::filesystem::path& dir);
     // nullptr for an unknown name (warns once per name).
     const Effect* find(const std::string& name);
-    // An invalid file keeps the previous version and warns; an unknown action warns and is dropped.
+    // An invalid file keeps the previous version and warns; an unknown action or a bad "particles" warns and
+    // is dropped.
     void reload(const std::filesystem::path& file);
 
 private:
@@ -68,8 +70,8 @@ private:
     std::set<std::string> warned_;
 };
 
-// Plays `item` (an effect name or one inline action) on obj: strength scales "scaleByStrength" squashes,
-// pos is where particles start, direction mirrors them. Effects come from the EffectLibrary service.
+// Plays `item` (an effect name or one inline action) on obj: strength scales "scaleByStrength" squashes and
+// blinks, pos is where particles start, direction mirrors them. Effects come from the EffectLibrary service.
 // depth: effect nesting so far (a delayed action keeps its own); deeper than 8 is skipped with a warning.
 void playEffect(Scene2D& scene, GameObject& obj, const nlohmann::json& item, float strength, glm::vec2 pos,
                 int direction, int depth = 0);

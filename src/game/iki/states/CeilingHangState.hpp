@@ -10,7 +10,7 @@ struct CeilingHangState : State<IkiObject> {
     void enter(IkiObject& iki) override {
         iki.velocity_ = glm::vec2(0.0f);
         iki.jumpCuttable = false;
-        iki.grabCue({0.0f, 1.6f}); // ice_stake at the head
+        iki.grabCue(iki.headOffset()); // ice_stake at the head
     }
     const char* update(IkiObject& iki, float dt) override {
         if (iki.downHeld() || iki.jump.hasBufferedJump()) {
@@ -22,7 +22,7 @@ struct CeilingHangState : State<IkiObject> {
         iki.velocity_ = {x * iki.ceilingMoveSpeed, iki.ceilingStickSpeed}; // the ceiling stops the stick
         const float x0 = iki.transform.position.x;
         iki.moveAndCollide(dt, false);
-        iki.climbCue(dt, std::abs(iki.transform.position.x - x0) > 1e-4f, {0.0f, 1.6f});
+        iki.climbCue(dt, std::abs(iki.transform.position.x - x0) > 1e-4f, iki.headOffset());
         const int side = iki.moveSide();
         if (side != 0 && iki.iceWall(side, true)) {
             iki.wallSide = side;

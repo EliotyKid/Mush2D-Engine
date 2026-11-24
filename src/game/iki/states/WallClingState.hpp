@@ -13,7 +13,7 @@ struct WallClingState : State<IkiObject> {
         iki.velocity_ = glm::vec2(0.0f);
         iki.facing = float(iki.wallSide);
         iki.jumpCuttable = false;
-        iki.grabCue({float(iki.wallSide) * 0.3f, 1.2f}); // ice_stake at the hands
+        iki.grabCue(iki.handsOffset(iki.wallSide)); // ice_stake at the hands
     }
     const char* update(IkiObject& iki, float dt) override {
         const float side = float(iki.wallSide);
@@ -31,7 +31,7 @@ struct WallClingState : State<IkiObject> {
         iki.velocity_ = {first ? side * GrabGap / dt : 0.0f, climb};
         const float y0 = iki.transform.position.y;
         iki.moveAndCollide(dt, false);
-        iki.climbCue(dt, std::abs(iki.transform.position.y - y0) > 1e-4f, {side * 0.3f, 1.2f});
+        iki.climbCue(dt, std::abs(iki.transform.position.y - y0) > 1e-4f, iki.handsOffset(iki.wallSide));
         if (iki.grounded) return iki.nextLocomotion(""); // the wall's foot
         // Up alone in an ice corner goes to the ceiling; holding toward the wall keeps the wall (no flicker).
         if (climb > 0.0f && iki.moveX() * side <= 0.0f && iki.canGrabCeiling()) return "ceiling";

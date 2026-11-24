@@ -56,9 +56,11 @@ const std::map<std::string, Action>& actions() {
             if (a.contains("scaleByStrength") && a["scaleByStrength"] == true) scale = 1.0f + (scale - 1.0f) * std::clamp(p.strength, 0.0f, 1.0f);
             componentOf<SquashStretch>(p.obj).kick(scale);
         }},
-        {"blink", [](const Play& p, const json&, const json& v, int) {
+        {"blink", [](const Play& p, const json& a, const json& v, int) {
             if (!v.is_number()) return warnOnce("blink: expected seconds");
-            componentOf<Blink>(p.obj).start(v.get<float>());
+            float seconds = v.get<float>();
+            if (a.contains("scaleByStrength") && a["scaleByStrength"] == true) seconds *= std::max(p.strength, 0.0f);
+            componentOf<Blink>(p.obj).start(seconds);
         }},
         {"effect", [](const Play& p, const json&, const json& v, int depth) {
             if (!v.is_string()) return warnOnce("effect: expected an effect name");
@@ -130,6 +132,10 @@ void EffectLibrary::scan(const std::filesystem::path& dir) {
         if (auto it = old.find(name); it != old.end()) effects_[name] = std::move(it->second);
         reload(entry.path());
     }
+    if (ec) { // the folder cannot be listed (gone, locked by a sync): an empty map would drop all the juice
+        effects_ = std::move(old);
+        std::cerr << "Effects: cannot list " << dir.string() << ": " << ec.message() << " (kept the effects)\n";
+    }
 }
 
 const Effect* EffectLibrary::find(const std::string& name) {
@@ -150,7 +156,9 @@ void EffectLibrary::reload(const std::filesystem::path& file) {
     if (doc.contains("version") && doc["version"] != 1) return fail("unsupported version " + doc["version"].dump());
     Effect effect;
     for (const json& action : doc["actions"]) {
-        const std::string error = action.is_object() ? effectItemError(action) : "expected an action, got " + action.dump();
+        std::string error = action.is_object() ? effectItemError(action) : "expected an action, got " + action.dump();
+        if (ParticleConfig unused; error.empty() && action.contains("particles"))
+            parseParticleConfig(action["particles"], unused, error); // a typo is found now, not at the first trigger
         if (error.empty()) effect.actions.push_back(action);
         else std::cerr << "Effects: " << fileName << ": " << error << ", action ignored\n";
     }

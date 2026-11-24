@@ -11,7 +11,7 @@
 | `Cave1` | `cave` (mais escura) | Acima e à direita de `Forest2`; o chão continua a borda alta da direita de `Forest2`. Mesa com rampas de 45°, morro com rampas de 22,5° e plataforma atravessável com um slime em cima. |
 | `IceTest` | `cave` | À esquerda da vitrine, pela porta na parede esquerda dela (fora do caminho principal). Sala de teste das estacas de gelo: veja abaixo. |
 
-As duas salas de teste foram geradas uma vez por `tools/add_test_rooms.py`, e o terreno e as rampas por `tools/add_terrain_content.py`. Cada uma tem chão, um slime que volta (`respawn` ligado), um que não volta, um item `permanent`, um item `respawn`, uma alavanca que abre uma porta e um `Checkpoint`. Edite tudo livremente no LDtk.
+`Forest2` e `Cave1` foram geradas uma vez por `tools/add_test_rooms.py`, e o terreno e as rampas por `tools/add_terrain_content.py`. Cada uma tem chão, um slime que volta (`respawn` ligado), um que não volta, um item `permanent`, um item `respawn`, uma alavanca que abre uma porta e um `Checkpoint`. Edite tudo livremente no LDtk.
 
 ## A sala `IceTest`
 
