@@ -92,6 +92,27 @@
       "component": false,
       "props": []
     },
+    "DummyShooter": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 2.5,
+          "name": "shootInterval",
+          "type": "Float"
+        },
+        {
+          "default": 10.0,
+          "name": "range",
+          "type": "Float"
+        },
+        {
+          "default": "dummy_bolt",
+          "name": "projectile",
+          "type": "String"
+        }
+      ]
+    },
     "EffectTriggers": {
       "base": "Component",
       "component": true,
@@ -807,6 +828,17 @@
       "base": "GameObject",
       "component": false,
       "props": []
+    },
+    "TrainingDummy": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 3.0,
+          "name": "respawnTime",
+          "type": "Float"
+        }
+      ]
     },
     "VelocityLean": {
       "base": "Component",

@@ -122,11 +122,11 @@ Tudo isso entra como novos componentes de habilidade e novos estados, sem mudar 
 ### D3: Combate e "peso" (feedback)
 
 **Entra:**
-- [ ] **Hitbox e hurtbox** como nós filhos do prefab.
-- [ ] **`DamageInfo`** com quantidade, `Element`, knockback e origem. **Resistências e fraquezas por elemento** ficam no prefab.
-- [ ] **Ataque corpo a corpo de gelo**, **projétil de gelo** (com pool de projéteis) e **defesa de gelo**.
-- [ ] **Invencibilidade breve ao ser atingido**, **hit stop** (congelar o frame no impacto) e **tremor de câmera** simples.
-- [ ] **Partículas básicas**, na CPU, para o essencial: estilhaços de gelo, poeira e impacto.
+- [x] **Hitbox e hurtbox** como nós filhos do prefab.
+- [x] **`DamageInfo`** com quantidade, `Element`, knockback e origem. **Resistências e fraquezas por elemento** ficam no prefab.
+- [x] **Ataque corpo a corpo de gelo**, **projétil de gelo** (com pool de projéteis) e **defesa de gelo**.
+- [x] **Invencibilidade breve ao ser atingido**, **hit stop** (congelar o frame no impacto) e **tremor de câmera** simples.
+- [x] **Partículas básicas**, na CPU, para o essencial: estilhaços de gelo, poeira e impacto.
 - [x] **Áudio básico** com miniaudio: efeitos e música por região.
 
 **Cresce para:**
@@ -136,7 +136,7 @@ Tudo isso entra como novos componentes de habilidade e novos estados, sem mudar 
 - áudio posicional;
 - música adaptativa.
 
-**Pronto quando:** um combate contra um alvo de teste tem impacto, som e partículas, e o dano respeita as fraquezas.
+**Pronto quando:** um combate contra um alvo de teste tem impacto, som e partículas, e o dano respeita as fraquezas. Feito com os bonecos de treino da sala `IceTest` do `showcase.ldtk`.
 
 ### D4: Inimigos
 

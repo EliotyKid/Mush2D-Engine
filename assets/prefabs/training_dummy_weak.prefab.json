@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "base": "training_dummy",
+  "sprite": { "frame": "crystal 3" },
+  "multipliers": { "Ice": 2.0 }
+}

@@ -43,7 +43,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 **Casos de uso:**
 
 - Ajustar o pulo ao vivo: `F1` → "Cena (F1)" → Iki → `jumpSpeed`, `apexGravityFactor`, `fallGravityFactor`.
-- Causar dano em código: `iki->hurt({1, {-1.0f, 0.0f}})` (quantidade, sentido do empurrão). No Debug, `J` faz isso.
+- Causar dano em código: emita `HitEvent{atacante, iki->id, DamageInfo{1, {-1.0f, 0.0f}}}` (quantidade, sentido do empurrão); o `Damageable` do Iki tira a vida e chama `hurt`, que é só a reação. No Debug, `J` faz isso.
 - Mudar a poeira, o squash ou o piscar: edite os arquivos em `assets/effects/` ou a seção `effects` do prefab.
 
 **Arquivos:** `src/game/objects/IkiObject.hpp/.cpp`, `src/game/iki/states/`, `assets/prefabs/iki.prefab.json`.
@@ -213,6 +213,69 @@ Use `flipX` para virar o animal.
 **Casos de uso:** iluminar uma caverna: espalhe entidades `Crystal` com variantes diferentes. Cada uma traz a própria luz.
 
 **Arquivos:** `src/game/objects/CrystalObject.hpp`, `assets/prefabs/crystal.prefab.json`, `assets/prefabs/crystal_halo.prefab.json`.
+
+## Bonecos de treino
+
+**O que fazem:** alvos para testar o combate, na sala `IceTest`. Cada boneco é um `GameObject` montado só pelo prefab, com estes componentes:
+
+- `Hurtbox` (time `enemy`, 1 × 1,2 u);
+- `Damageable` com `invulnerableTime` 0, para a sequência de cortes acertar três vezes seguidas;
+- `Resources` com vida 10;
+- `TrainingDummy`.
+
+Com vida 0, o boneco **quebra**:
+
+- some e solta estilhaços (gatilho `move:break`, efeito `dummy_break`);
+- a `Hurtbox` é desligada e sai da grade de combate;
+- depois de `respawnTime` segundos de tempo de jogo, volta com a vida cheia.
+
+Nada vai para o `WorldState`. Cada acerto pisca o boneco de branco (`hit:taken` → `dummy_hit`). O hit stop, o tremor e o som vêm do golpe do Iki.
+
+**Prefabs** (sprites provisórios do atlas `crystals`):
+
+| Prefab | Entidade do LDtk | Base | Multiplicadores | Aparência | Dano da sequência 1, 1, 2 |
+|---|---|---|---|---|---|
+| `training_dummy` | — | — | nenhum | cristal ciano | 1, 1, 2 |
+| `training_dummy_weak` | `TrainingDummyWeak` | `training_dummy` | `{"Ice": 2.0}` | cristal rosa | 2, 2, 4 |
+| `training_dummy_resist` | `TrainingDummyResist` | `training_dummy` | `{"Ice": 0.5}` | cristal ciano claro | 1, 1, 1 |
+| `training_dummy_shooter` | `TrainingDummyShooter` | `training_dummy_weak` | `{"Ice": 2.0}` (herdado) | cristal magenta | 2, 2, 4 |
+
+O resistente arredonda 0,5 para 1: um golpe com multiplicador maior que 0 tira pelo menos 1 (veja [Combate](fazendo-o-jogo/combate.md#fraquezas-e-resistencias)).
+
+**O atirador** tem também `Stunned` e `DummyShooter`. A cada `shootInterval` segundos, ele atira um `dummy_bolt` no Iki, se o Iki estiver a até `range` u:
+
+- o tiro mira do centro da hurtbox do atirador ao centro da hurtbox do player;
+- o atirador vira para o lado do tiro e emite o gatilho `move:shoot` (som e flash);
+- o `dummy_bolt` é lento (5 u/s), tira 1 de vida, não tem elemento e é aparável.
+
+O atirador fica quieto quando está atordoado (`Stunned`), quebrado ou inativo. Atordoado ou quebrado, ele recomeça a contagem: o próximo tiro sai um intervalo inteiro depois.
+
+O aparo do Iki reflete o tiro de volta e atordoa o atirador por 1 s (o `parryStun` do Iki). Se um boneco estiver na linha, o tiro refletido acerta ele primeiro.
+
+**Atributos:**
+
+| Componente | Atributo | Tipo | Padrão | Efeito |
+|---|---|---|---|---|
+| `TrainingDummy` | `respawnTime` | Float | `3` | Segundos quebrado antes de voltar. |
+| `DummyShooter` | `shootInterval` | Float | `2.5` | Segundos entre tiros. |
+| `DummyShooter` | `range` | Float | `10` | Distância máxima até o player (u). |
+| `DummyShooter` | `projectile` | String | `"dummy_bolt"` | Prefab do tiro (precisa de um componente `Projectile`). |
+
+**Na `IceTest`:** o script `tools/add_ice_test_room.py` põe os três bonecos no chão, à direita do buraco, longe do caminho de escalada:
+
+- o fraco e o resistente ficam embaixo da plataforma alta;
+- o atirador fica perto da porta para a `Showcase`.
+
+As entidades têm 40 × 40 px.
+
+**Casos de uso:**
+
+- Um boneco que demora a voltar: campo `respawnTime` = `10` na entidade, ou no prefab.
+- Um alvo imune a gelo: um prefab novo com `"base": "training_dummy"` e `"multipliers": {"Ice": 0}`. Os golpes disparam `hit:immune` (flash cinza) e não tiram vida.
+- Treinar o aparo com calma: no `F1`, aumente o `shootInterval` do atirador.
+- Um atirador de outro projétil: um prefab com `Projectile` e o nome dele em `projectile`.
+
+**Arquivos:** `src/game/objects/TrainingDummy.hpp`, `src/game/objects/DummyShooter.hpp`, `assets/prefabs/training_dummy*.prefab.json`, `assets/prefabs/dummy_bolt.prefab.json`, `assets/effects/dummy_hit.effect.json`, `assets/effects/dummy_break.effect.json`.
 
 ## Teleport e Wall
 

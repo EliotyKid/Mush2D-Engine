@@ -40,6 +40,8 @@
 #include "game/objects/CheckpointObject.hpp"
 #include "game/objects/CrystalObject.hpp"
 #include "game/objects/DoorObject.hpp"
+#include "game/objects/DummyShooter.hpp"
+#include "game/objects/TrainingDummy.hpp"
 #include "game/objects/IkiObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
@@ -2867,6 +2869,7 @@ TEST(game_prefabs_load_without_warnings) {
     scene.setService(&assets);
     scene.setService(&prefabs);
     int count = 0;
+    std::vector<std::string> named; // effect files every prefab's triggers name (directly or by an "effect" action)
     for (const auto& file : std::filesystem::directory_iterator(prefabs.dir())) {
         const std::string fileName = file.path().filename().string();
         const std::string suffix = ".prefab.json";
@@ -2876,9 +2879,29 @@ TEST(game_prefabs_load_without_warnings) {
         CHECK(o != nullptr);
         CHECK(prefabs.warnings().empty());
         for (const std::string& w : prefabs.warnings()) std::printf("    %s: %s\n", name.c_str(), w.c_str());
+        if (auto* triggers = o ? o->getComponent<EffectTriggers>() : nullptr)
+            for (const auto& [key, items] : triggers->triggers)
+                for (const nlohmann::json& item : items)
+                    if (item.is_string()) named.push_back(item.get<std::string>());
+                    else if (item.contains("effect") && item["effect"].is_string()) named.push_back(item["effect"].get<std::string>());
         ++count;
     }
-    CHECK(count >= 10);
+    CHECK(count >= 15);
+
+    // The training dummies (D3 Task 6): 10 health, no invulnerability, Ice x2 (weak, shooter) or x0.5 (resist).
+    for (const auto& [name, ice] : {std::pair{"training_dummy_weak", 2.0f}, {"training_dummy_resist", 0.5f}, {"training_dummy_shooter", 2.0f}}) {
+        GameObject* d = prefabs.instantiate(scene, name);
+        auto* damageable = d ? d->getComponent<Damageable>() : nullptr;
+        auto* dummy = d ? d->getComponent<TrainingDummy>() : nullptr;
+        CHECK(damageable && damageable->invulnerableTime == 0.0f && damageable->multipliers[Element::Ice] == ice);
+        CHECK(dummy && dummy->respawnTime == 3.0f && d->getComponent<Resources>()->maxHealth == 10 && d->getComponent<Hurtbox>());
+    }
+    auto* shooter = prefabs.instantiate(scene, "training_dummy_shooter");
+    auto* gun = shooter ? shooter->getComponent<DummyShooter>() : nullptr;
+    CHECK(gun && gun->shootInterval == 2.5f && gun->range == 10.0f && gun->projectile == "dummy_bolt" && shooter->getComponent<Stunned>());
+    auto* bolt = prefabs.instantiate(scene, "dummy_bolt");
+    auto* shot = bolt ? bolt->getComponent<Projectile>() : nullptr;
+    CHECK(shot && shot->speed == 5.0f && shot->damage == 1 && shot->parryable && shot->team == "enemy");
 
     // SlimeFast (criterion 3): only a prefab inheriting from the slime.
     auto* fast = dynamic_cast<SlimeEnemy*>(prefabs.instantiate(scene, "slime_fast"));
@@ -2901,21 +2924,15 @@ TEST(game_prefabs_load_without_warnings) {
         for (int i = 0; i < 7; ++i) CHECK(typeOf(*iki->components()[i]).name == order[i]);
         CHECK(iki->getComponent<SpriteAnimator>()->state == "idle" && iki->getComponent<SpriteAnimator>()->animations.size() == 12);
     }
-    // Every effect the Iki's triggers name (directly or by an "effect" action) has a valid, non-empty file.
+    // Every effect a prefab's triggers name has a valid, non-empty file; every effect file loads without warnings.
     EffectLibrary effects;
     CerrCapture err;
     effects.scan(sourceAssetPath("assets/effects"));
-    int named = 0;
-    if (auto* triggers = iki ? iki->getComponent<EffectTriggers>() : nullptr)
-        for (const auto& [key, items] : triggers->triggers)
-            for (const nlohmann::json& item : items) {
-                const nlohmann::json* name = item.is_string() ? &item : item.contains("effect") ? &item["effect"] : nullptr;
-                if (!name) continue;
-                ++named;
-                const Effect* effect = effects.find(name->get<std::string>());
-                CHECK(effect && !effect->actions.empty());
-            }
-    CHECK(named >= 6 && err.str().empty());
+    for (const std::string& name : named) {
+        const Effect* effect = effects.find(name);
+        CHECK(effect && !effect->actions.empty());
+    }
+    CHECK(named.size() >= 8 && std::count(named.begin(), named.end(), "dummy_break") >= 1 && err.str().empty());
 }
 
 // --- Inspector save (D1 Task 4) -------------------------------------------------------------------------
@@ -5894,6 +5911,141 @@ TEST(iki_slash_window_from_animation_events) {
     CHECK(c.hits.empty() && animator->action == "slash1");
     c.step({}, 6);
     CHECK(c.hits.size() == 1 && healthOf(t) == 19);
+}
+
+// --- Training dummies (D3 Task 6) ---------------------------------------------------------------------------
+
+namespace {
+DamageInfo iceHit(int amount) {
+    DamageInfo info;
+    info.amount = amount;
+    info.element = Element::Ice;
+    return info;
+}
+// A real dummy prefab standing on ikiLevel's floor (its box centre 0.6 u above it), flushed.
+GameObject* dummyAt(IkiCombat& c, const char* prefab, float x) {
+    GameObject* d = c.prefabs.instantiate(c.scene, prefab, {{"position", {x, -3.9f}}});
+    CHECK(d != nullptr && c.prefabs.warnings().empty());
+    c.scene.flush();
+    return d;
+}
+} // namespace
+
+TEST(training_dummy_breaks_and_respawns) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject* weak = dummyAt(c, "training_dummy_weak", 6.0f);
+    GameObject* resist = dummyAt(c, "training_dummy_resist", 8.0f);
+    if (!weak || !resist) return;
+    // The combo's 1, 1, 2 (no invulnerability between them): 2, 2, 4 on the weak one, 1, 1, 1 on the resistant one.
+    for (int n : {1, 1, 2}) {
+        hitOnce(c.scene, c.iki->id, weak->id, iceHit(n));
+        hitOnce(c.scene, c.iki->id, resist->id, iceHit(n));
+    }
+    std::vector<int> weakTaken, resistTaken;
+    for (const DamageTaken& t : c.taken) (t.target == weak->id ? weakTaken : resistTaken).push_back(t.finalAmount);
+    CHECK(weakTaken == std::vector<int>({2, 2, 4}) && resistTaken == std::vector<int>({1, 1, 1}));
+    CHECK(healthOf(*weak) == 2 && healthOf(*resist) == 7);
+
+    // At 0 it breaks: hidden, its Hurtbox out of the combat grid; back full after respawnTime (3 s).
+    hitOnce(c.scene, c.iki->id, weak->id, iceHit(1));
+    CHECK(healthOf(*weak) == 0);
+    c.step({});
+    Hurtbox* hurt = weak->getComponent<Hurtbox>();
+    CHECK(!weak->visible && !hurt->enabled && weak->getComponent<TrainingDummy>()->broken());
+    std::vector<Hurtbox*> found;
+    c.combat.query(hurt->box(), found);
+    CHECK(std::find(found.begin(), found.end(), hurt) == found.end());
+    c.step({}, int(2.8f / kDt));
+    CHECK(!weak->visible);
+    c.step({}, int(0.3f / kDt));
+    CHECK(weak->visible && hurt->enabled && healthOf(*weak) == 10 && !weak->getComponent<TrainingDummy>()->broken());
+    hitOnce(c.scene, c.iki->id, weak->id, iceHit(1));
+    CHECK(healthOf(*weak) == 8);
+}
+
+TEST(dummy_shooter_fires_toward_player_in_range) {
+    int shots = 0;
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject* s = dummyAt(c, "training_dummy_shooter", 8.0f);
+    if (!s) return;
+    auto sub = c.scene.events().subscribe<MovementCue>([&](const MovementCue& e) { if (e.object == s->id && e.name == "shoot") ++shots; });
+    c.step({}, int(2.4f / kDt));
+    CHECK(shots == 0); // every shootInterval (2.5 s)
+    c.step({}, int(0.2f / kDt));
+    CHECK(shots == 1 && c.pool.pooled("dummy_bolt") == 1 && s->flipX); // faces the Iki on its left
+    // The slow bolt (5 u/s) reaches the Iki ~5 u away: 1 damage, counted for the shooter, flying toward the Iki.
+    c.step({}, int(1.2f / kDt));
+    CHECK(c.taken.size() == 1);
+    if (!c.taken.empty()) {
+        const DamageTaken& t = c.taken[0];
+        CHECK(t.target == c.iki->id && t.finalAmount == 1 && t.info.source == s->id && t.info.projectile);
+        CHECK(t.info.direction.x < -0.99f && t.info.parryable);
+    }
+    // Out of range (more than 10 u): silent.
+    s->transform.position.x = 14.5f;
+    shots = 0;
+    c.step({}, int(3.0f / kDt));
+    CHECK(shots == 0);
+}
+
+TEST(dummy_shooter_silent_when_stunned) {
+    int shots = 0;
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject* s = dummyAt(c, "training_dummy_shooter", 8.0f);
+    if (!s) return;
+    auto sub = c.scene.events().subscribe<MovementCue>([&](const MovementCue& e) { if (e.object == s->id && e.name == "shoot") ++shots; });
+    s->getComponent<Stunned>()->start(4.0f);
+    c.step({}, int(4.0f / kDt));
+    CHECK(shots == 0);
+    c.step({}, int(1.0f / kDt)); // the stun restarts the wait: a full interval after it ends
+    CHECK(shots == 0);
+    c.step({}, int(1.7f / kDt));
+    CHECK(shots == 1);
+    // Broken (health 0): silent until it is back.
+    s->getComponent<Resources>()->damage(10);
+    shots = 0;
+    c.step({}, int(2.8f / kDt));
+    CHECK(shots == 0 && !s->visible);
+    // Inactive: silent.
+    s->active = false;
+    c.step({}, int(6.0f / kDt));
+    CHECK(shots == 0);
+}
+
+TEST(projectile_ignores_disabled_hurtbox) {
+    CombatScene c;
+    GameObject& t = c.target({2.0f, 0.0f});
+    t.getComponent<Hurtbox>()->enabled = false;
+    c.scene.flush();
+    c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "player", InvalidGameObjectId);
+    c.steps(40);
+    CHECK(c.hits.empty() && healthOf(t) == 10 && c.breaks.empty());
+    t.getComponent<Hurtbox>()->enabled = true;
+    c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "player", InvalidGameObjectId);
+    c.steps(40);
+    CHECK(c.hits.size() == 1 && healthOf(t) == 9);
+}
+
+TEST(showcase_ice_test_dummies_load) {
+    // tools/add_ice_test_room.py: two dummies on IceTest's floor right of the pit (off the climbing path) and the
+    // shooter by the doorway in the right wall, each made from its prefab.
+    auto p = loadLdtkProject(sourceAssetPath("assets/levels/showcase.ldtk"));
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")};
+    std::map<std::string, glm::vec2> feet; // identifier -> the bottom centre of its box, room pixels
+    for (auto& lv : p.levels)
+        if (lv.identifier == "IceTest")
+            for (auto& L : lv.layers)
+                for (auto& e : L.entities) {
+                    if (e.identifier.rfind("TrainingDummy", 0) != 0) continue;
+                    CHECK(!feet.count(e.identifier) && prefabs.has(snakeCase(e.identifier)));
+                    feet[e.identifier] = glm::vec2(e.px) + glm::vec2(e.size.x * 0.5f, float(e.size.y));
+                }
+    CHECK(feet.size() == 3 && feet.count("TrainingDummyWeak") && feet.count("TrainingDummyResist") && feet.count("TrainingDummyShooter"));
+    for (const auto& [id, at] : feet) CHECK(at.y == 592.0f && at.x > 704.0f && at.x < 992.0f); // floor top row 37
+    CHECK(feet["TrainingDummyShooter"].x > feet["TrainingDummyWeak"].x && feet["TrainingDummyShooter"].x > feet["TrainingDummyResist"].x);
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

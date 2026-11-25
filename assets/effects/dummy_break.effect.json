@@ -1,0 +1,4 @@
+{"version": 1, "actions": [
+  {"sound": "shard_break", "pitch": [0.6, 0.7]},
+  {"particles": {"count": 16, "speed": [2, 6], "angle": [20, 160], "lifetime": [0.3, 0.6], "gravity": -14, "drag": 1, "size": [0.12, 0.04], "color": [[0.85, 0.97, 1.0, 1.0], [0.6, 0.85, 1.0, 0.0]], "layer": 3}}
+]}

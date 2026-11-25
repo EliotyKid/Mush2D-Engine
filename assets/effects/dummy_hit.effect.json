@@ -1,0 +1,4 @@
+{"version": 1, "actions": [
+  {"flash": {"color": [1.0, 1.0, 1.0], "duration": 0.1}},
+  {"particles": {"count": 5, "speed": [1.5, 3.5], "angle": [40, 140], "lifetime": [0.2, 0.4], "gravity": -12, "drag": 1, "size": [0.08, 0.03], "color": [[0.85, 0.97, 1.0, 1.0], [0.6, 0.85, 1.0, 0.0]], "layer": 3}}
+]}

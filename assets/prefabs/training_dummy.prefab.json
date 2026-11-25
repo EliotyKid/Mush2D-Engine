@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "type": "GameObject",
+  "props": { "name": "TrainingDummy", "scale": [1.25, 1.25] },
+  "sprite": { "atlas": "crystals", "frame": "crystal 0", "layer": 1 },
+  "components": [
+    { "type": "Resources", "props": { "maxHealth": 10 } },
+    { "type": "Hurtbox", "props": { "size": [1.0, 1.2], "team": "enemy" } },
+    { "type": "Damageable", "props": { "invulnerableTime": 0.0 } },
+    { "type": "TrainingDummy", "props": { "respawnTime": 3.0 } }
+  ],
+  "effects": {
+    "hit:taken": ["dummy_hit"],
+    "hit:immune": [{"flash": {"color": [0.6, 0.6, 0.6], "duration": 0.08}}],
+    "move:break": ["dummy_break"]
+  }
+}
