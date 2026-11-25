@@ -10,7 +10,7 @@ O caminho de um frame:
 2. **G-buffer** (`gbuffer.frag`): desenha cor, normal map, emissão e profundidade de cada sprite.
 3. **Luz** (`light.frag`): calcula quanta luz chega em cada pixel, usando o normal map. Pode rodar em meia resolução (`lightHalfRes`).
 4. **Resolve** (`resolve.frag`): junta cor × luz + emissão e aplica a névoa por profundidade.
-5. **Partículas alfa** (`alpha.frag`): as partículas não aditivas, com mistura alfa sobre a imagem resolvida. A cor já é a final (sem luz diferida) e recebe a mesma névoa do resolve, então desbotam até alfa 0.
+5. **Partículas alfa** (`alpha.frag`): as partículas não aditivas, com mistura alfa sobre a imagem resolvida, então desbotam até alfa 0. Recebem a luz da cena (a irradiância do passe de luz sob a partícula; sobre o céu, só a ambiente) e a mesma névoa do resolve. Um sprite opaco mais à frente (por exemplo uma camada de primeiro plano) esconde a partícula: o shader lê a cor e a profundidade do G-buffer.
 6. **Aditivo** (`additive.frag`): brilhos, como os halos dos cristais.
 7. **Bloom** (`bloom_down.frag`, `bloom_up.frag`): o "brilho que vaza", em 5 níveis (1/2 a 1/32 da tela).
 8. **Composição** (`composite.frag`): bloom, exposição, temperatura, tonemap AgX, lift/gamma/gain, saturação e sRGB. Depois o painel F1 por cima.

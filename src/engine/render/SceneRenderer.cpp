@@ -419,14 +419,16 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     vkCmdEndRendering(cmd);
     timers_.end(cmd);
 
-    // 4. Alpha particles (unlit final colour, fogged, blend SRC_ALPHA, ONE_MINUS_SRC_ALPHA) over the native HDR.
+    // 4. Alpha particles (lit by the irradiance, occluded by nearer opaque sprites, fogged; blend SRC_ALPHA,
+    // ONE_MINUS_SRC_ALPHA) over the native HDR.
     timers_.begin(cmd, "alpha");
     r.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     if (alphaCount) {
         transition(cmd, hdr.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         beginRendering(cmd, hdr.extent, &r, 1);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, alphaPipeline_);
-        push({opaqueCount});
+        push({opaqueCount, targets_.index(RenderTargets::Albedo), targets_.index(RenderTargets::Depth),
+              targets_.index(RenderTargets::Light), settings_.pixelateLight ? 0u : 1u});
         vkCmdDraw(cmd, 6, alphaCount, 0, 0);
         vkCmdEndRendering(cmd);
     }

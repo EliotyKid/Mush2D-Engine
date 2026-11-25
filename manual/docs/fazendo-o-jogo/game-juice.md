@@ -36,7 +36,7 @@ emitter->burst(dust, obj.transform.position, obj.flipX ? -1 : 1); // -1 espelha 
 
 - As partículas ficam no mundo: não seguem o dono depois de nascer.
 - Cada uma é desenhada como um sprite. Sem `frame`, é um pixel branco tingido pela cor; com `frame`, é um quadro do atlas do sprite do dono.
-- Elas não acendem nada: não têm luz nem emissão. As não aditivas vão num passe com mistura alfa (cor final, sem luz diferida, com a névoa da cena) e desbotam até alfa 0; `additive` (para brilhos) soma luz.
+- Elas não acendem nada: não têm luz nem emissão. As não aditivas vão num passe com mistura alfa (iluminadas pela luz da cena, com a névoa da cena e escondidas atrás de sprites opacos mais à frente) e desbotam até alfa 0; `additive` (para brilhos) soma luz.
 - `drag` tira essa fração da velocidade por segundo. `layer` ordena como a `layer` do sprite.
 - Acima de `maxParticles`, a mais velha some.
 
