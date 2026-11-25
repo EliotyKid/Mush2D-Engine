@@ -1,4 +1,5 @@
 #include "engine/assets/AssetRegistry.hpp"
+#include "engine/audio/Audio.hpp"
 #include "engine/assets/AtlasLoader.hpp"
 #include "engine/world/Prefab.hpp"
 #include "engine/world/PrefabSave.hpp"
@@ -2643,9 +2644,9 @@ TEST(prefab_application_order_and_hook) {
 namespace {
 // EngineServices without a GPU: the loader only touches the scene, the factories get the struct.
 struct FakeServices {
-    GpuContext gpu; SceneRenderer renderer; MaterialLibrary materials; GlfwInput input; Camera2D camera;
+    GpuContext gpu; SceneRenderer renderer; MaterialLibrary materials; GlfwInput input; Camera2D camera; Audio audio;
     PrefabScene t;
-    EngineServices s{gpu, renderer, materials, input, camera, t.scene};
+    EngineServices s{gpu, renderer, materials, input, camera, t.scene, audio};
 };
 LdtkEntity entityOf(std::string identifier, std::string iid, nlohmann::json fields = nlohmann::json::object()) {
     LdtkEntity e{};
@@ -4831,6 +4832,146 @@ TEST(iki_hurt_releases_cling) {
         stepIki(scene2, hanging, keys(false, false, true, false, f % 2 == 0, true));
         CHECK(inState(hanging, "hurt"));
     }
+}
+
+const std::filesystem::path TestAudio = MUSH2D_TEST_DATA "/audio";
+
+TEST(audio_service_silent_without_device) {
+    Audio audio; // init() never called: no device, as in the tests and headless
+    audio.scan(TestAudio);
+    CHECK(audio.knows("beep") && audio.knows("loop_a") && audio.knows("broken") && !audio.knows("nope"));
+    CerrCapture err;
+    audio.playSound("beep", 0.5f, 1.2f);
+    audio.playMusic("loop_a");
+    audio.update(0.25f);
+    CHECK(audio.currentMusic() == "loop_a" && std::abs(audio.musicMix() - 0.25f) < 1e-5f); // musicFade 1 s
+    audio.update(5.0f);
+    CHECK(audio.musicMix() == 1.0f);
+    CHECK(err.str().empty());
+
+    // The sound action reaches the service; without one it is silent too.
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    playEffect(scene, o, nlohmann::json::parse(R"({"sound": "beep", "pitch": [0.9, 1.1]})"), 1.0f, {0.0f, 0.0f}, 1);
+    scene.setService(&audio);
+    playEffect(scene, o, nlohmann::json::parse(R"({"sound": "beep", "volume": 0.5})"), 1.0f, {0.0f, 0.0f}, 1);
+    CHECK(err.str().empty());
+}
+
+TEST(audio_unknown_sound_warns_once) {
+    Audio audio;
+    audio.scan(TestAudio);
+    CerrCapture err;
+    audio.playSound("nope");
+    audio.playSound("nope");
+    audio.playMusic("nope_theme");
+    audio.playMusic("");
+    audio.playMusic("nope_theme");
+    CHECK(countOf(err.str(), "unknown sound 'nope'") == 1);
+    CHECK(err.str().find((TestAudio / "sfx" / "nope.wav").string()) != std::string::npos);
+    CHECK(countOf(err.str(), "unknown music 'nope_theme'") == 1);
+    CHECK(audio.currentMusic() == "nope_theme"); // still the request: a later scan may bring the file
+}
+
+TEST(audio_bad_file_warns_once) {
+    Audio audio;
+    audio.scan(TestAudio);
+    CerrCapture err;
+    audio.playSound("broken");
+    audio.playSound("broken");
+    CHECK(countOf(err.str(), "'broken'") == 1);
+    CHECK(err.str().find((TestAudio / "sfx" / "broken.wav").string()) != std::string::npos);
+    audio.playSound("beep"); // a good file never warns
+    CHECK(countOf(err.str(), "Audio:") == 1);
+}
+
+TEST(region_music_field_and_crossfade_request) {
+    namespace fs = std::filesystem;
+    Region r;
+    r.music = "forest_theme";
+    auto back = parseRegion(serializeRegion(r), FrameSettings{});
+    CHECK(back && back->music == "forest_theme");
+    CHECK(parseRegion("{}", FrameSettings{})->music.empty());
+
+    const fs::path dir = fs::temp_directory_path() / "mush2d_region_music_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    Region forest; forest.music = "loop_a";
+    saveRegion(dir / "forest.region.json", forest);
+    Region cave; cave.music = "loop_b";
+    saveRegion(dir / "cave.region.json", cave);
+    Region grove; grove.music = "loop_a"; // same music as forest
+    saveRegion(dir / "grove.region.json", grove);
+    LdtkProject p = roomsInRow({320, 320, 320}); // forest x 0..10, cave 10..20, grove 20..30
+    p.levels[1].region = "cave";
+    p.levels[2].region = "grove";
+    World w; StreamLog log; hookWorld(w, log);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    MaterialLibrary lib;
+    Audio audio;
+    audio.scan(TestAudio);
+    RegionSet rs;
+    rs.init(lib, dir, &audio);
+    rs.open(w, 0, false);
+    CHECK(audio.currentMusic() == "loop_a");
+    w.loadAround(0);
+    rs.update(FrameSettings{}, 0.0f);
+    audio.update(5.0f);
+    w.update({15.0f, -5.0f}); // into the cave
+    rs.update(FrameSettings{}, 0.1f);
+    CHECK(audio.currentMusic() == "loop_b" && audio.musicMix() == 0.0f);
+    audio.update(0.5f * audio.musicFade);
+    rs.update(FrameSettings{}, 0.1f); // same region: no new request
+    audio.playMusic("loop_b");        // same music: the fade goes on
+    CHECK(std::abs(audio.musicMix() - 0.5f) < 1e-5f);
+    w.update({25.0f, -5.0f}); // grove, back to loop_a: cross-fades again
+    rs.update(FrameSettings{}, 0.1f);
+    CHECK(audio.currentMusic() == "loop_a" && audio.musicMix() == 0.0f);
+    fs::remove_all(dir);
+}
+
+TEST(effect_action_sound_validates) {
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": "beep"})")).empty());
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": "beep", "volume": 0.5, "pitch": [0.9, 1.1], "delay": 0.1})")).empty());
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": 3})")) == "sound: expected a sound name");
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": "beep", "volume": "loud"})")) == "sound: volume expected a number >= 0");
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": "beep", "volume": -1})")) == "sound: volume expected a number >= 0");
+    for (const char* pitch : {"1.1", "[1.2, 0.8]", "[0, 1]", "[1, \"x\"]", "[1]"})
+        CHECK(effectItemError(nlohmann::json::parse(std::string(R"({"sound": "beep", "pitch": )") + pitch + "}")) ==
+              "sound: pitch expected [min, max] (0 < min <= max)");
+    CHECK(effectItemError(nlohmann::json::parse(R"({"volume": 0.5})")) == "unknown action 'volume'"); // only beside a sound
+
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_sound";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "noise.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [
+        {"sound": "beep", "volume": 0.4, "pitch": [0.9, 1.1]}, {"sound": ["beep"]}, {"sound": "beep", "pitch": [2, 1]},
+        {"sound": "beep", "volume": null}]})";
+    EffectLibrary lib;
+    CerrCapture err;
+    lib.scan(dir);
+    const Effect* noise = lib.find("noise");
+    CHECK(noise && noise->actions.size() == 1);
+    CHECK(countOf(err.str(), "noise.effect.json: sound:") == 3);
+
+    Scene2D scene;
+    Audio audio;
+    audio.scan(TestAudio);
+    scene.setService(&audio);
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    bool threw = false;
+    try {
+        playEffect(scene, o, "noise", 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(scene, o, nlohmann::json::parse(R"({"sound": "beep", "pitch": "high"})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(scene, o, nlohmann::json::parse(R"({"sound": "beep", "delay": 0.05})"), 1.0f, {0.0f, 0.0f}, 1);
+        scene.step(0.1f);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(!threw && countOf(err.str(), "sound: pitch expected") == 2); // load, then play
+    std::filesystem::remove_all(dir);
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

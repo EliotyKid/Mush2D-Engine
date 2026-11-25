@@ -127,7 +127,7 @@ Tudo isso entra como novos componentes de habilidade e novos estados, sem mudar 
 - [ ] **Ataque corpo a corpo de gelo**, **projétil de gelo** (com pool de projéteis) e **defesa de gelo**.
 - [ ] **Invencibilidade breve ao ser atingido**, **hit stop** (congelar o frame no impacto) e **tremor de câmera** simples.
 - [ ] **Partículas básicas**, na CPU, para o essencial: estilhaços de gelo, poeira e impacto.
-- [ ] **Áudio básico** com miniaudio: efeitos e música por região.
+- [x] **Áudio básico** com miniaudio: efeitos e música por região.
 
 **Cresce para:**
 - **efeitos de status** como componentes (congelado, queimando);

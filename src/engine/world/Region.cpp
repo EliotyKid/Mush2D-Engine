@@ -40,6 +40,7 @@ std::optional<Region> parseRegion(const std::string& text, const FrameSettings& 
     if (auto it = j.find("look"); it != j.end() && it->is_object()) {
         if (auto look = parseLook(it->dump(), defaults)) r.look = *look;
     }
+    if (auto it = j.find("music"); it != j.end() && it->is_string()) r.music = it->get<std::string>();
     if (auto it = j.find("layers"); it != j.end() && it->is_array()) {
         for (const json& l : *it) {
             RegionLayer layer{"", 0.0f, {1.0f, 1.0f}, {0.0f, 0.0f}, false};
@@ -66,6 +67,7 @@ std::string serializeRegion(const Region& r) {
         j["layers"].push_back({{"image", l.image}, {"depth", r6(l.depth)}, {"parallax", {r6(l.parallax.x), r6(l.parallax.y)}},
                                {"offset", {r6(l.offset.x), r6(l.offset.y)}}, {"repeatX", l.repeatX}});
     }
+    if (!r.music.empty()) j["music"] = r.music;
     return j.dump(2) + "\n";
 }
 

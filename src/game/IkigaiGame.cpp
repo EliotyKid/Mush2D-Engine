@@ -48,7 +48,7 @@ void IkigaiGame::init(EngineServices& s) {
     diedSubscription = s.scene.events().subscribe<Died>([this, &s](const Died& e) {
         if (currentSceneId == SceneId::Showcase && e.id == playerObjectId) killPlayer(s, e.id);
     });
-    regions.init(s.materials, sourceAssetPath("assets/regions")); // Debug: the source tree, so panel saves survive rebuilds
+    regions.init(s.materials, sourceAssetPath("assets/regions"), &s.audio); // Debug: the source tree, so panel saves survive rebuilds
 
     atlasMaterials.clear();
     for (const AssetRegistry::Atlas& atlas : gameAssets.registry.atlases()) {
@@ -606,7 +606,7 @@ void IkigaiGame::onImGui(EngineServices& s) {
         }
     }
     bool save = false;
-    lookPanel.draw(regions.current(), lightEdits, roomLayers, s.renderer.timers(), s.camera, save);
+    lookPanel.draw(regions.current(), lightEdits, roomLayers, s.renderer.timers(), s.camera, s.audio, save);
     // Look edits reach the renderer through regions.update next frame (it may be blending).
     for (const EditableLayer& l : roomLayers) levelLoader.setLayer(regions.currentName(), l.identifier, l.value.parallax, l.value.depth);
     if (save) {

@@ -188,5 +188,6 @@
       "pixelateFactor": 2,
       "pixelateLight": false
     }
-  }
+  },
+  "music": "forest_theme"
 }

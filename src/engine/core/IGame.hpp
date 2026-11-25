@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/audio/Audio.hpp"
 #include "engine/gpu/GpuContext.hpp"
 #include "engine/graphics/Camera2D.hpp"
 #include "engine/platform/GlfwInput.hpp"
@@ -14,6 +15,7 @@ struct EngineServices {
     GlfwInput& input;
     Camera2D& camera;
     Scene2D& scene;
+    Audio& audio;
 };
 
 class IGame {

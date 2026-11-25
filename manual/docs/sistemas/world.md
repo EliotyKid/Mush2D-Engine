@@ -51,7 +51,7 @@
 | `World` | O mundo contínuo: mantém a sala atual e as vizinhas carregadas, descarrega as distantes, faz os respawns (`checkRespawns`) e a morte (`onPlayerDeath`: a sala volta ao estado de quando o player entrou). |
 | `WorldState` | Memória do mundo por id do LDtk: `isGone`, `markGone`, `clearGone`, `get(iid, chave, padrão)`, `set(iid, chave, valor)`, `snapshot`, `restore`. Flags globais `flag(nome)` e `setFlag(nome, ligado)`, guardadas no iid reservado `"_global"` (`WorldState::GlobalIid`): a morte restaura só os iids da sala, então a flag fica. Base do save futuro. |
 | `PersistentComponent` | Política (`None`, `Permanent`, `Respawn`) e `respawnDistance` de um objeto vindo do LDtk. |
-| `Region`, `RegionSet` | Regiões (`forest`, `cave`): fundo em parallax e look, com transição suave (`lerpSettings`). Arquivos `assets/regions/<nome>.region.json`. |
+| `Region`, `RegionSet` | Regiões (`forest`, `cave`): fundo em parallax, look, com transição suave (`lerpSettings`), e música (`music`, pedida ao `Audio` quando a região muda). Arquivos `assets/regions/<nome>.region.json`. |
 
 ### Prefabs e animação
 
@@ -81,7 +81,7 @@
 | `Flash` (`Effects.hpp`) | `start(cor rgb, segundos, dono)` põe `sprite->flash` = (cor, 1) e baixa a quantidade em linha reta até 0 no fim. Segundos <= 0 não faz nada. `active()`. Usado pela ação de efeito `flash`. |
 | `VelocityLean` | Inclina `transform.rotation` pela velocidade horizontal medida pela posição: até `maxDegrees` (4) a partir de `fullSpeed` (5 u/s), suavizado por `smoothing` (12/s); um salto maior que `teleportDistance` (1 u) num passo é ignorado. O `SpriteBatch` gira o sprite em torno do pivô (os pés). |
 | `EffectLibrary` (`Effects.hpp`) | Serviço da cena com os efeitos de `assets/effects/<nome>.effect.json`: `scan(pasta)`, `find(nome)` (nome desconhecido avisa uma vez), `reload(arquivo)` (arquivo inválido mantém a versão anterior). Hot reload no Debug. |
-| `playEffect` | `playEffect(scene, obj, item, força, posição, direção)`: `item` é um nome de efeito ou uma ação inline (`particles`, `squash`, `blink`, `hitstop`, `shake` e `flash`, estas cinco com `scaleByStrength`, e `effect`; qualquer uma com `delay`). Cria os componentes que faltam. |
+| `playEffect` | `playEffect(scene, obj, item, força, posição, direção)`: `item` é um nome de efeito ou uma ação inline (`particles`, `squash`, `blink`, `hitstop`, `shake` e `flash`, estas cinco com `scaleByStrength`, `effect` e `sound`; qualquer uma com `delay`). Cria os componentes que faltam. |
 | `EffectTriggers` | Componente da seção `effects` do prefab: `triggers` (gatilho → itens). Ouve `StateChanged` (`state:<label>:<estado>`), `AnimationEvent` (`anim:<nome>`) e `MovementCue` (`move:<nome>`) do dono. |
 | `MovementCue` | `{object, name, strength, position, direction}`. `emitMovementCue(scene, obj, nome, força, posição)`; `emitMovementCues(scene, obj, anterior, atual, velocidade, maxFallSpeed, turnThreshold = 2)` (`CharacterController.hpp`) emite `landed`, `left_ground` e `turned`. |
 

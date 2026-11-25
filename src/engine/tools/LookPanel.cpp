@@ -5,7 +5,7 @@
 #include <string>
 
 void LookPanel::draw(Region& region, std::vector<EditableLight>& lights, std::vector<EditableLayer>& layers,
-                     const GpuTimers& timers, Camera2D& camera, bool& saveRequested) {
+                     const GpuTimers& timers, Camera2D& camera, Audio& audio, bool& saveRequested) {
     FrameSettings& s = region.look.settings;
     ImGui::SetNextWindowPos({10, 10}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({380, 620}, ImGuiCond_FirstUseEver);
@@ -84,6 +84,13 @@ void LookPanel::draw(Region& region, std::vector<EditableLight>& lights, std::ve
     }
     if (ImGui::CollapsingHeader("Camera")) {
         ImGui::SliderFloat("tremor max (u)", &camera.maxShake, 0.0f, 2.0f); // runtime only, not saved
+    }
+    if (ImGui::CollapsingHeader("Audio")) { // runtime only, not saved
+        ImGui::Text("musica: %s", audio.currentMusic().empty() ? "(nenhuma)" : audio.currentMusic().c_str());
+        ImGui::SliderFloat("volume geral", &audio.masterVolume, 0.0f, 1.0f);
+        ImGui::SliderFloat("volume efeitos", &audio.sfxVolume, 0.0f, 1.0f);
+        ImGui::SliderFloat("volume musica", &audio.musicVolume, 0.0f, 1.0f);
+        ImGui::SliderFloat("transicao musica (s)", &audio.musicFade, 0.0f, 5.0f);
     }
     if (ImGui::CollapsingHeader("Desempenho", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("%.0f fps (%.2f ms)", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);

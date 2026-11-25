@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+class Audio;
 class LevelLoader;
 class World;
 
@@ -18,7 +19,8 @@ public:
     static constexpr float BlendSeconds = 1.5f;
 
     // dir holds the region files; region images are resolved once, through materials, when a region loads.
-    void init(MaterialLibrary& materials, std::filesystem::path dir);
+    // audio (optional) is asked for the current region's music whenever the region changes.
+    void init(MaterialLibrary& materials, std::filesystem::path dir, Audio* audio = nullptr);
     // After World::open, before its first room loads. keepLoaded (hot reload of the .ldtk alone) keeps the
     // loaded regions with their unsaved edits; otherwise the files are read again. Preloads every region the
     // project references (no file read when a room first streams in). startRoom's region becomes current
@@ -47,6 +49,7 @@ private:
     std::filesystem::path file(const std::string& name) const { return dir_ / (name + ".region.json"); }
 
     MaterialLibrary* materials_ = nullptr;
+    Audio* audio_ = nullptr;
     std::filesystem::path dir_;
     const World* world_ = nullptr;
     std::map<std::string, Region> regions_;

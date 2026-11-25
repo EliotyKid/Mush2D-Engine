@@ -42,6 +42,14 @@ O gelo só agarra com a habilidade desbloqueada. Sem ela, é uma parede comum. V
 
 Uma **região** (`forest`, `cave`) define o fundo em parallax e o look (névoa, cor, bloom) de uma área. Ao passar de uma região para outra, a transição é suave. Cada região fica em `assets/regions/<nome>.region.json` e é editada pelo [painel F1](inspetor.md).
 
+A região também escolhe a música, pelo campo `"music"` do `.region.json`:
+
+```json
+{ "look": { ... }, "layers": [ ... ], "music": "forest_theme" }
+```
+
+O nome aponta para `assets/audio/music/<nome>.wav`. Ao trocar de região, o [`Audio`](../sistemas/audio.md) faz a transição cruzada para a música nova em `musicFade` (1 s). Duas regiões com a mesma música não a reiniciam. Sem `"music"`, a região fica em silêncio (a música anterior desce). Hoje, `forest` toca `forest_theme` e `cave` toca `cave_theme`. Salvar a região pelo painel mantém o campo.
+
 ## Estado do mundo
 
 O `WorldState` lembra o que morreu, o que foi coletado e o que está aberto, indexado pelo id da entidade no LDtk. Por isso uma porta aberta continua aberta quando você sai da sala e volta.

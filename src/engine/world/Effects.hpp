@@ -11,6 +11,7 @@
 //       {"hitstop": 0.06},                                                        // Scene2D::hitstop(seconds)
 //       {"shake": {"amplitude": 0.15, "duration": 0.15}},                         // Camera2D::addShake (service)
 //       {"flash": {"color": [1, 1, 1], "duration": 0.08}},                        // Flash: tints the sprite
+//       {"sound": "step", "volume": 0.5, "pitch": [0.9, 1.1]},                    // Audio::playSound (service)
 //       {"squash": [0.8, 1.25], "delay": 0.033}]}                                 // any action, later
 // scaleByStrength multiplies the hitstop seconds, the shake amplitude and duration and the flash duration.
 //

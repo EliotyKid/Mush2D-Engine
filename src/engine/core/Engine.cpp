@@ -1,4 +1,5 @@
 #include "engine/core/Engine.hpp"
+#include "engine/core/Paths.hpp"
 #include "engine/gpu/Buffer.hpp"
 #include "engine/gpu/Image.hpp"
 
@@ -89,12 +90,16 @@ void Engine::run(IGame& game) {
     GpuContext gpu;
     GlfwInput input;
     Camera2D camera{};
+    Audio audio; // before the scene: outlives it
     Scene2D scene{};
     scene.setService(&camera); // the "shake" effect action reaches it
+    scene.setService(&audio);  // the "sound" effect action
+    audio.init();              // no device: silent
+    audio.scan(sourceAssetPath("assets/audio"));
     Bindless bindless;
     MaterialLibrary materials;
     SceneRenderer renderer;
-    EngineServices services{gpu, renderer, materials, input, camera, scene};
+    EngineServices services{gpu, renderer, materials, input, camera, scene, audio};
     VkDescriptorPool imguiPool = VK_NULL_HANDLE;
     bool imguiReady = false;
     auto teardown = [&] {
@@ -199,6 +204,7 @@ void Engine::run(IGame& game) {
             camera.updateFollow(scene, deltaTime);
             camera.clampToBounds(gpu.swapchain().extent());
             camera.updateShake(deltaTime, gpu.swapchain().extent()); // real time: a hit stop freezes the scene, not the shake
+            audio.update(deltaTime);                                 // real time too
 
             if (showPanel) {
                 game.onImGui(services);

@@ -1,5 +1,6 @@
 #include "engine/world/RegionSet.hpp"
 
+#include "engine/audio/Audio.hpp"
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/World.hpp"
 
@@ -7,8 +8,9 @@
 #include <set>
 #include <utility>
 
-void RegionSet::init(MaterialLibrary& materials, std::filesystem::path dir) {
+void RegionSet::init(MaterialLibrary& materials, std::filesystem::path dir, Audio* audio) {
     materials_ = &materials;
+    audio_ = audio;
     dir_ = std::move(dir);
 }
 
@@ -20,6 +22,7 @@ void RegionSet::open(const World& world, int startRoom, bool keepLoaded) {
     for (const LdtkLevel& l : levels) get(l.region);
     current_ = levels.empty() ? "forest" : levels[startRoom].region;
     blendTime_ = BlendSeconds; // no blend into the first region
+    if (audio_) audio_->playMusic(current().music); // same music (a reload) goes on
 }
 
 Region& RegionSet::get(const std::string& name) {
@@ -55,6 +58,7 @@ FrameSettings RegionSet::update(const FrameSettings& shown, float dt) {
             blendFrom_ = shown;
             current_ = name;
             blendTime_ = world_->dying() ? BlendSeconds : 0.0f; // death teleport: the fade-in shows the new look
+            if (audio_) audio_->playMusic(current().music);    // the same music does nothing
         }
     }
     blendTime_ = std::min(blendTime_ + dt, BlendSeconds);

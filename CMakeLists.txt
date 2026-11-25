@@ -15,6 +15,10 @@ file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS src/game/*.cpp)
 add_library(mush2d_engine STATIC ${ENGINE_SOURCES})
 # external/ only holds stb_image.h and stb_image_write.h
 target_include_directories(mush2d_engine PUBLIC src external)
+target_include_directories(mush2d_engine PRIVATE ${miniaudio_SOURCE_DIR})
+target_compile_definitions(mush2d_engine PRIVATE MA_NO_FLAC MA_NO_MP3) # audio is .wav only
+find_package(Threads REQUIRED)
+target_link_libraries(mush2d_engine PRIVATE Threads::Threads ${CMAKE_DL_LIBS}) # miniaudio: threads, and dlopen of the audio backends on Linux
 target_compile_definitions(mush2d_engine PUBLIC GLFW_INCLUDE_NONE $<$<CONFIG:Debug>:MUSH2D_SOURCE_DIR="${CMAKE_SOURCE_DIR}">)
 target_link_libraries(mush2d_engine PUBLIC glfw glm::glm Vulkan::Vulkan nlohmann_json::nlohmann_json imgui vk-bootstrap::vk-bootstrap GPUOpen::VulkanMemoryAllocator)
 
@@ -45,4 +49,7 @@ enable_testing()
 add_executable(mush2d_tests tests/tests.cpp)
 target_link_libraries(mush2d_tests PRIVATE mush2d_game)
 target_compile_definitions(mush2d_tests PRIVATE MUSH2D_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data")
+if(MSVC)
+    target_compile_options(mush2d_tests PRIVATE /bigobj) # one large test file
+endif()
 add_test(NAME mush2d_tests COMMAND mush2d_tests)

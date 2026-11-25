@@ -71,4 +71,5 @@ nav:
       - gpu: sistemas/gpu.md
       - tools: sistemas/tools.md
       - reflect: sistemas/reflect.md
+      - audio: sistemas/audio.md
   - Desempenho: desempenho.md

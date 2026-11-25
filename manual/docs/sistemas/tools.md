@@ -4,7 +4,7 @@
 
 ## O que faz
 
-- **`LookPanel`** desenha o painel de visual e desempenho: ambiente, névoa, bloom, grading, pixel art, fundo da região, camadas, luzes e tempos de GPU.
+- **`LookPanel`** desenha o painel de visual e desempenho: ambiente, névoa, bloom, grading, pixel art, fundo da região, camadas, luzes, os números de juice da câmera e do áudio (volumes e transição da música) e tempos de GPU.
 - **`LookFile`** lê e grava o look (`FrameSettings`) em JSON, a parte `"look"` do `.region.json`.
 - **`SceneInspector`** desenha a janela "Cena (F1)": a árvore de objetos ao vivo, os atributos exportados de cada objeto e componente, e os botões de salvar prefab.
 
