@@ -128,6 +128,7 @@ public:
     std::function<HitResult(const DamageInfo&)> guard;
 
     bool invulnerable() const { return invulnerable_ > 0.0f; }
+    void clearInvulnerability() { invulnerable_ = 0.0f; } // a respawn
     // Nearest integer of amount * multiplier; at least 1 when the multiplier is > 0; 0 = immune.
     int finalAmount(const DamageInfo& info) const;
 

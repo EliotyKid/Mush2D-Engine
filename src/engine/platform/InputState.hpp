@@ -28,6 +28,9 @@ struct InputState {
     ButtonState hit;
     ButtonState toggleFollow;
     ButtonState respawn;
+    ButtonState attack; // X: slash
+    ButtonState shoot;  // C: ice shard
+    ButtonState guard;  // V: shield (held)
 
     ButtonState dragCamera;
 
@@ -48,6 +51,7 @@ inline void keepEdges(InputState& now, const InputState& earlier) {
                                        &InputState::cameraLeft, &InputState::cameraRight, &InputState::cameraUp,
                                        &InputState::cameraDown, &InputState::zoomIn, &InputState::zoomOut, &InputState::jump,
                                        &InputState::dash, &InputState::hit, &InputState::toggleFollow, &InputState::respawn,
+                                       &InputState::attack, &InputState::shoot, &InputState::guard,
                                        &InputState::dragCamera}) {
         (now.*b).pressed |= (earlier.*b).pressed;
         (now.*b).released |= (earlier.*b).released;

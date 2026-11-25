@@ -8,7 +8,8 @@
 
 void SpriteAnimator::onStep(GameObject& owner, Scene2D& scene, float dt) {
     const AssetRegistry* assets = scene.service<AssetRegistry>();
-    auto it = animations.find(state);
+    auto it = action.empty() || action == "none" ? animations.end() : animations.find("action:" + action);
+    if (it == animations.end()) it = animations.find(state);
     if (!assets || !owner.sprite || it == animations.end()) return;
 
     std::string atlasName = owner.sprite->atlasName, animName = it->second;
@@ -24,8 +25,8 @@ void SpriteAnimator::onStep(GameObject& owner, Scene2D& scene, float dt) {
             scene.events().emit(AnimationEvent{owner.id, animName, e->second});
     };
 
-    if (playing_ != state) {
-        playing_ = state;
+    if (playing_ != it->first) {
+        playing_ = it->first;
         frame_ = 0;
         timer_ = 0.0f;
         entered();

@@ -35,7 +35,7 @@ Só `PlayerStart`, `Light` e `Terrain` têm fábrica em código.
 | `extra` | dados livres que a classe lê de `extra()` |
 | `sprite` | atlas, frame, animação, camada, cor, profundidade, aditivo |
 | `collider` | tamanho, offset, trigger |
-| `animations` | nome do estado → animação do atlas (vira um `SpriteAnimator`) |
+| `animations` | nome do estado → animação do atlas (vira um `SpriteAnimator`). Uma chave `action:<estado>` vale enquanto o atributo `action` do animador não é `""` nem `"none"` (o Iki o liga à máquina `"action"`) e ganha da chave do estado |
 | `animationEvents` | animação → {quadro → evento}: o `SpriteAnimator` emite um `AnimationEvent` cada vez que o quadro entra. O quadro conta a partir de 0 dentro da animação. Veja [Game juice](game-juice.md) |
 | `effects` | gatilho (`state:<máquina>:<estado>`, `anim:<evento>`, `move:<nome>`, `hit:<resultado>`) → lista de efeitos (nome de `assets/effects/<nome>.effect.json` ou ação inline). Vira um `EffectTriggers`. Veja [Efeitos reaproveitáveis](game-juice.md#efeitos-reaproveitaveis) |
 | `multipliers` | elemento → multiplicador de dano do `Damageable` (`{"Ice": 2.0}`; cria o componente se faltar). Valor inválido avisa e é ignorado. Veja [Combate](combate.md#fraquezas-e-resistencias) |

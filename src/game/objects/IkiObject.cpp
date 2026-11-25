@@ -2,9 +2,15 @@
 
 #include "engine/world/Collision.hpp"
 #include "engine/world/Effects.hpp"
+#include "engine/world/Projectile.hpp"
 #include "engine/world/Resources.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/SpriteAnimator.hpp"
+#include "game/iki/actions/GuardAction.hpp"
+#include "game/iki/actions/GuardBreakAction.hpp"
+#include "game/iki/actions/NoneAction.hpp"
+#include "game/iki/actions/ShootAction.hpp"
+#include "game/iki/actions/SlashAction.hpp"
 #include "game/iki/states/CeilingHangState.hpp"
 #include "game/iki/states/DeadState.hpp"
 #include "game/iki/states/FallState.hpp"
@@ -25,14 +31,36 @@ namespace {
 float moveTowards(float value, float target, float maxStep) {
     return value < target ? std::min(value + maxStep, target) : std::max(value - maxStep, target);
 }
+bool is(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
 } // namespace
 
-void IkiObject::onCreate(Scene2D&) {
+void IkiObject::onCreate(Scene2D& scene) {
     name = "Iki";
     addTag("player");
     sprite = SpriteData{.layer = 2};
     collider = ColliderData{.size = {0.6f, 1.6f}, .offset = {0.0f, 0.8f}}; // position = feet
-    addComponent<Resources>(); // the prefab's "components" entry tunes this one
+    addComponent<Resources>(); // the prefab's "components" entries tune these
+    Hurtbox& hurtbox = addComponent<Hurtbox>();
+    hurtbox.team = "player";
+    hurtbox.size = collider->size;
+    hurtbox.offset = collider->offset;
+    Damageable& damageable = addComponent<Damageable>();
+    damageable.invulnerableTime = invulnerableTime;
+    damageable.guard = [this](const DamageInfo& info) { return guard(info); };
+    const GameObjectId self = id;
+    subscriptions_.push_back(scene.events().subscribe<DamageTaken>([this, self](const DamageTaken& e) {
+        if (e.target == self) hurt(e.info);
+        // Its own hit dealt damage: a slash 3 weighs more (prefab "move:finisher", else "move:hit").
+        if (e.info.source == self && scene_)
+            emitMovementCue(*scene_, *this, actionIs("slash3") && !e.info.projectile ? "finisher" : "hit");
+    }));
+    subscriptions_.push_back(scene.events().subscribe<AnimationEvent>([this, self](const AnimationEvent& e) {
+        if (e.object != self || !animWindow_ || !slashing() || (e.name != "hit_on" && e.name != "hit_off")) return;
+        if (Hitbox* h = slashHitbox(actionName()[5] - '0')) { // "slash<n>"
+            if (e.name == "hit_on") h->activate();
+            else h->deactivate();
+        }
+    }));
 
     machine_.add(std::make_unique<IdleState>());
     machine_.add(std::make_unique<RunState>());
@@ -48,12 +76,30 @@ void IkiObject::onCreate(Scene2D&) {
     };
     registerStateMachine("move", &machine_);
     machine_.start(*this, "idle");
+
+    actions_.add(std::make_unique<NoneAction>());
+    for (int n = 1; n <= 3; ++n) actions_.add(std::make_unique<SlashAction>(n));
+    actions_.add(std::make_unique<ShootAction>());
+    actions_.add(std::make_unique<GuardAction>());
+    actions_.add(std::make_unique<GuardBreakAction>());
+    actions_.onChange = [this](const char*, const char* to) {
+        if (auto* animator = getComponent<SpriteAnimator>()) animator->action = to; // "action:<to>" animations
+    };
+    registerStateMachine("action", &actions_);
+    actions_.start(*this, "none");
     checkpoint_ = transform.position;
 }
 
-void IkiObject::onPrefabApplied(Scene2D&) {
-    // The prefab added the animator after start(): give it the current state.
-    if (auto* animator = getComponent<SpriteAnimator>()) animator->setState(stateName());
+void IkiObject::onPrefabApplied(Scene2D& scene) {
+    // The prefab added the animator after start(): give it the current states.
+    if (auto* animator = getComponent<SpriteAnimator>()) {
+        animator->setState(stateName());
+        animator->action = actionName();
+    }
+    for (GameObjectId child : children()) // the slash hitboxes: children Slash1..3
+        if (const GameObject* o = scene.findObject(child))
+            for (int n = 1; n <= 3; ++n)
+                if (o->name == "Slash" + std::to_string(n)) slashes_[n - 1] = child;
     checkpoint_ = transform.position;
 }
 
@@ -72,7 +118,10 @@ void IkiObject::onStep(Scene2D& scene, float dt) {
     // are events: their effects play at the next flush.
     scene_ = &scene;
     inputRead_ = true;
-    invulnerableLeft_ = std::max(0.0f, invulnerableLeft_ - dt);
+    if (auto* damageable = getComponent<Damageable>()) damageable->invulnerableTime = invulnerableTime;
+    comboLeft = std::max(0.0f, comboLeft - dt);
+    shootLeft_ = std::max(0.0f, shootLeft_ - dt);
+    if (grounded) airComboUsed_ = false;
     jump.coyoteTime = coyoteTime;
     jump.jumpBuffer = jumpBuffer;
     jump.tick(dt, grounded, input_.jump.pressed);
@@ -82,7 +131,13 @@ void IkiObject::onStep(Scene2D& scene, float dt) {
     if (grounded || !upHeld()) ceilingBlocked_ = false;
     const MoveResult previous = lastMove_;
     const int previousFacing = int(facing);
+    actions_.update(*this, dt); // first: the move states read this step's action (speed factor, air gravity)
     machine_.update(*this, dt);
+    if (actionsBlocked()) { // wall, ceiling, hurt, dead: no action (a guard break outlasts its hurt)
+        resetCombo();
+        airComboUsed_ = false;
+        if (!actionIs("none") && !(actionIs("guard_break") && is(stateName(), "hurt"))) actions_.change(*this, "none");
+    }
     flipX = facing < 0.0f;
     // The facing tells "turned" apart from braking: the Iki slows down before its velocity flips.
     if (!placed_) emitMovementCues(scene, *this, previous, lastMove_, stepVelocity_, maxFallSpeed, turnThreshold, previousFacing, int(facing));
@@ -91,6 +146,10 @@ void IkiObject::onStep(Scene2D& scene, float dt) {
 
 void IkiObject::applyGravity(float dt) {
     float g = gravity;
+    if (!grounded && slashing()) { // an air slash hangs
+        velocity_.y = std::max(velocity_.y + g * airAttackGravityFactor * dt, airAttackMaxFall);
+        return;
+    }
     if (!grounded && std::abs(velocity_.y) < apexThreshold && jumpHeld()) g *= apexGravityFactor;
     else if (velocity_.y < 0.0f) g *= fallGravityFactor;
     velocity_.y = std::max(velocity_.y + g * dt, maxFallSpeed);
@@ -99,7 +158,8 @@ void IkiObject::applyGravity(float dt) {
 void IkiObject::runHorizontal(float dt, float inputX) {
     if (wallJumpLockLeft_ > 0.0f) return; // a wall jump or a ledge hop keeps its push: no steering back to the wall
     if (inputX != 0.0f) facing = inputX > 0.0f ? 1.0f : -1.0f;
-    const float target = inputX * runSpeed;
+    const float factor = actionIs("guard") ? guardMoveFactor : slashing() && grounded ? attackMoveFactor : 1.0f;
+    const float target = inputX * runSpeed * factor;
     // Speeding up toward the input uses the acceleration; slowing down or turning uses the deceleration.
     const bool speedingUp = target != 0.0f && target * velocity_.x >= 0.0f && std::abs(target) >= std::abs(velocity_.x);
     const float rate = grounded ? (speedingUp ? groundAccel : groundDecel) : (speedingUp ? airAccel : airDecel);
@@ -107,7 +167,7 @@ void IkiObject::runHorizontal(float dt, float inputX) {
 }
 
 bool IkiObject::tryJump() {
-    if (!jump.consumeJump()) return false;
+    if (actionIs("guard") || !jump.consumeJump()) return false; // no jump behind the shield
     if (wallCoyoteLeft_ > 0.0f) {
         wallJump();
         return true;
@@ -206,9 +266,7 @@ bool IkiObject::stompBelow(Scene2D& scene) {
 
 void IkiObject::hurt(const DamageInfo& info) {
     auto* resources = getComponent<Resources>();
-    if (!resources || invulnerable() || resources->health() == 0 || info.amount <= 0) return;
-    resources->damage(info.amount); // health 0: Resources emits Died (the game runs the death)
-    invulnerableLeft_ = invulnerableTime;
+    if (!resources || is(stateName(), "dead")) return; // health 0: Resources emitted Died (the game runs the death)
     if (scene_) emitMovementCue(*scene_, *this, "hurt", invulnerableTime); // the prefab blinks this long
     wallJumpLockLeft_ = wallCoyoteLeft_ = 0.0f; // the hit ends a wall or ceiling grab: no wall jump from it
     jump.clearBuffer();
@@ -237,7 +295,11 @@ void IkiObject::respawnAt(glm::vec2 position) {
 
 void IkiObject::respawn() {
     if (auto* resources = getComponent<Resources>()) resources->refill();
-    invulnerableLeft_ = 0.0f;
+    if (auto* damageable = getComponent<Damageable>()) damageable->clearInvulnerability();
+    resetCombo();
+    airComboUsed_ = false;
+    shootLeft_ = 0.0f;
+    actions_.change(*this, "none");
     velocity_ = glm::vec2(0.0f);
     jump = JumpAssist{};
     jumpCuttable = false;
@@ -329,4 +391,107 @@ void IkiObject::climbCue(float dt, bool moving, glm::vec2 offset) {
 
 void IkiObject::grabCue(glm::vec2 offset) {
     if (scene_) emitMovementCue(*scene_, *this, "grab", 1.0f, transform.position + offset);
+}
+
+// --- Combat (machine "action") ---
+
+bool IkiObject::invulnerable() const {
+    const auto* damageable = getComponent<Damageable>();
+    return damageable && damageable->invulnerable();
+}
+
+bool IkiObject::actionIs(const char* name) const { return is(actions_.current(), name); }
+
+bool IkiObject::actionsBlocked() const {
+    const char* m = machine_.current();
+    return is(m, "wall") || is(m, "ceiling") || is(m, "hurt") || is(m, "dead");
+}
+
+bool IkiObject::canGuard() const { return is(stateName(), "idle") || is(stateName(), "run"); }
+
+bool IkiObject::slashing() const { return std::strncmp(actions_.current(), "slash", 5) == 0; }
+
+Hitbox* IkiObject::slashHitbox(int n) const {
+    const GameObject* o = scene_ && n >= 1 && n <= 3 ? scene_->findObject(slashes_[n - 1]) : nullptr;
+    return o ? o->getComponent<Hitbox>() : nullptr;
+}
+
+const char* IkiObject::startSlash(int n) {
+    if (!grounded && n == 1 && airComboUsed_) return nullptr; // one sequence per jump
+    return n == 1 ? "slash1" : n == 2 ? "slash2" : "slash3";
+}
+
+void IkiObject::beginSlash(int n) {
+    attackBuffered = false;
+    comboLeft = 0.0f;
+    if (!grounded) airComboUsed_ = true; // a slash that starts in the air uses the jump's sequence
+    if (Hitbox* h = slashHitbox(n); h && n == 3) h->knockback = finisherKnockback;
+    // The animation drives the hitbox when it has a hit_on event (prefab "animationEvents").
+    animWindow_ = false;
+    if (const auto* animator = getComponent<SpriteAnimator>()) {
+        const auto anim = animator->animations.find(std::string("action:") + actionName());
+        const auto events = anim == animator->animations.end() ? animator->animationEvents.end() : animator->animationEvents.find(anim->second);
+        if (events != animator->animationEvents.end())
+            for (const auto& [frame, event] : events->second) animWindow_ = animWindow_ || event == "hit_on";
+    }
+    if (!grounded || !scene_ || !collider || attackStep <= 0.0f) return;
+    // The step forward goes through the controller: a wall stops it.
+    body_ = bodyHere();
+    const MoveResult r = move(body_, {facing * attackStep, 0.0f}, 1.0f, query(attackStep + 1.0f), true, false);
+    transform.position = r.position - collider->offset;
+}
+
+void IkiObject::slashWindow(int n, float t) {
+    Hitbox* h = slashHitbox(n);
+    if (!h || animWindow_) return;
+    const bool on = t >= h->activeStart && t < h->activeEnd;
+    if (on && !h->active()) h->activate();
+    else if (!on && h->active()) h->deactivate();
+}
+
+void IkiObject::endSlash(int n) {
+    if (Hitbox* h = slashHitbox(n)) h->deactivate();
+}
+
+void IkiObject::openCombo(int next) {
+    comboNext = next;
+    comboLeft = comboWindow;
+}
+
+void IkiObject::resetCombo() {
+    comboNext = 1;
+    comboLeft = 0.0f;
+    attackBuffered = false;
+}
+
+const char* IkiObject::tryShoot() {
+    auto* pool = scene_ ? scene_->service<ProjectilePool>() : nullptr;
+    auto* resources = getComponent<Resources>();
+    if (!pool || !resources || shootLeft_ > 0.0f) return nullptr;
+    if (!resources->spend(Element::Ice, shardCost)) {
+        emitMovementCue(*scene_, *this, "no_energy");
+        return nullptr;
+    }
+    shootLeft_ = shootCooldown;
+    resetCombo();
+    const glm::vec2 at = transform.position + glm::vec2(facing * 0.5f, collider ? collider->offset.y : 0.8f);
+    pool->spawn("ice_shard", at, {facing, 0.0f}, "player", id);
+    return "shoot";
+}
+
+// Spec D3 "Escudo e aparo" and decisions 3 and 7. direction pushes the Iki: from the front it points against the
+// facing. Only the sign of x counts; a vertical hit (x about 0) counts as from the front.
+HitResult IkiObject::guard(const DamageInfo& info) {
+    if (!actionIs("guard")) return HitResult::Hit;
+    const float x = std::abs(info.direction.x) < 1e-4f ? 0.0f : info.direction.x;
+    if (x * facing > 0.0f) return HitResult::Hit; // from behind
+    if (info.parryable && actions_.timeInState() < parryWindow) return HitResult::Parried; // scene time: a hit stop holds it
+    auto* resources = getComponent<Resources>();
+    if (resources && resources->spend(Element::Ice, blockCost)) {
+        velocity_.x = -facing * blockPush;
+        return HitResult::Blocked;
+    }
+    actions_.change(*this, "guard_break");
+    if (scene_) emitMovementCue(*scene_, *this, "guard_break");
+    return HitResult::Hit;
 }

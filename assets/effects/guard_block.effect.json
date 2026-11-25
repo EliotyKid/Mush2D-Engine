@@ -1,0 +1,6 @@
+{"version": 1, "actions": [
+  {"hitstop": 0.04},
+  {"shake": {"amplitude": 0.08, "duration": 0.1}},
+  {"sound": "hit_block", "pitch": [0.95, 1.05]},
+  {"squash": [0.9, 1.08]}
+]}

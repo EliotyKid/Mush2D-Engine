@@ -463,6 +463,76 @@
           "default": 0.800000011920929,
           "name": "invulnerableTime",
           "type": "Float"
+        },
+        {
+          "default": 0.3499999940395355,
+          "name": "comboWindow",
+          "type": "Float"
+        },
+        {
+          "default": 0.2199999988079071,
+          "name": "slashDuration",
+          "type": "Float"
+        },
+        {
+          "default": 0.30000001192092896,
+          "name": "attackStep",
+          "type": "Float"
+        },
+        {
+          "default": 0.4000000059604645,
+          "name": "attackMoveFactor",
+          "type": "Float"
+        },
+        {
+          "default": 0.25,
+          "name": "airAttackGravityFactor",
+          "type": "Float"
+        },
+        {
+          "default": -3.0,
+          "name": "airAttackMaxFall",
+          "type": "Float"
+        },
+        {
+          "default": 8.0,
+          "name": "finisherKnockback",
+          "type": "Float"
+        },
+        {
+          "default": 15.0,
+          "name": "shardCost",
+          "type": "Float"
+        },
+        {
+          "default": 0.25,
+          "name": "shootCooldown",
+          "type": "Float"
+        },
+        {
+          "default": 0.30000001192092896,
+          "name": "guardMoveFactor",
+          "type": "Float"
+        },
+        {
+          "default": 10.0,
+          "name": "blockCost",
+          "type": "Float"
+        },
+        {
+          "default": 3.0,
+          "name": "blockPush",
+          "type": "Float"
+        },
+        {
+          "default": 0.15000000596046448,
+          "name": "parryWindow",
+          "type": "Float"
+        },
+        {
+          "default": 0.5,
+          "name": "guardBreakStun",
+          "type": "Float"
         }
       ]
     },
@@ -703,6 +773,11 @@
         {
           "default": "idle",
           "name": "state",
+          "type": "String"
+        },
+        {
+          "default": "",
+          "name": "action",
           "type": "String"
         }
       ]

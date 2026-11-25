@@ -31,11 +31,13 @@ struct AnimationEvent {
 // standing with the frame pivot on transform.position and mirrored by the owner's flipX. An animation is a
 // name in the sprite's atlas (spriteAtlas) or an "atlas/animation" ref. Needs the AssetRegistry scene service
 // and a sprite on the owner; otherwise (or for an unknown state / animation) it does nothing. After placing the
-// frame it applies the owner's SquashStretch, if any.
+// frame it applies the owner's SquashStretch, if any. A second machine can take over: while `action` is set (not
+// "" or "none") and "action:<action>" is in `animations`, that animation plays instead of the state's.
 class SpriteAnimator : public Component {
     MUSH2D_COMPONENT(SpriteAnimator)
 public:
     MUSH2D_EXPORT(std::string, state, "idle")
+    MUSH2D_EXPORT(std::string, action, "")
     std::map<std::string, std::string> animations;
     // animation -> {frame index within the animation (first frame = 0) -> event name}; prefab "animationEvents".
     // Fires every time the frame is entered: each loop, and for frames a long step skips past.
@@ -47,7 +49,7 @@ public:
     void onStep(GameObject& owner, Scene2D& scene, float dt) override;
 
 private:
-    std::string playing_; // state shown last; a different `state` restarts at frame 0
+    std::string playing_; // animations key shown last; a different `state` restarts at frame 0
     std::size_t frame_ = 0;
     float timer_ = 0.0f;
 };

@@ -2894,11 +2894,12 @@ TEST(game_prefabs_load_without_warnings) {
 
     // The Iki: the juice components in update order, its effects and their files (D2 Task 5).
     auto* iki = dynamic_cast<IkiObject*>(prefabs.instantiate(scene, "iki"));
-    CHECK(iki && iki->components().size() >= 5 && iki->getComponent<EffectTriggers>());
-    if (iki && iki->components().size() >= 5) {
-        const char* order[] = {"Resources", "SpriteAnimator", "SquashStretch", "VelocityLean", "Blink"}; // Resources: onCreate
-        for (int i = 0; i < 5; ++i) CHECK(typeOf(*iki->components()[i]).name == order[i]);
-        CHECK(iki->getComponent<SpriteAnimator>()->state == "idle" && iki->getComponent<SpriteAnimator>()->animations.size() == 8);
+    CHECK(iki && iki->components().size() >= 7 && iki->getComponent<EffectTriggers>());
+    if (iki && iki->components().size() >= 7) {
+        // Resources, Hurtbox and Damageable: onCreate.
+        const char* order[] = {"Resources", "Hurtbox", "Damageable", "SpriteAnimator", "SquashStretch", "VelocityLean", "Blink"};
+        for (int i = 0; i < 7; ++i) CHECK(typeOf(*iki->components()[i]).name == order[i]);
+        CHECK(iki->getComponent<SpriteAnimator>()->state == "idle" && iki->getComponent<SpriteAnimator>()->animations.size() == 12);
     }
     // Every effect the Iki's triggers name (directly or by an "effect" action) has a valid, non-empty file.
     EffectLibrary effects;
@@ -4200,6 +4201,11 @@ InputState zPress() { InputState in; in.jump.pressed = in.jump.down = true; retu
 InputState zHeld() { InputState in; in.jump.down = true; return in; }
 InputState rightHeld() { InputState in; in.moveRight.down = true; return in; }
 bool inState(const IkiObject& iki, const char* name) { return std::string(iki.stateName()) == name; }
+// A hit on the Iki through its Damageable (no attacker), as the game deals damage.
+void damageIki(Scene2D& scene, IkiObject& iki, DamageInfo info) {
+    scene.events().emit(HitEvent{InvalidGameObjectId, iki.id, info});
+    scene.flush();
+}
 }
 
 TEST(iki_run_accel_decel) {
@@ -4207,7 +4213,8 @@ TEST(iki_run_accel_decel) {
     ikiLevel(scene);
     IkiObject& iki = ikiOnFloor(scene, 3.0f);
     CHECK(iki.grounded && inState(iki, "idle") && std::abs(iki.transform.position.y + 4.5f) < 1e-3f); // position = feet
-    CHECK(iki.hasTag("player") && iki.stateMachines().size() == 1 && iki.stateMachines()[0].first == "move");
+    CHECK(iki.hasTag("player") && iki.stateMachines().size() == 2 && iki.stateMachines()[0].first == "move");
+    CHECK(iki.stateMachines().size() == 2 && iki.stateMachines()[1].first == "action" && std::string(iki.actionName()) == "none");
     stepIki(scene, iki, rightHeld());
     CHECK(std::abs(iki.velocity_.x - 60.0f * kDt) < 1e-3f && inState(iki, "run") && iki.facing == 1.0f);
     stepIki(scene, iki, rightHeld(), 10);
@@ -4409,27 +4416,27 @@ TEST(iki_hurt_knockback_and_invulnerability) {
     auto* resources = iki.getComponent<Resources>();
     CHECK(resources && resources->health() == 5);
     if (!resources) return;
-    iki.hurt({1, {-1.0f, 0.0f}});
+    damageIki(scene, iki, {1, {-1.0f, 0.0f}});
     CHECK(inState(iki, "hurt") && resources->health() == 4 && iki.invulnerable());
     stepIki(scene, iki, rightHeld()); // input is ignored while hurt
     CHECK(iki.velocity_.x < -4.0f && iki.velocity_.y > 0.0f && !iki.grounded && iki.facing == 1.0f);
-    iki.hurt({1, {1.0f, 0.0f}});
+    damageIki(scene, iki, {1, {1.0f, 0.0f}});
     CHECK(resources->health() == 4); // invulnerable
     stepIki(scene, iki, {}, int(0.35f / kDt) + 2);
     CHECK(!inState(iki, "hurt"));
     stepIki(scene, iki, {}, int(0.8f / kDt));
     CHECK(!iki.invulnerable());
-    iki.hurt({1, {}});
+    damageIki(scene, iki, {1, {}});
     CHECK(resources->health() == 3);
     stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
-    iki.hurt({1, {0.0f, -1.0f}}); // a hit from above pushes down, not up
+    damageIki(scene, iki, {1, {0.0f, -1.0f}}); // a hit from above pushes down, not up
     CHECK(resources->health() == 2 && iki.velocity_.y == -6.0f && iki.velocity_.x == 0.0f);
     // "hurt" carries invulnerableTime: the prefab's blink lasts as long as the invulnerability.
     stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
     std::vector<MovementCue> cues;
     auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { if (c.name == "hurt") cues.push_back(c); });
     iki.invulnerableTime = 1.25f;
-    iki.hurt({1, {}});
+    damageIki(scene, iki, {1, {}});
     scene.flush();
     CHECK(cues.size() == 1 && !cues.empty() && cues[0].strength == 1.25f);
 }
@@ -4440,7 +4447,7 @@ TEST(iki_death_emits_died) {
     IkiObject& iki = ikiOnFloor(scene, 3.0f);
     std::vector<GameObjectId> died;
     auto sub = scene.events().subscribe<Died>([&](const Died& e) { died.push_back(e.id); });
-    iki.hurt({5, {-1.0f, 0.0f}});
+    damageIki(scene, iki, {5, {-1.0f, 0.0f}});
     scene.flush();
     CHECK(died.size() == 1 && died[0] == iki.id && inState(iki, "dead"));
     InputState all = rightHeld();
@@ -4448,7 +4455,7 @@ TEST(iki_death_emits_died) {
     stepIki(scene, iki, all, 30);
     CHECK(inState(iki, "dead") && iki.velocity_.x == 0.0f && iki.grounded); // no control
     stepIki(scene, iki, {}, int(1.0f / kDt));
-    iki.hurt({1, {}});
+    damageIki(scene, iki, {1, {}});
     scene.flush();
     CHECK(died.size() == 1);
 }
@@ -4460,7 +4467,7 @@ TEST(iki_respawn_resets_state) {
     auto* resources = iki.getComponent<Resources>();
     if (!resources) { CHECK(false); return; }
     CHECK(resources->spend(Element::Ice, 30.0f));
-    iki.hurt({5, {}});
+    damageIki(scene, iki, {5, {}});
     stepIki(scene, iki, zPress()); // a Z while dead must not jump after the respawn
     iki.respawnAt({6.0f, -4.4f});
     iki.respawn();
@@ -4472,7 +4479,7 @@ TEST(iki_respawn_resets_state) {
         jumped = jumped || iki.velocity_.y > 0.0f;
     }
     CHECK(!jumped && iki.grounded);
-    iki.hurt({1, {}});
+    damageIki(scene, iki, {1, {}});
     CHECK(resources->health() == 4);
 }
 
@@ -5439,6 +5446,454 @@ TEST(stunned_times_out) {
     CHECK(s.active());
     scene.step(0.1f);
     CHECK(!s.active());
+}
+
+// --- Iki combat (D3 Task 5): machine "action" --------------------------------------------------------------
+
+namespace {
+AssetRegistry& realAssets() {
+    static AssetRegistry r = [] { AssetRegistry a; a.scan(sourceAssetPath("assets")); return a; }();
+    return r;
+}
+// The real iki prefab (Slash1..3, effects) on the floor of ikiLevel, with every combat and juice service.
+struct IkiCombat {
+    Scene2D scene;
+    CombatWorld combat;
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")};
+    EffectLibrary effects;
+    ProjectilePool pool;
+    Camera2D camera;
+    IkiObject* iki = nullptr;
+    std::vector<HitEvent> hits;
+    std::vector<DamageTaken> taken;
+    std::vector<std::string> cues, actions; // MovementCue names of the Iki; "action" machine changes
+    std::vector<EventBus::Subscription> subs;
+    explicit IkiCombat(float x = 3.0f, bool level = true) {
+        scene.setService(&realAssets());
+        scene.setService(&combat);
+        scene.setService(&prefabs);
+        effects.scan(sourceAssetPath("assets/effects"));
+        scene.setService(&effects);
+        pool.scene = &scene;
+        scene.setService(&pool);
+        scene.setService(&camera);
+        if (level) ikiLevel(scene);
+        iki = dynamic_cast<IkiObject*>(prefabs.instantiate(scene, "iki"));
+        CHECK(iki != nullptr && prefabs.warnings().empty());
+        if (!iki) return;
+        iki->transform.position = {x, -4.4f};
+        subs.push_back(scene.events().subscribe<HitEvent>([this](const HitEvent& e) { hits.push_back(e); }));
+        subs.push_back(scene.events().subscribe<DamageTaken>([this](const DamageTaken& e) { taken.push_back(e); }));
+        subs.push_back(scene.events().subscribe<MovementCue>([this](const MovementCue& e) { if (iki && e.object == iki->id) cues.push_back(e.name); }));
+        subs.push_back(scene.events().subscribe<StateChanged>([this](const StateChanged& e) { if (e.label == "action") actions.push_back(e.to); }));
+        step({}, 20);
+        actions.clear();
+    }
+    void step(const InputState& in, int frames = 1) { for (int i = 0; i < frames; ++i) { iki->applyInput(in); scene.step(kDt); } }
+    // A target with a 0.8 x 1.6 hurtbox standing at feet x, no invulnerability, 20 health, stunnable.
+    GameObject& target(float x, float y = -4.5f) {
+        GameObject& o = scene.createObject<GameObject>();
+        o.transform.position = {x, y};
+        Hurtbox& h = o.addComponent<Hurtbox>();
+        h.size = {0.8f, 1.6f};
+        h.offset = {0.0f, 0.8f};
+        o.addComponent<Damageable>().invulnerableTime = 0.0f;
+        o.addComponent<Resources>().maxHealth = 20;
+        o.addComponent<Stunned>();
+        scene.flush();
+        return o;
+    }
+    bool action(const char* name) const { return std::string(iki->actionName()) == name; }
+    // Steps with no input until the action is `name` (at most limit frames).
+    bool until(const char* name, int limit = 90) {
+        for (int f = 0; f < limit && !action(name); ++f) step({});
+        return action(name);
+    }
+    int count(const std::vector<std::string>& v, const char* s) const { return int(std::count(v.begin(), v.end(), s)); }
+    float ice() const { return iki->getComponent<Resources>()->energy(Element::Ice); }
+};
+InputState xPress() { InputState in; in.attack.pressed = in.attack.down = true; return in; }
+InputState cPress() { InputState in; in.shoot.pressed = in.shoot.down = true; return in; }
+InputState vPress() { InputState in; in.guard.pressed = in.guard.down = true; return in; }
+InputState vHeld() { InputState in; in.guard.down = true; return in; }
+// A hit on the Iki whose push is `dir` (from the front of a right-facing Iki: x < 0).
+void hitIki(IkiCombat& c, glm::vec2 dir, GameObjectId source = InvalidGameObjectId, int amount = 1, bool parryable = true) {
+    DamageInfo info{amount, dir};
+    info.source = source;
+    info.parryable = parryable;
+    c.scene.events().emit(HitEvent{source, c.iki->id, info});
+    c.scene.flush();
+}
+} // namespace
+
+TEST(iki_combo_three_slashes_chain_within_window) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject& t = c.target(4.2f);
+    const float x0 = c.iki->transform.position.x;
+    c.step(xPress());
+    CHECK(c.action("slash1") && std::abs(c.iki->transform.position.x - x0 - 0.3f) < 1e-3f); // attackStep
+    CHECK(c.until("none"));
+    c.step({}, 6); // 0.1 s: inside comboWindow
+    c.step(xPress());
+    CHECK(c.action("slash2"));
+    c.step({}, 3);
+    c.step(xPress()); // during slash 2: kept, chains at its end
+    CHECK(c.until("slash3"));
+    CHECK(c.until("none"));
+    CHECK(c.actions == std::vector<std::string>({"slash1", "none", "slash2", "slash3", "none"}));
+    CHECK(c.hits.size() == 3 && c.taken.size() == 3 && healthOf(t) == 16); // 1 + 1 + 2, each slash once
+    // After the finisher, X starts over.
+    c.step({}, 2);
+    c.step(xPress());
+    CHECK(c.action("slash1"));
+    // While slashing the ground speed is runSpeed * attackMoveFactor.
+    c.step(rightHeld(), 10);
+    CHECK(c.iki->velocity_.x <= 5.0f * 0.4f + 1e-3f && c.iki->velocity_.x > 1.0f);
+}
+
+TEST(iki_combo_resets_after_window) {
+    for (float wait : {0.3f, 0.45f}) {
+        IkiCombat c;
+        if (!c.iki) return;
+        c.step(xPress());
+        CHECK(c.until("none"));
+        c.step({}, int(wait / kDt));
+        c.step(xPress());
+        CHECK(c.action(wait < 0.35f ? "slash2" : "slash1"));
+    }
+}
+
+TEST(iki_combo_third_slash_damage_and_knockback) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.target(4.2f);
+    std::vector<int> frozen; // frozen steps after each hit
+    for (int n = 0; n < 3; ++n) {
+        c.step(xPress());
+        int f = 0, hitsBefore = int(c.hits.size());
+        for (int i = 0; i < 40 && int(c.hits.size()) == hitsBefore; ++i) c.step({});
+        for (int i = 0; i < 20; ++i) {
+            c.step({});
+            if (c.scene.lastStepFrozen()) ++f;
+            else if (f > 0) break;
+        }
+        frozen.push_back(f);
+        CHECK(c.until("none"));
+    }
+    CHECK(c.hits.size() == 3);
+    if (c.hits.size() != 3) return;
+    CHECK(c.hits[0].info.amount == 1 && c.hits[1].info.amount == 1 && c.hits[2].info.amount == 2);
+    CHECK(c.hits[0].info.knockback == 2.0f && c.hits[2].info.knockback == c.iki->finisherKnockback && c.iki->finisherKnockback == 8.0f);
+    CHECK(c.hits[2].info.element == Element::Ice && c.hits[2].info.source == c.iki->id && c.hits[2].info.direction.x > 0.0f);
+    CHECK(c.count(c.cues, "hit") == 2 && c.count(c.cues, "finisher") == 1);
+    // The weight: hit stop 0.05 s (3 frames) for a common hit, 0.09 s (6 frames) for the finisher.
+    CHECK(frozen == std::vector<int>({3, 3, 6}));
+}
+
+TEST(iki_combo_buffered_during_hitstop) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.target(4.2f);
+    c.step(xPress());
+    for (int i = 0; i < 30 && !c.scene.lastStepFrozen(); ++i) c.step({});
+    CHECK(c.scene.lastStepFrozen() && c.action("slash1"));
+    InputState release;
+    release.attack.released = true;
+    c.step(xPress()); // pressed and released while frozen
+    c.step(release);
+    CHECK(c.until("slash2", 30));
+    CHECK(c.actions == std::vector<std::string>({"slash1", "slash2"})); // no "none" between: it was kept
+}
+
+TEST(iki_air_attack_reduced_gravity_once_per_jump) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(zPress());
+    c.step(zHeld(), 2);
+    CHECK(!c.iki->grounded && c.iki->velocity_.y > 5.0f);
+    InputState xz = xPress();
+    xz.jump.down = true;
+    c.step(xz);
+    CHECK(c.action("slash1"));
+    const float before = c.iki->velocity_.y;
+    c.step(zHeld());
+    CHECK(std::abs((c.iki->velocity_.y - before) / kDt - (-32.0f * 0.25f)) < 0.01f); // airAttackGravityFactor
+    for (int i = 0; i < 30 && !c.action("none"); ++i) c.step(zHeld()); // Z held: no jump cut
+    CHECK(c.action("none"));
+    c.step(zHeld(), int(0.36f / kDt)); // past the combo window, still in the air
+    CHECK(!c.iki->grounded);
+    c.step(xz);
+    CHECK(c.action("none")); // one sequence per jump
+    for (int i = 0; i < 120 && !c.iki->grounded; ++i) c.step({});
+    c.step({});
+    c.step(xPress());
+    CHECK(c.iki->grounded && c.action("slash1")); // the ground gives it back
+
+    // The fall is limited to airAttackMaxFall while slashing (nothing to land on).
+    IkiCombat d(0.0f, false);
+    if (!d.iki) return;
+    d.step(xPress());
+    d.iki->velocity_.y = -10.0f;
+    d.step({});
+    CHECK(d.iki->velocity_.y == -3.0f && d.action("slash1"));
+}
+
+TEST(iki_combo_reset_by_hurt_wall_guard_shoot) {
+    auto afterSlash = [](IkiCombat& c) {
+        c.step(xPress());
+        CHECK(c.until("none"));
+        CHECK(c.iki->comboLeft > 0.0f && c.iki->comboNext == 2);
+    };
+    { // hurt
+        IkiCombat c;
+        if (!c.iki) return;
+        afterSlash(c);
+        hitIki(c, {-1.0f, 0.0f});
+        c.step({}, 5); // past the hit's hit stop
+        CHECK(inState(*c.iki, "hurt") && c.iki->comboLeft == 0.0f && c.iki->comboNext == 1);
+        c.step(xPress());
+        CHECK(c.action("none")); // no action while hurt
+        // A hit during a slash cuts it.
+        IkiCombat d;
+        d.step(xPress());
+        hitIki(d, {-1.0f, 0.0f});
+        d.step({}, 5);
+        CHECK(d.action("none"));
+    }
+    { // guard
+        IkiCombat c;
+        afterSlash(c);
+        c.step(vPress());
+        CHECK(c.action("guard") && c.iki->comboLeft == 0.0f && c.iki->comboNext == 1);
+        // V during a slash cancels it.
+        c.step({}, 2);
+        c.step(xPress());
+        c.step(vPress());
+        CHECK(c.action("guard"));
+    }
+    { // shoot
+        IkiCombat c;
+        afterSlash(c);
+        c.step(cPress());
+        CHECK(c.action("shoot") && c.iki->comboLeft == 0.0f && c.iki->comboNext == 1);
+    }
+    { // wall: an air slash toward an ice wall is cut by the grab; the wall gives the air sequence back
+        Scene2D scene;
+        WorldState state;
+        IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+        InputState xr = rightHeld();
+        xr.attack.pressed = xr.attack.down = true;
+        stepIki(scene, iki, xr);
+        CHECK(std::string(iki.actionName()) == "slash1");
+        CHECK(stepUntil(scene, iki, rightHeld(), "wall", 30));
+        stepIki(scene, iki, rightHeld());
+        CHECK(std::string(iki.actionName()) == "none" && iki.comboLeft == 0.0f);
+        stepIki(scene, iki, xr);
+        CHECK(std::string(iki.actionName()) == "none"); // no slash on the wall
+        stepIki(scene, iki, keys(false, false, false, false, true)); // wall jump
+        stepIki(scene, iki, {});
+        CHECK(!iki.grounded && inState(iki, "jump"));
+        stepIki(scene, iki, xPress());
+        CHECK(std::string(iki.actionName()) == "slash1");
+    }
+}
+
+TEST(iki_shoot_costs_and_cooldown) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(cPress());
+    CHECK(c.action("shoot") && c.ice() == 85.0f && c.pool.pooled("ice_shard") == 1);
+    c.step({});
+    CHECK(c.action("none"));
+    c.step(cPress()); // within shootCooldown (0.25 s): nothing
+    CHECK(c.ice() == 85.0f && c.count(c.actions, "shoot") == 1);
+    c.step({}, int(0.25f / kDt));
+    c.step(cPress());
+    CHECK(c.ice() == 70.0f && c.count(c.actions, "shoot") == 2 && c.pool.pooled("ice_shard") == 2);
+    // A shard flies right at 14 u/s and hits for 1 ice damage that counts for the Iki (prefab ice_shard).
+    c.step({}, 40); // both shards land at their range
+    GameObject& t = c.target(7.0f);
+    c.step(cPress());
+    c.step({}, 30);
+    CHECK(healthOf(t) == 19 && c.taken.size() == 1 && c.pool.pooled("ice_shard") == 2); // reused
+    CHECK(c.taken.size() == 1 && c.taken[0].info.projectile && c.taken[0].info.element == Element::Ice);
+    CHECK(c.taken.size() == 1 && c.taken[0].info.source == c.iki->id && c.count(c.cues, "hit") == 1);
+    // Without the ice: no shard, the "no_energy" cue (the prefab plays the failure sound).
+    c.iki->getComponent<Resources>()->spend(Element::Ice, c.ice() - 10.0f);
+    c.step(cPress());
+    c.scene.flush();
+    CHECK(c.action("none") && c.count(c.cues, "no_energy") == 1 && c.ice() == 10.0f && c.count(c.actions, "shoot") == 3);
+}
+
+TEST(iki_guard_blocks_front_costs_ice) {
+    IkiCombat c;
+    if (!c.iki) return;
+    auto& resources = *c.iki->getComponent<Resources>();
+    c.step(vPress());
+    CHECK(c.action("guard"));
+    c.step(vHeld(), int(0.2f / kDt)); // past the parry window
+    hitIki(c, {-1.0f, 0.0f}, InvalidGameObjectId, 2);
+    CHECK(resources.health() == 5 && c.taken.empty() && c.ice() == 90.0f && !c.iki->invulnerable());
+    CHECK(c.iki->velocity_.x == -3.0f); // blockPush, away from the hit
+    // Straight from above counts as the front (only the sign of x).
+    c.step(vHeld(), 30);
+    hitIki(c, {0.0f, -1.0f});
+    CHECK(resources.health() == 5 && c.ice() == 80.0f);
+    // Not parryable inside the window: a block, with its cost.
+    c.step({});
+    c.step(vPress());
+    hitIki(c, {-1.0f, 0.0f}, InvalidGameObjectId, 1, false);
+    CHECK(resources.health() == 5 && c.ice() == 70.0f);
+}
+
+TEST(iki_guard_back_hit_passes) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(vPress());
+    c.step(vHeld(), 20);
+    hitIki(c, {1.0f, 0.0f}); // pushes forward: it came from behind
+    CHECK(c.iki->getComponent<Resources>()->health() == 4 && c.taken.size() == 1 && c.ice() == 100.0f);
+    c.step({}, 5); // past the hit's hit stop
+    CHECK(inState(*c.iki, "hurt") && c.action("none"));
+}
+
+TEST(iki_parry_window_stuns_and_free) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject& foe = c.target(4.5f);
+    c.step(vPress());
+    c.step(vHeld(), 5); // 0.083 s < parryWindow 0.15
+    hitIki(c, {-1.0f, 0.0f}, foe.id);
+    CHECK(c.iki->getComponent<Resources>()->health() == 5 && c.ice() == 100.0f && c.taken.empty());
+    CHECK(foe.getComponent<Stunned>()->active());
+    // The weight: hit stop 0.15 s and a blue flash on the Iki.
+    CHECK(c.scene.timeScale() == 0.0f && c.iki->sprite && c.iki->sprite->flash.b > 0.9f && c.iki->sprite->flash.r < 0.6f);
+    // The stun lasts the Damageable's parryStun (1 s of scene time).
+    c.step(vHeld(), int(0.15f / kDt) + 1 + int(0.9f / kDt));
+    CHECK(foe.getComponent<Stunned>()->active());
+    c.step(vHeld(), 12);
+    CHECK(!foe.getComponent<Stunned>()->active());
+}
+
+TEST(iki_parry_reflects_projectile_and_stuns_shooter) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject& shooter = c.target(8.0f);
+    c.step(vPress());
+    // A bolt from the right toward the Iki, fired by the shooter (team enemy), as the dummy shooter will.
+    GameObject* bolt = c.pool.spawn("ice_shard", {3.7f, -3.7f}, {-1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(bolt != nullptr);
+    if (!bolt) return;
+    c.step(vHeld()); // reaches the Iki's hurtbox within the window
+    c.step(vHeld());
+    const Projectile& p = *bolt->getComponent<Projectile>();
+    CHECK(p.reflected && p.team == "player" && p.source == c.iki->id && p.direction.x > 0.99f);
+    CHECK(shooter.getComponent<Stunned>()->active() && c.taken.empty());
+    c.step(vHeld(), 60); // back to the shooter: its hit counts for the Iki
+    CHECK(healthOf(shooter) == 19 && c.taken.size() == 1 && c.taken[0].info.source == c.iki->id);
+}
+
+TEST(iki_parry_window_restarts_per_press) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(vPress());
+    c.step(vHeld(), 30); // the window is long gone
+    InputState up;
+    up.guard.released = true;
+    c.step(up);
+    CHECK(c.action("none"));
+    c.step(vPress());
+    c.step(vHeld(), 3);
+    hitIki(c, {-1.0f, 0.0f});
+    CHECK(c.ice() == 100.0f); // a parry again
+    // The parry's own hit stop does not use up the window: frozen steps do not count.
+    c.step(vHeld(), 20);
+    c.step(up);
+    c.step(vPress());
+    c.scene.hitstop(0.5f);
+    c.step(vHeld(), 30);
+    hitIki(c, {-1.0f, 0.0f});
+    CHECK(c.ice() == 100.0f);
+}
+
+TEST(iki_guard_break_without_energy) {
+    IkiCombat c;
+    if (!c.iki) return;
+    auto& resources = *c.iki->getComponent<Resources>();
+    resources.spend(Element::Ice, 95.0f);
+    c.step(vPress());
+    c.step(vHeld(), 20);
+    hitIki(c, {-1.0f, 0.0f});
+    CHECK(resources.health() == 4 && c.action("guard_break") && c.count(c.cues, "guard_break") == 1);
+    c.step(vHeld(), 3);
+    CHECK(c.action("guard_break") && inState(*c.iki, "hurt"));
+    c.step(xPress());
+    CHECK(c.action("guard_break")); // no attack
+    c.step(vHeld(), int(0.5f / kDt) + 6); // guardBreakStun, plus the frozen steps of the hit's hit stop
+    CHECK(c.action("none"));
+    c.step(vHeld(), 10);
+    CHECK(c.action("none")); // V still held: raising again needs a new press
+    c.step({});
+    c.step(vPress());
+    CHECK(c.action("guard"));
+}
+
+TEST(iki_guard_only_on_ground_and_slow) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(zPress());
+    c.step(vPress());
+    CHECK(!c.iki->grounded && c.action("none"));
+    for (int i = 0; i < 120 && !c.iki->grounded; ++i) c.step({});
+    c.step({}, 5);
+    InputState v = vPress();
+    v.moveRight.down = true;
+    c.step(v);
+    CHECK(c.action("guard"));
+    InputState vr = vHeld();
+    vr.moveRight.down = true;
+    c.step(vr, 30);
+    CHECK(std::abs(c.iki->velocity_.x - 5.0f * 0.3f) < 1e-3f); // guardMoveFactor
+    vr.jump.pressed = vr.jump.down = true;
+    c.step(vr);
+    vr.jump.pressed = false;
+    c.step(vr, 3);
+    CHECK(c.iki->grounded && c.action("guard")); // no jump
+}
+
+TEST(iki_damage_via_damageable_single_subtraction) {
+    IkiCombat c;
+    if (!c.iki) return;
+    auto& resources = *c.iki->getComponent<Resources>();
+    hitIki(c, {-1.0f, 0.0f}, InvalidGameObjectId, 2);
+    CHECK(resources.health() == 3 && c.taken.size() == 1 && inState(*c.iki, "hurt") && c.iki->invulnerable());
+    CHECK(c.iki->getComponent<Damageable>()->invulnerableTime == c.iki->invulnerableTime);
+    hitIki(c, {-1.0f, 0.0f}); // invulnerable
+    CHECK(resources.health() == 3 && c.taken.size() == 1);
+    // A hit from an enemy hitbox goes the same way.
+    c.step({}, int(0.8f / kDt) + 30);
+    GameObject& foe = c.scene.createObject<GameObject>();
+    foe.transform.position = c.iki->transform.position + glm::vec2(0.5f, 0.8f);
+    Hitbox& h = foe.addComponent<Hitbox>();
+    h.team = "enemy";
+    c.scene.flush();
+    h.activate();
+    c.step({}, 2);
+    CHECK(resources.health() == 2 && c.taken.size() == 2);
+}
+
+TEST(iki_slash_window_from_animation_events) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject& t = c.target(4.2f);
+    auto* animator = c.iki->getComponent<SpriteAnimator>();
+    animator->animationEvents["attack_prepare"] = {{1, "hit_on"}}; // frame 1 = 0.1 s: later than activeStart
+    c.step(xPress());
+    c.step({}, 4); // 0.083 s: the fallback window would have hit by now
+    CHECK(c.hits.empty() && animator->action == "slash1");
+    c.step({}, 6);
+    CHECK(c.hits.size() == 1 && healthOf(t) == 19);
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

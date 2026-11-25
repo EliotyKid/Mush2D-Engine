@@ -9,7 +9,11 @@
     "wallClimbSpeed": 3.0, "wallJumpVelocity": [6.0, 10.0], "wallJumpLock": 0.15, "ledgeHop": [2.0, 7.0],
     "ceilingMoveSpeed": 3.0, "climbParticleInterval": 0.1,
     "wallGripHalf": 0.1, "ceilingGrabReach": 0.3, "ceilingStickSpeed": 8.0,
-    "hurtDuration": 0.35, "hurtKnockback": [6.0, 6.0], "invulnerableTime": 0.8
+    "hurtDuration": 0.35, "hurtKnockback": [6.0, 6.0], "invulnerableTime": 0.8,
+    "comboWindow": 0.35, "slashDuration": 0.22, "attackStep": 0.3, "attackMoveFactor": 0.4,
+    "airAttackGravityFactor": 0.25, "airAttackMaxFall": -3.0, "finisherKnockback": 8.0,
+    "shardCost": 15.0, "shootCooldown": 0.25,
+    "guardMoveFactor": 0.3, "blockCost": 10.0, "blockPush": 3.0, "parryWindow": 0.15, "guardBreakStun": 0.5
   },
   "sprite": { "atlas": "kaa_player", "layer": 2 },
   "components": [
@@ -18,11 +22,22 @@
     { "type": "SquashStretch", "props": { "stiffness": 300.0, "damping": 18.0 } },
     { "type": "VelocityLean", "props": { "maxDegrees": 4.0, "fullSpeed": 5.0 } },
     { "type": "Blink", "props": { "rate": 16.0 } },
-    { "type": "IceStakesAbility", "props": { "unlockFlag": "ability.ice.stakes" } }
+    { "type": "IceStakesAbility", "props": { "unlockFlag": "ability.ice.stakes" } },
+    { "type": "Hurtbox", "props": { "size": [0.6, 1.6], "offset": [0.0, 0.8], "team": "player" } },
+    { "type": "Damageable", "props": { "parryStun": 1.0 } }
+  ],
+  "children": [
+    { "name": "Slash1", "type": "GameObject", "position": [0.75, 0.8],
+      "components": [ { "type": "Hitbox", "props": { "size": [1.3, 1.1], "damage": 1, "element": "Ice", "knockback": 2.0, "team": "player" } } ] },
+    { "name": "Slash2", "type": "GameObject", "position": [0.75, 0.8],
+      "components": [ { "type": "Hitbox", "props": { "size": [1.3, 1.1], "damage": 1, "element": "Ice", "knockback": 2.0, "team": "player" } } ] },
+    { "name": "Slash3", "type": "GameObject", "position": [0.85, 0.8],
+      "components": [ { "type": "Hitbox", "props": { "size": [1.5, 1.3], "damage": 2, "element": "Ice", "knockback": 8.0, "team": "player" } } ] }
   ],
   "animations": {
     "idle": "idle", "run": "run", "jump": "jump", "fall": "fall",
-    "wall": "push", "ceiling": "balance_back", "hurt": "attack_leave", "dead": "fall"
+    "wall": "push", "ceiling": "balance_back", "hurt": "attack_leave", "dead": "fall",
+    "action:slash1": "attack_prepare", "action:slash2": "attack_stay", "action:slash3": "attack_leave", "action:guard": "push"
   },
   "animationEvents": { "run": { "3": "step", "11": "step" } },
   "effects": {
@@ -34,6 +49,18 @@
     "state:move:wall": [{"squash": [1.15, 0.9]}],
     "state:move:ceiling": [{"squash": [1.15, 0.9]}],
     "move:climb": ["ice_shards"],
-    "move:hurt": [{"blink": 1.0, "scaleByStrength": true}]
+    "move:hurt": [{"blink": 1.0, "scaleByStrength": true}],
+    "state:action:slash1": ["slash_1"],
+    "state:action:slash2": ["slash_2"],
+    "state:action:slash3": ["slash_3"],
+    "move:hit": ["slash_hit"],
+    "move:finisher": ["slash_finisher"],
+    "state:action:shoot": ["shard_throw"],
+    "move:no_energy": [{"sound": "no_energy", "volume": 0.7}],
+    "state:action:guard": [{"sound": "guard_up", "volume": 0.6}, {"squash": [1.1, 0.92]}],
+    "hit:blocked": ["guard_block"],
+    "hit:parried": ["parry"],
+    "move:guard_break": ["guard_break"],
+    "hit:taken": [{"hitstop": 0.06}, {"shake": {"amplitude": 0.15, "duration": 0.15}}, {"flash": {"color": [1, 0.35, 0.35], "duration": 0.1}}]
   }
 }

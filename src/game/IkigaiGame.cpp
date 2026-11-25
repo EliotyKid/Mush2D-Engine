@@ -360,7 +360,9 @@ void IkigaiGame::handleGlobalInput(EngineServices& s, float deltaTime) {
 #ifndef NDEBUG
     // Debug J = 1 damage, pushed away from where the Iki faces; L = spend 30 ice and 30 fire (spec D2 "Recursos").
     const bool hurtKey = input.isKeyDown(GLFW_KEY_J), spendKey = input.isKeyDown(GLFW_KEY_L);
-    if (auto* iki = dynamic_cast<IkiObject*>(player); iki && hurtKey && !hurtPressed) iki->hurt({1, {-iki->facing, 0.0f}});
+    // Through the Damageable, as a real hit: the shield and the invulnerability decide (from the front, no source).
+    if (auto* iki = dynamic_cast<IkiObject*>(player); iki && hurtKey && !hurtPressed)
+        scene.events().emit(HitEvent{InvalidGameObjectId, iki->id, DamageInfo{1, {-iki->facing, 0.0f}}});
     if (Resources* resources = player ? player->getComponent<Resources>() : nullptr; resources && spendKey && !spendPressed)
         resources->spendBoth(30.0f, 30.0f);
     hurtPressed = hurtKey;
