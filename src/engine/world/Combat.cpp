@@ -9,9 +9,21 @@
 #include <algorithm>
 #include <cmath>
 
-Collision2D::AABB combatBox(const GameObject& owner, glm::vec2 size, glm::vec2 offset) {
-    if (owner.flipX) offset.x = -offset.x;
-    const glm::vec2 center = owner.world().position + offset;
+const GameObject& combatRoot(const Scene2D& scene, const GameObject& o) {
+    const GameObject* top = &o;
+    while (const GameObject* up = scene.findObject(top->parent())) top = up;
+    return *top;
+}
+
+Collision2D::AABB combatBox(const Scene2D& scene, const GameObject& owner, glm::vec2 size, glm::vec2 offset) {
+    const GameObject& root = combatRoot(scene, owner);
+    glm::vec2 center = owner.world().position;
+    if (root.flipX) {
+        offset.x = -offset.x;
+        const float rootX = root.world().position.x;
+        center.x = 2.0f * rootX - center.x; // a child's place mirrored around the root (no-op for the root)
+    }
+    center += offset;
     return {center - 0.5f * size, center + 0.5f * size};
 }
 
@@ -45,6 +57,7 @@ void CombatWorld::query(const Collision2D::AABB& box, std::vector<Hurtbox*>& out
 
 void Hurtbox::onAttach(GameObject& owner, Scene2D& scene) {
     owner_ = &owner;
+    scene_ = &scene;
     world_ = scene.service<CombatWorld>();
     if (world_) world_->add(*this);
 }
@@ -58,15 +71,10 @@ void Hurtbox::onDetach(GameObject&, Scene2D&) {
     if (world_) world_->remove(*this);
     world_ = nullptr;
     owner_ = nullptr;
+    scene_ = nullptr;
 }
 
 namespace {
-
-GameObjectId rootOf(Scene2D& scene, const GameObject& o) {
-    const GameObject* top = &o;
-    while (const GameObject* up = scene.findObject(top->parent())) top = up;
-    return top->id;
-}
 
 // Effect trigger on `o` at its position; direction mirrors the particles.
 void fireHit(Scene2D& scene, GameObject& o, const char* key, float strength, int direction) {
@@ -79,19 +87,21 @@ void fireHit(Scene2D& scene, GameObject& o, const char* key, float strength, int
 void Hitbox::onStep(GameObject& owner, Scene2D& scene, float) {
     CombatWorld* world = active_ ? scene.service<CombatWorld>() : nullptr;
     if (!world) return;
-    world->query(combatBox(owner, size, offset), found_);
-    const glm::vec2 from = owner.world().position;
+    world->query(combatBox(scene, owner, size, offset), found_);
+    const GameObject& root = combatRoot(scene, owner);
+    const glm::vec2 from = root.world().position; // the attacker is the root (a slash child counts for its owner)
     for (Hurtbox* h : found_) {
         GameObject& target = *h->owner();
         if (h->team == team || std::find(hit_.begin(), hit_.end(), target.id) != hit_.end()) continue;
         hit_.push_back(target.id);
         DamageInfo info;
         info.amount = damage;
-        const glm::vec2 d = target.world().position - from;
-        info.direction = glm::length(d) > 1e-5f ? glm::normalize(d) : glm::vec2(owner.flipX ? -1.0f : 1.0f, 0.0f);
+        const Collision2D::AABB hurt = h->box(); // mirrored like the hurtbox itself
+        const glm::vec2 d = 0.5f * (hurt.min + hurt.max) - from;
+        info.direction = glm::length(d) > 1e-5f ? glm::normalize(d) : glm::vec2(root.flipX ? -1.0f : 1.0f, 0.0f);
         info.element = element;
         info.knockback = knockback;
-        info.source = source ? source : rootOf(scene, owner);
+        info.source = source ? source : root.id;
         info.parryable = parryable;
         scene.events().emit(HitEvent{owner.id, target.id, info});
     }
@@ -121,7 +131,8 @@ void Damageable::take(GameObject& owner, Scene2D& scene, const HitEvent& hit) {
     const DamageInfo& info = hit.info;
     const int dir = info.direction.x < 0.0f ? -1 : 1;
 
-    const HitResult result = guard ? guard(info) : HitResult::Hit;
+    HitResult result = guard ? guard(info) : HitResult::Hit;
+    if (result == HitResult::Parried && !info.parryable) result = HitResult::Blocked; // spec D3 decision 3
     if (result == HitResult::Blocked) return fireHit(scene, owner, "hit:blocked", 1.0f, dir);
     if (result == HitResult::Parried) {
         if (GameObject* src = scene.findObject(info.source))

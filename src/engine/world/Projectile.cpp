@@ -72,9 +72,19 @@ void Projectile::onStep(GameObject& owner, Scene2D& scene, float dt) {
     traveled_ += length;
 
     if (CombatWorld* world = scene.service<CombatWorld>()) {
-        world->query(combatBox(owner, size, glm::vec2(0.0f)), found_);
+        world->query(combatBox(scene, owner, size, glm::vec2(0.0f)), found_);
+        Hurtbox* nearest = nullptr; // the first one along the step
+        float best = 0.0f;
         for (Hurtbox* h : found_) {
             if (h->team == team) continue;
+            const Collision2D::AABB box = h->box();
+            const float d = glm::length(0.5f * (box.min + box.max) - from);
+            if (!nearest || d < best) {
+                nearest = h;
+                best = d;
+            }
+        }
+        if (Hurtbox* h = nearest) {
             DamageInfo info;
             info.amount = damage;
             info.direction = direction;

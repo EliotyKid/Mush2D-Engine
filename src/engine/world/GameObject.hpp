@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Component.hpp"
+#include "GameObjectId.hpp"
 #include "ObjectData.hpp"
 
 #include <cmath>
@@ -32,23 +33,6 @@ inline glm::vec2 localToWorld(const Transform2D& parentWorld, const glm::vec2& l
     glm::vec2 scaled = parentWorld.scale * local;
     return parentWorld.position + glm::vec2{c * scaled.x - s * scaled.y, s * scaled.x + c * scaled.y};
 }
-
-// Slot-map handle: a stale id (slot freed or reused) has a mismatched generation.
-struct GameObjectId {
-    std::uint32_t index = 0;
-    std::uint32_t generation = 0; // 0 = invalid
-
-    explicit operator bool() const { return generation != 0; }
-    bool operator==(const GameObjectId&) const = default;
-};
-inline constexpr GameObjectId InvalidGameObjectId{};
-
-template<>
-struct std::hash<GameObjectId> {
-    std::size_t operator()(const GameObjectId& id) const noexcept {
-        return std::hash<std::uint64_t>{}((std::uint64_t(id.generation) << 32) | id.index);
-    }
-};
 
 class GameObject {
 public:

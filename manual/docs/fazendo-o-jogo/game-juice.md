@@ -156,6 +156,7 @@ A seção `"effects"` do prefab liga gatilhos a uma lista. Cada item da lista é
 | `state:<máquina>:<estado>` | Uma máquina de estados registrada com `registerStateMachine("<máquina>", ...)` entra no estado. O primeiro estado (o `start`) também conta. |
 | `anim:<evento>` | O `SpriteAnimator` entra num quadro de `animationEvents` com esse nome (veja [Eventos por quadro](#eventos-por-quadro)). |
 | `move:<nome>` | Um `MovementCue` do objeto. `landed`, `left_ground` e `turned` vêm de `emitMovementCues`; os outros, o próprio objeto emite. |
+| `hit:<resultado>` | Um acerto de combate (veja [Combate](combate.md#gatilhos-de-efeito)). `hit:taken` e `hit:dealt` têm força = dano final; `hit:blocked`, `hit:parried` e `hit:immune` têm força 1 (não há dano para escalar). Tocam na posição do objeto. |
 
 - O efeito toca na posição do gatilho. Sem posição, toca nos pés do objeto: a base do collider ou, sem collider, a posição.
 - A direção é o lado para onde o objeto olha (`flipX` espelha as partículas).

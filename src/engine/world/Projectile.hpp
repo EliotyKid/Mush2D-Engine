@@ -55,7 +55,9 @@ private:
 
 // Scene service: projectiles by prefab, reused once they landed. `scene` must be set (the game does it);
 // it needs the PrefabLibrary service. Stale objects (destroyed by a room unload, a clear() on death restore
-// or hot reload) are forgotten at the next spawn, never touched.
+// or hot reload) are forgotten at the next spawn, never touched. A projectile created while a room spawns
+// (scene.spawnRoomIid set, e.g. from an onCreate during LevelLoader::loadRoom) belongs to that room and is
+// destroyed when it unloads; otherwise it has no room and stays until clear().
 class ProjectilePool {
 public:
     Scene2D* scene = nullptr;

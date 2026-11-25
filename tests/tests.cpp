@@ -5315,6 +5315,116 @@ TEST(combat_world_cleans_destroyed_and_unloaded) {
     CHECK(next && c.scene.find(next->id) == next && c.pool.pooled("test_bolt") == 1);
 }
 
+TEST(combat_boxes_mirror_with_root_facing) {
+    CombatScene c;
+    // Own offset: a hitbox 1 u in front of its owner.
+    GameObject& a = c.attacker({0.0f, 0.0f});
+    Hitbox& h = *a.getComponent<Hitbox>();
+    h.size = {0.5f, 0.5f};
+    h.offset = {1.0f, 0.0f};
+    GameObject& right = c.target({1.0f, 0.0f});
+    GameObject& left = c.target({-1.0f, 0.0f});
+    c.scene.flush();
+    h.activate();
+    c.steps(1);
+    CHECK(c.hits.size() == 1 && c.hits.back().target == right.id);
+    a.flipX = true;
+    h.activate();
+    c.steps(1);
+    CHECK(c.hits.size() == 2 && c.hits.back().target == left.id);
+
+    // A child placed in front of the root, with no offset: follows the root's facing.
+    CombatScene d;
+    GameObject& root = d.scene.createObject<GameObject>();
+    GameObject& bite = d.attacker({1.0f, 0.0f});
+    bite.getComponent<Hitbox>()->size = {0.5f, 0.5f};
+    d.scene.setParent(bite.id, root.id, false);
+    GameObject& r2 = d.target({1.0f, 0.0f});
+    GameObject& l2 = d.target({-1.0f, 0.0f});
+    d.scene.flush();
+    Hitbox& hb = *bite.getComponent<Hitbox>();
+    hb.activate();
+    d.steps(1);
+    CHECK(d.hits.size() == 1 && d.hits.back().target == r2.id && d.hits.back().info.source == root.id);
+    root.flipX = true;
+    hb.activate();
+    d.steps(1);
+    CHECK(d.hits.size() == 2 && d.hits.back().target == l2.id);
+
+    // A hurtbox on a child mirrors too; the fallback direction (same place) is the root's facing.
+    CombatScene e;
+    GameObject& body = e.scene.createObject<GameObject>();
+    GameObject& part = e.target({1.0f, 0.0f}, "player");
+    e.scene.setParent(part.id, body.id, false);
+    GameObject& foe = e.attacker({-1.0f, 0.0f}, "enemy");
+    foe.getComponent<Hitbox>()->size = {0.5f, 0.5f};
+    e.scene.flush();
+    Hitbox& fh = *foe.getComponent<Hitbox>();
+    fh.activate();
+    e.steps(1);
+    CHECK(e.hits.empty()); // the part is on the right
+    body.flipX = true;
+    e.steps(1);
+    CHECK(e.hits.size() == 1 && e.hits.back().target == part.id);
+    GameObject& same = e.attacker({-1.0f, 0.0f}, "enemy");
+    same.flipX = true;
+    e.scene.flush();
+    same.getComponent<Hitbox>()->activate();
+    e.steps(1);
+    CHECK(e.hits.size() == 2 && e.hits.back().info.direction == glm::vec2(-1.0f, 0.0f));
+}
+
+TEST(damageable_parryable_false_is_a_block) {
+    CombatScene c;
+    GameObject& t = c.target({0.0f, 0.0f}, "player");
+    Damageable& d = *t.getComponent<Damageable>();
+    EffectTriggers& fx = t.addComponent<EffectTriggers>();
+    fx.triggers["hit:blocked"] = {nlohmann::json{{"blink", 0.5}}};
+    fx.triggers["hit:parried"] = {nlohmann::json{{"squash", {1.2, 0.8}}}};
+    d.guard = [](const DamageInfo&) { return HitResult::Parried; };
+    GameObject& shooter = c.scene.createObject<GameObject>();
+    Stunned& stun = shooter.addComponent<Stunned>();
+    GameObject* bolt = c.pool.spawn("test_bolt", {1.0f, 0.0f}, {-1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(bolt != nullptr);
+    if (!bolt) return;
+    c.scene.flush();
+    DamageInfo hit;
+    hit.source = shooter.id;
+    hit.parryable = false;
+    hit.projectile = true;
+    hitOnce(c.scene, bolt->id, t.id, hit);
+    const Projectile& p = *bolt->getComponent<Projectile>();
+    CHECK(healthOf(t) == 10 && c.taken.empty() && !stun.active() && !p.reflected && p.team == "enemy");
+    CHECK(t.getComponent<Blink>() && t.getComponent<Blink>()->active() && !t.getComponent<SquashStretch>());
+}
+
+TEST(projectile_hits_invulnerable_target_breaks_without_damage) {
+    CombatScene c;
+    GameObject& t = c.target({2.0f, 0.0f}, "player");
+    t.getComponent<Damageable>()->invulnerableTime = 5.0f;
+    c.scene.flush();
+    hitOnce(c.scene, InvalidGameObjectId, t.id);
+    CHECK(healthOf(t) == 9);
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(b != nullptr);
+    if (!b) return;
+    c.steps(20);
+    CHECK(c.hits.size() == 2 && c.breaks.size() == 1 && !b->getComponent<Projectile>()->flying()); // hitOnce + the bolt
+    CHECK(healthOf(t) == 9 && c.taken.size() == 1);
+}
+
+TEST(projectile_hits_nearest_hurtbox_along_step) {
+    CombatScene c;
+    GameObject& farther = c.target({3.4f, 0.0f}, "player"); // first in grid order
+    GameObject& nearer = c.target({2.6f, 0.0f}, "player");
+    c.scene.flush();
+    c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    c.scene.flush();
+    c.scene.step(0.3f); // one 3 u step: its box overlaps both
+    CHECK(c.hits.size() == 1 && c.hits[0].target == nearer.id);
+    CHECK(healthOf(nearer) == 9 && healthOf(farther) == 10);
+}
+
 TEST(stunned_times_out) {
     Scene2D scene;
     GameObject& o = scene.createObject<GameObject>();

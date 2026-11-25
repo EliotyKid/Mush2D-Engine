@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/reflect/Reflect.hpp"
-#include "engine/world/GameObject.hpp"
+#include "engine/world/GameObjectId.hpp"
 
 #include <glm/glm.hpp>
 

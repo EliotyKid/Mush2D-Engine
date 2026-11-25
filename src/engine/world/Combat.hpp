@@ -56,8 +56,12 @@ private:
     std::vector<GameObjectId> ids_;
 };
 
-// World box of a size/offset pair on `owner` (offset mirrored when the owner faces left).
-Collision2D::AABB combatBox(const GameObject& owner, glm::vec2 size, glm::vec2 offset);
+// The object at the top of o's parents (o itself for a root).
+const GameObject& combatRoot(const Scene2D& scene, const GameObject& o);
+// World box of a size/offset pair on `owner`. Mirroring follows the root's facing (its flipX): facing left,
+// the offset's x flips and a child's place is mirrored around the root, so a child placed in front of a
+// right-facing owner stays in front when it turns.
+Collision2D::AABB combatBox(const Scene2D& scene, const GameObject& owner, glm::vec2 size, glm::vec2 offset);
 
 class Hurtbox : public Component {
     MUSH2D_COMPONENT(Hurtbox)
@@ -68,7 +72,7 @@ public:
     // `enabled` (exported by Component): false = never hit, as if it was not in the grid.
 
     GameObject* owner() const { return owner_; }
-    Collision2D::AABB box() const { return owner_ ? combatBox(*owner_, size, offset) : Collision2D::AABB{}; }
+    Collision2D::AABB box() const { return owner_ ? combatBox(*scene_, *owner_, size, offset) : Collision2D::AABB{}; }
 
     void onAttach(GameObject& owner, Scene2D& scene) override;
     void onStep(GameObject& owner, Scene2D& scene, float dt) override; // keeps the grid box current
@@ -76,6 +80,7 @@ public:
 
 private:
     GameObject* owner_ = nullptr;
+    const Scene2D* scene_ = nullptr;
     CombatWorld* world_ = nullptr; // the one it was added to
 };
 
@@ -117,7 +122,9 @@ public:
 
     // Element -> damage multiplier (missing = 1, 0 = immune). Prefab section "multipliers": {"Ice": 2.0}.
     std::map<Element, float> multipliers;
-    // Asked first; Blocked and Parried deal no damage and start no invulnerability.
+    // Asked after the invulnerability check; Blocked and Parried deal no damage and start no invulnerability.
+    // info.parryable false: the guard should answer Blocked (and charge its block); a Parried is turned into
+    // Blocked anyway (no stun, no reflection).
     std::function<HitResult(const DamageInfo&)> guard;
 
     bool invulnerable() const { return invulnerable_ > 0.0f; }

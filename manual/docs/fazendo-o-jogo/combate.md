@@ -20,7 +20,8 @@ O jogo registra dois serviços da cena: `CombatWorld` (as hurtboxes) e `Projecti
 ]
 ```
 
-- `size` e `offset` (u) formam a caixa em volta da posição do objeto. O `offset` espelha em x quando o objeto olha para a esquerda (`flipX`).
+- `size` e `offset` (u) formam a caixa em volta da posição do objeto.
+- **Espelho:** segue para onde o objeto raiz olha (o `flipX` do ancestral do topo). Olhando para a esquerda, o x do `offset` inverte, e um filho fica espelhado em volta da raiz: um filho em `[0.6, 0.4]` fica na frente para os dois lados. Vale para hitbox e hurtbox. O `flipX` do próprio filho não conta.
 - `team`: `"player"` ou `"enemy"`. Um golpe nunca acerta o próprio time.
 - `enabled` falso: a hurtbox não é atingida (o boneco quebrado faz isso). Objeto inativo também não.
 - Fica no `CombatWorld`, uma grade só de hurtboxes. Sai sozinha quando o objeto é destruído, quando a sala descarrega, na morte, no hot reload e no `removeComponent`.
@@ -45,11 +46,13 @@ O jogo registra dois serviços da cena: `CombatWorld` (as hurtboxes) e `Projecti
 | `parryable` | verdadeiro | falso: o aparo vira só bloqueio |
 | `activeStart`, `activeEnd` | 0,05 e 0,15 s | a janela do golpe, para o código que o controla quando a animação não tem os eventos `hit_on` e `hit_off` |
 
+A caixa espelha como a da hurtbox (veja acima): ponha o filho na frente de quem olha para a direita.
+
 A hitbox começa desligada. O código do ataque chama `activate()` no começo do golpe e `deactivate()` no fim. Cada ativação acerta cada hurtbox uma vez só: segurar a hitbox ligada não dá dano a cada quadro. Ativar de novo permite acertar de novo.
 
 Cada acerto emite `HitEvent{attacker, target, info}`. O `info` (`DamageInfo`) leva o dano, o elemento, o empurrão, `parryable` e:
 
-- `direction`: do atacante ao alvo (unitária). Num projétil, a direção do voo;
+- `direction`: do atacante (o objeto raiz) ao centro da hurtbox do alvo (unitária). No mesmo lugar, para onde a raiz olha. Num projétil, a direção do voo;
 - `source`: quem conta como autor. Na hitbox, é o objeto raiz do dono (o golpe do filho `Slash1` conta para o Iki), ou o campo `source` da hitbox se preenchido.
 
 ## Dano
@@ -57,7 +60,7 @@ Cada acerto emite `HitEvent{attacker, target, info}`. O `info` (`DamageInfo`) le
 O `Damageable` recebe os `HitEvent` cujo alvo é o dono, nesta ordem:
 
 1. **Invencibilidade:** durante `invulnerableTime` (0,2 s) depois de um dano, o golpe é ignorado. Não há aparo nesse tempo.
-2. **Escudo:** o callback `guard` (opcional, em C++) devolve `Hit`, `Blocked` ou `Parried`. Bloqueado ou aparado não dá dano nem invencibilidade.
+2. **Escudo:** o callback `guard` (opcional, em C++) recebe o `DamageInfo` e devolve `Hit`, `Blocked` ou `Parried`. Bloqueado ou aparado não dá dano nem invencibilidade. Com `info.parryable` falso, o `guard` deve tratar o golpe como bloqueio (e cobrar o bloqueio); se ele devolver `Parried` mesmo assim, o `Damageable` o troca por `Blocked`: sem atordoar nem refletir.
 3. **Fraquezas:** o multiplicador do elemento (veja abaixo).
 4. **Vida:** tira o dano final do `Resources` do dono (alvo já morto ignora o golpe).
 5. **Aviso:** emite `DamageTaken{target, info, finalAmount}`. Quem reage ao dano (empurrão, estado `hurt`) ouve esse evento.
@@ -76,7 +79,7 @@ Na seção `effects` do prefab, como os gatilhos `state:`, `anim:` e `move:`:
 | `hit:blocked` | alvo | `guard` devolveu `Blocked` | 1 |
 | `hit:parried` | alvo | `guard` devolveu `Parried` | 1 |
 
-Os efeitos tocam na posição do objeto, espelhados pela direção do golpe.
+Os efeitos tocam na posição do objeto, espelhados pela direção do golpe. `hit:blocked`, `hit:parried` e `hit:immune` têm força 1, porque não há dano para escalar: um `scaleByStrength` neles toca no tamanho normal.
 
 ```json
 "effects": {
@@ -121,6 +124,9 @@ Os efeitos tocam na posição do objeto, espelhados pela direção do golpe.
 
 - Anda em linha reta e bate nos segmentos do terreno (`CollisionWorld`). Os de mão única deixam passar.
 - Quebra na parede ou no primeiro acerto: emite o gatilho `move:break` onde quebrou, some e volta ao pool. As partículas da quebra continuam tocando.
+- Se duas hurtboxes de outro time estão no caminho de um mesmo passo, acerta a mais perto de onde ele estava.
+- Um alvo invencível também quebra o projétil, sem tomar dano.
+- Um projétil criado enquanto uma sala nasce (num `onCreate` durante o carregamento dela) pertence a essa sala e some quando ela descarrega. Fora disso, ele não tem sala.
 - Atirar: `scene.service<ProjectilePool>()->spawn("dummy_bolt", posição, direção, "enemy", atirador.id)`. Velocidade e dano vêm do prefab. O pool reaproveita um projétil parado do mesmo prefab.
 - **Refletir:** no aparo, o projétil volta pela mesma linha, com o mesmo dano, `source` = quem aparou e o `team` da hurtbox dele. Assim ele acerta quem atirou, e o `hit:dealt` é de quem aparou. Só reflete uma vez (`reflected`).
 
