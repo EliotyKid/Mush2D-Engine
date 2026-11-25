@@ -68,7 +68,22 @@
 | `Resources` (`Resources.hpp`) | Componente de vida e energias de gelo e fogo. Começa cheio. `health()`, `energy(Element)`, `damage(n)` (ignorado depois da morte), `heal(n)`, `refill()` (tudo ao máximo, no renascimento), `spend(Element, quantia)` (falso e nada gasto sem energia suficiente), `spendBoth(gelo, fogo)` (os dois ou nenhum). Cada energia recarrega `regenPerSecond` (10/s) depois de `regenDelay` (1 s) sem gastar aquele elemento; o `onStep` chama `update(scene, dt)`. Atributos: `maxHealth` 5, `maxIce` 100, `maxFire` 100, `regenPerSecond`, `regenDelay`. |
 | Eventos | `HealthChanged{id, health, max}`, `EnergyChanged{id, element, value, max}`, `Died{id}` (vida chegou a 0), no `scene.events()`. |
 | `Element` (`Damage.hpp`) | `None`, `Ice`, `Fire` (`MUSH2D_ENUM`). |
-| `DamageInfo` | Um golpe: `amount` (1), `direction` (para onde empurra o alvo), `element` (`None`). O D3 acrescenta campos. |
+| `DamageInfo` | Um golpe: `amount` (1), `direction` (para onde empurra o alvo: do atacante ao alvo, ou a velocidade do projétil), `element` (`None`), `knockback` (0), `source` (quem conta como autor: o atirador de um projétil), `parryable` (verdadeiro), `projectile` (falso). |
+
+### Combate
+
+Guia: [Combate](../fazendo-o-jogo/combate.md).
+
+| Tipo | Papel |
+|---|---|
+| `CombatWorld` (`Combat.hpp`) | Serviço da cena com as hurtboxes numa `SpatialGrid` própria (a grade de colisão não muda). `add(hurtbox)`, `remove(hurtbox)`, `query(caixa, saída)` (só hurtboxes `enabled` de objetos ativos, testadas com a caixa atual), `size()`. Uma hurtbox por objeto. |
+| `Hurtbox` | Componente: `size`, `offset`, `team` (`"enemy"`), `enabled`. Entra no `CombatWorld` ao ser anexada e sai ao ser desanexada; isso cobre `destroy`, descarregamento de sala, `clear()` (morte, hot reload) e `removeComponent`. A caixa é atualizada a cada passo. |
+| `Hitbox` | Componente: `size`, `offset`, `damage` (1), `element` (`Ice`), `knockback` (0), `team` (`"player"`), `parryable`, `activeStart` (0,05) e `activeEnd` (0,15) (a janela do golpe para quem o controla). `activate()`, `deactivate()`, `active()`, `source` (vazio = o objeto raiz do dono). Ativa, acerta uma vez por ativação cada hurtbox de outro `team` e emite `HitEvent`. O `offset` espelha com `flipX`. |
+| `Damageable` | Componente: `invulnerableTime` (0,2), `parryStun` (1), `multipliers` (elemento → multiplicador; seção de prefab `"multipliers"`), `guard` (callback, devolve `HitResult`). Ouve os `HitEvent` do dono. `finalAmount(info)`: inteiro mais próximo, mínimo 1 com multiplicador maior que 0, 0 = imune. |
+| `Stunned` | Componente: `start(segundos)` (fica com o maior), `active()`. |
+| Eventos | `HitEvent{attacker, target, info}`, `DamageTaken{target, info, finalAmount}`; `enum class HitResult { Hit, Blocked, Parried }`. |
+| `Projectile` (`Projectile.hpp`) | Componente: `speed` (10), `range` (8), `team`, `damage` (1), `element` (`Ice`), `parryable`, `size` (0,25 × 0,25). `direction`, `source`, `reflected`, `launch(...)`, `reflect(novaOrigem, novoTime)` (uma vez só), `flying()`. Anda em linha reta pelo `CollisionWorld` (segmentos de mão única deixam passar), quebra na parede ou no primeiro acerto com `move:break` e volta ao pool. |
+| `ProjectilePool` | Serviço da cena (`scene` precisa ser preenchido): `spawn(prefab, posição, direção, time, origem)` reaproveita um projétil parado do mesmo prefab ou cria um pelo `PrefabLibrary`. Ids destruídos (sala, `clear()`) são esquecidos no próximo `spawn`. `pooled(prefab)`. |
 
 ### Juice
 
@@ -82,7 +97,7 @@
 | `VelocityLean` | Inclina `transform.rotation` pela velocidade horizontal medida pela posição: até `maxDegrees` (4) a partir de `fullSpeed` (5 u/s), suavizado por `smoothing` (12/s); um salto maior que `teleportDistance` (1 u) num passo é ignorado. O `SpriteBatch` gira o sprite em torno do pivô (os pés). |
 | `EffectLibrary` (`Effects.hpp`) | Serviço da cena com os efeitos de `assets/effects/<nome>.effect.json`: `scan(pasta)`, `find(nome)` (nome desconhecido avisa uma vez), `reload(arquivo)` (arquivo inválido mantém a versão anterior). Hot reload no Debug. |
 | `playEffect` | `playEffect(scene, obj, item, força, posição, direção)`: `item` é um nome de efeito ou uma ação inline (`particles`, `squash`, `blink`, `hitstop`, `shake` e `flash`, estas cinco com `scaleByStrength`, `effect` e `sound`; qualquer uma com `delay`). Cria os componentes que faltam. |
-| `EffectTriggers` | Componente da seção `effects` do prefab: `triggers` (gatilho → itens). Ouve `StateChanged` (`state:<label>:<estado>`), `AnimationEvent` (`anim:<nome>`) e `MovementCue` (`move:<nome>`) do dono. |
+| `EffectTriggers` | Componente da seção `effects` do prefab: `triggers` (gatilho → itens). Ouve `StateChanged` (`state:<label>:<estado>`), `AnimationEvent` (`anim:<nome>`) e `MovementCue` (`move:<nome>`) do dono. O `Damageable` dispara os gatilhos `hit:taken`, `hit:dealt` (força = dano final), `hit:immune`, `hit:blocked` e `hit:parried` (força 1). |
 | `MovementCue` | `{object, name, strength, position, direction}`. `emitMovementCue(scene, obj, nome, força, posição)`; `emitMovementCues(scene, obj, anterior, atual, velocidade, maxFallSpeed, turnThreshold = 2)` (`CharacterController.hpp`) emite `landed`, `left_ground` e `turned`. |
 
 ## Casos de uso
@@ -162,6 +177,10 @@ Com `MUSH2D_COMPONENT`, ele pode ser listado em `"components"` de um prefab.
 
 `scene.hitstop(0.06f);` (ou a ação de efeito `{"hitstop": 0.06}`). Enquanto dura, `timeScale()` é 0 e `step(dt)` só desconta `dt` do hit stop: objetos, componentes, física, partículas, esperas de efeito e `Flash` ficam parados, e o `lateStep` desse quadro também. Pedidos ficam com o maior, sem somar; `clear()` zera. O tremor da câmera, a interface e a leitura das teclas seguem em tempo real. Depois de um passo congelado, `lastStepFrozen()` é verdadeiro. O `IkiObject::applyInput` usa isso para guardar os apertos (`keepEdges`, em `InputState.hpp`) até um passo lê-los, então o buffer de pulo atravessa o congelamento. Um botão novo no `InputState` precisa entrar no `keepEdges`.
 
+### Dar um ataque a um objeto
+
+No prefab: um filho (ou o próprio objeto) com `Hitbox`, e o alvo com `Hurtbox`, `Damageable` e `Resources`. No código do ataque: `obj.getComponent<Hitbox>()->activate();` no começo do golpe e `deactivate()` no fim. Um tiro: `scene.service<ProjectilePool>()->spawn("dummy_bolt", pos, dir, "enemy", obj.id);`. Detalhes em [Combate](../fazendo-o-jogo/combate.md).
+
 ## Arquivos
 
-`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `Resources.*`, `Damage.hpp`, `IPlayer.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`, `Particles.*`, `SquashStretch.*`, `Blink.hpp`, `VelocityLean.hpp`, `Effects.*`.
+`src/engine/world/`: `GameObject.hpp`, `ObjectData.hpp`, `Component.hpp`, `Scene2D.*`, `EventBus.*`, `Collision.*`, `CollisionTypes.hpp`, `SpatialGrid.*`, `CollisionWorld.*`, `CharacterController.*`, `StateMachine.hpp`, `JumpAssist.hpp`, `Resources.*`, `Damage.hpp`, `Combat.*`, `Projectile.*`, `IPlayer.hpp`, `TerrainMesh.*`, `Ldtk.*`, `LevelLoader.*`, `World.*`, `WorldState.*`, `PersistentComponent.hpp`, `Region.*`, `RegionSet.*`, `Prefab.*`, `PrefabSave.*`, `SpriteAnimator.*`, `Particles.*`, `SquashStretch.*`, `Blink.hpp`, `VelocityLean.hpp`, `Effects.*`.

@@ -5,7 +5,9 @@
 #include "engine/world/PrefabSave.hpp"
 #include "engine/world/SpriteAnimator.hpp"
 #include "engine/world/Blink.hpp"
+#include "engine/world/Combat.hpp"
 #include "engine/world/Effects.hpp"
+#include "engine/world/Projectile.hpp"
 #include "engine/world/Particles.hpp"
 #include "engine/world/SquashStretch.hpp"
 #include "engine/world/VelocityLean.hpp"
@@ -4972,6 +4974,361 @@ TEST(effect_action_sound_validates) {
     }
     CHECK(!threw && countOf(err.str(), "sound: pitch expected") == 2); // load, then play
     std::filesystem::remove_all(dir);
+}
+
+// --- Combat (D3): hitbox, hurtbox, damageable, projectiles ---
+namespace {
+// A scene with the combat services and the test prefabs.
+struct CombatScene {
+    Scene2D scene;
+    CombatWorld combat;
+    PrefabLibrary prefabs{TestPrefabs};
+    ProjectilePool pool;
+    std::vector<HitEvent> hits;
+    std::vector<DamageTaken> taken;
+    std::vector<MovementCue> breaks;
+    std::vector<EventBus::Subscription> subs;
+    CombatScene() {
+        scene.setService(&combat);
+        scene.setService(&prefabs);
+        pool.scene = &scene;
+        scene.setService(&pool);
+        subs.push_back(scene.events().subscribe<HitEvent>([this](const HitEvent& e) { hits.push_back(e); }));
+        subs.push_back(scene.events().subscribe<DamageTaken>([this](const DamageTaken& e) { taken.push_back(e); }));
+        subs.push_back(scene.events().subscribe<MovementCue>([this](const MovementCue& e) { if (e.name == "break") breaks.push_back(e); }));
+    }
+    GameObject& attacker(glm::vec2 at, const std::string& team = "player") {
+        GameObject& o = scene.createObject<GameObject>();
+        o.transform.position = at;
+        Hitbox& h = o.addComponent<Hitbox>();
+        h.team = team;
+        return o;
+    }
+    // Hurtbox 1x1, Damageable (no invulnerability), Resources with 10 health.
+    GameObject& target(glm::vec2 at, const std::string& team = "enemy") {
+        GameObject& o = scene.createObject<GameObject>();
+        o.transform.position = at;
+        o.addComponent<Hurtbox>().team = team;
+        o.addComponent<Damageable>().invulnerableTime = 0.0f;
+        o.addComponent<Resources>().maxHealth = 10;
+        return o;
+    }
+    void steps(int n, float dt = 1.0f / 60.0f) { for (int i = 0; i < n; ++i) scene.step(dt); }
+};
+int healthOf(GameObject& o) { return o.getComponent<Resources>()->health(); }
+void hitOnce(Scene2D& scene, GameObjectId attacker, GameObjectId target, DamageInfo info = {}) {
+    scene.events().emit(HitEvent{attacker, target, info});
+    scene.flush();
+}
+}
+
+TEST(hitbox_hits_other_team_once_per_activation) {
+    CombatScene c;
+    GameObject& a = c.attacker({0.0f, 0.0f});
+    GameObject& t = c.target({0.5f, 0.0f});
+    c.scene.flush();
+    c.steps(2);
+    CHECK(c.hits.empty()); // not active yet
+    a.getComponent<Hitbox>()->activate();
+    c.steps(5);
+    CHECK(c.hits.size() == 1);
+    if (!c.hits.empty()) {
+        const HitEvent& h = c.hits[0];
+        CHECK(h.attacker == a.id && h.target == t.id && h.info.source == a.id);
+        CHECK(h.info.amount == 1 && h.info.element == Element::Ice && h.info.parryable && !h.info.projectile);
+        CHECK(h.info.direction.x > 0.99f); // from the attacker to the target
+    }
+    CHECK(healthOf(t) == 9 && c.taken.size() == 1 && c.taken[0].finalAmount == 1);
+
+    // A disabled hurtbox is not hit.
+    GameObject& off = c.target({-0.5f, 0.0f});
+    off.getComponent<Hurtbox>()->enabled = false;
+    c.scene.flush();
+    a.getComponent<Hitbox>()->activate();
+    c.steps(2);
+    CHECK(c.hits.size() == 2 && c.hits.back().target == t.id);
+}
+
+TEST(hitbox_ignores_same_team) {
+    CombatScene c;
+    GameObject& a = c.attacker({0.0f, 0.0f}, "enemy");
+    GameObject& t = c.target({0.5f, 0.0f}, "enemy");
+    c.scene.flush();
+    a.getComponent<Hitbox>()->activate();
+    c.steps(3);
+    CHECK(c.hits.empty() && healthOf(t) == 10);
+}
+
+TEST(hitbox_reactivation_hits_again) {
+    CombatScene c;
+    GameObject& a = c.attacker({0.0f, 0.0f});
+    GameObject& t = c.target({0.0f, 0.5f});
+    c.scene.flush();
+    Hitbox& h = *a.getComponent<Hitbox>();
+    h.activate();
+    c.steps(3);
+    h.deactivate();
+    CHECK(!h.active());
+    c.steps(3);
+    CHECK(c.hits.size() == 1);
+    h.activate();
+    CHECK(h.active());
+    c.steps(3);
+    CHECK(c.hits.size() == 2 && healthOf(t) == 8);
+}
+
+TEST(damageable_applies_multipliers_and_rounding) {
+    Damageable d;
+    DamageInfo ice;
+    ice.element = Element::Ice;
+    d.multipliers[Element::Ice] = 2.0f;
+    CHECK(d.finalAmount(ice) == 2); // 1 x 2
+    d.multipliers[Element::Ice] = 0.5f;
+    CHECK(d.finalAmount(ice) == 1); // 1 x 0.5 rounds up to the minimum 1
+    ice.amount = 2;
+    CHECK(d.finalAmount(ice) == 1); // 2 x 0.5
+    ice.amount = 3;
+    CHECK(d.finalAmount(ice) == 2); // 1.5 to the nearest
+    DamageInfo fire;
+    fire.element = Element::Fire;
+    CHECK(d.finalAmount(fire) == 1); // no multiplier = 1
+
+    // From the prefab section, through Resources and DamageTaken.
+    CombatScene c;
+    GameObject* t = c.prefabs.instantiate(c.scene, "test_target");
+    CHECK(t && c.prefabs.warnings().empty());
+    if (!t) return;
+    Damageable* td = t->getComponent<Damageable>();
+    CHECK(td && td->multipliers.size() == 1 && td->multipliers[Element::Ice] == 2.0f);
+    c.scene.flush();
+    DamageInfo hit;
+    hit.element = Element::Ice;
+    hitOnce(c.scene, InvalidGameObjectId, t->id, hit);
+    CHECK(healthOf(*t) == 8 && c.taken.size() == 1 && c.taken[0].finalAmount == 2 && c.taken[0].target == t->id);
+    CHECK(t->getComponent<Blink>() && t->getComponent<Blink>()->active()); // "hit:taken" from the prefab
+
+    // Bad multipliers warn, never throw; the good ones stay.
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_multipliers";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "bad_mult.prefab.json", std::ios::trunc)
+        << R"({"version": 1, "multipliers": {"Ice": "x", "Wind": 2, "Fire": -1, "None": 0.5}})";
+    std::ofstream(dir / "bad_mult2.prefab.json", std::ios::trunc) << R"({"version": 1, "multipliers": [1]})";
+    PrefabLibrary lib{dir};
+    Scene2D scene;
+    CerrCapture err;
+    GameObject* b = lib.instantiate(scene, "bad_mult");
+    CHECK(b && hasWarning(lib.warnings(), "multipliers.Ice") && hasWarning(lib.warnings(), "multipliers.Wind") &&
+          hasWarning(lib.warnings(), "multipliers.Fire"));
+    CHECK(b && b->getComponent<Damageable>() && b->getComponent<Damageable>()->multipliers.size() == 1);
+    CHECK(lib.instantiate(scene, "bad_mult2") && hasWarning(lib.warnings(), "multipliers: expected"));
+    std::filesystem::remove_all(dir);
+}
+
+TEST(damageable_immune_zero_multiplier) {
+    CombatScene c;
+    GameObject& t = c.target({0.0f, 0.0f});
+    t.getComponent<Damageable>()->multipliers[Element::Ice] = 0.0f;
+    EffectTriggers& fx = t.addComponent<EffectTriggers>();
+    fx.triggers["hit:immune"] = {nlohmann::json{{"blink", 0.5}}};
+    fx.triggers["hit:taken"] = {nlohmann::json{{"squash", {1.2, 0.8}}}};
+    c.scene.flush();
+    DamageInfo hit;
+    hit.element = Element::Ice;
+    hitOnce(c.scene, InvalidGameObjectId, t.id, hit);
+    CHECK(healthOf(t) == 10 && c.taken.empty());
+    CHECK(t.getComponent<Blink>() && t.getComponent<Blink>()->active() && !t.getComponent<SquashStretch>());
+}
+
+TEST(damageable_invulnerable_window) {
+    CombatScene c;
+    GameObject& t = c.target({0.0f, 0.0f});
+    Damageable& d = *t.getComponent<Damageable>();
+    d.invulnerableTime = 0.2f;
+    c.scene.flush();
+    hitOnce(c.scene, InvalidGameObjectId, t.id);
+    CHECK(healthOf(t) == 9 && d.invulnerable());
+    hitOnce(c.scene, InvalidGameObjectId, t.id); // ignored
+    c.scene.step(0.1f);
+    hitOnce(c.scene, InvalidGameObjectId, t.id); // still ignored
+    CHECK(healthOf(t) == 9 && c.taken.size() == 1);
+    c.scene.step(0.15f);
+    CHECK(!d.invulnerable());
+    hitOnce(c.scene, InvalidGameObjectId, t.id);
+    CHECK(healthOf(t) == 8 && c.taken.size() == 2);
+}
+
+TEST(damageable_guard_blocked_and_parried_no_damage) {
+    CombatScene c;
+    GameObject& t = c.target({0.0f, 0.0f}, "player");
+    Damageable& d = *t.getComponent<Damageable>();
+    d.invulnerableTime = 1.0f;
+    EffectTriggers& fx = t.addComponent<EffectTriggers>();
+    fx.triggers["hit:blocked"] = {nlohmann::json{{"blink", 0.5}}};
+    fx.triggers["hit:parried"] = {nlohmann::json{{"squash", {1.2, 0.8}}}};
+    HitResult answer = HitResult::Blocked;
+    DamageInfo seen;
+    d.guard = [&](const DamageInfo& info) { seen = info; return answer; };
+    GameObject& shooter = c.scene.createObject<GameObject>();
+    Stunned& stun = shooter.addComponent<Stunned>();
+    c.scene.flush();
+
+    DamageInfo hit;
+    hit.amount = 3;
+    hit.source = shooter.id;
+    hitOnce(c.scene, shooter.id, t.id, hit);
+    CHECK(healthOf(t) == 10 && c.taken.empty() && !d.invulnerable() && seen.amount == 3);
+    CHECK(t.getComponent<Blink>() && t.getComponent<Blink>()->active() && !stun.active());
+
+    // Parry: no damage, the source is stunned and a projectile is reflected toward it.
+    answer = HitResult::Parried;
+    GameObject* bolt = c.pool.spawn("test_bolt", {1.0f, 0.0f}, {-1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(bolt != nullptr);
+    if (!bolt) return;
+    c.scene.flush();
+    hit.projectile = true;
+    hitOnce(c.scene, bolt->id, t.id, hit);
+    Projectile& p = *bolt->getComponent<Projectile>();
+    CHECK(healthOf(t) == 10 && c.taken.empty() && !d.invulnerable());
+    CHECK(t.getComponent<SquashStretch>() != nullptr);
+    CHECK(stun.active() && p.reflected && p.team == "player" && p.source == t.id && p.direction.x > 0.99f);
+
+    // A plain hit after the guard says Hit.
+    answer = HitResult::Hit;
+    hitOnce(c.scene, shooter.id, t.id, hit);
+    CHECK(healthOf(t) == 7 && c.taken.size() == 1 && d.invulnerable());
+}
+
+TEST(projectile_breaks_on_wall_and_hit) {
+    CombatScene c;
+    c.scene.collision.addRoom("r", {Segment{{2.0f, 5.0f}, {2.0f, -5.0f}, {-1.0f, 0.0f}}});
+    GameObject& shooter = c.scene.createObject<GameObject>();
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(b != nullptr);
+    if (!b) return;
+    c.scene.flush();
+    c.steps(30); // 10 u/s: the wall at 2 u is reached in 0.2 s
+    Projectile& p = *b->getComponent<Projectile>();
+    CHECK(!p.flying() && !b->visible && c.breaks.size() == 1);
+    if (!c.breaks.empty()) CHECK(c.breaks[0].position && std::abs(c.breaks[0].position->x - 2.0f) < 0.2f);
+    CHECK(c.hits.empty());
+
+    // A one-way segment lets it pass; a hurtbox of another team breaks it after one hit.
+    c.scene.collision.addRoom("r", {Segment{{2.0f, 5.0f}, {2.0f, -5.0f}, {-1.0f, 0.0f}, true}});
+    GameObject& t = c.target({3.0f, 0.0f}, "player");
+    c.scene.flush();
+    c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", shooter.id);
+    c.steps(40);
+    CHECK(c.hits.size() == 1 && healthOf(t) == 9 && c.breaks.size() == 2 && !p.flying());
+    if (!c.hits.empty()) {
+        const DamageInfo& info = c.hits[0].info;
+        CHECK(c.hits[0].attacker == b->id && info.source == shooter.id && info.projectile && info.parryable);
+        CHECK(info.direction == glm::vec2(1.0f, 0.0f) && info.element == Element::Ice);
+    }
+}
+
+TEST(projectile_pool_reuses) {
+    CombatScene c;
+    GameObject* a = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 1.0f}, {-1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(a && b && a != b && c.pool.pooled("test_bolt") == 2); // both flying
+    if (!a || !b) return;
+    CHECK(b->flipX && b->transform.position == glm::vec2(0.0f, 1.0f));
+    const GameObjectId aId = a->id;
+    c.scene.flush();
+    c.steps(40); // range 5 at 10 u/s: both land after 0.5 s
+    CHECK(!a->getComponent<Projectile>()->flying() && !a->visible && c.breaks.empty());
+    GameObject* again = c.pool.spawn("test_bolt", {4.0f, 0.0f}, {0.0f, 1.0f}, "player", InvalidGameObjectId);
+    CHECK(again && again->id == aId && again->visible && again->getComponent<Projectile>()->flying());
+    CHECK(c.pool.pooled("test_bolt") == 2 && again->transform.position == glm::vec2(4.0f, 0.0f));
+    CHECK(again->getComponent<Projectile>()->team == "player");
+
+    CerrCapture err;
+    CHECK(!c.pool.spawn("nope_prefab", {}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId));
+    CHECK(!c.pool.spawn("test_target", {}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId)); // no Projectile
+    CHECK(countOf(err.str(), "no Projectile") == 1);
+}
+
+TEST(projectile_reflect_changes_team_and_source_once) {
+    CombatScene c;
+    GameObject& shooter = c.scene.createObject<GameObject>();
+    GameObject& iki = c.scene.createObject<GameObject>();
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {-1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(b != nullptr);
+    if (!b) return;
+    Projectile& p = *b->getComponent<Projectile>();
+    CHECK(p.source == shooter.id && p.team == "enemy" && !p.reflected);
+    p.reflect(iki.id, "player");
+    CHECK(p.source == iki.id && p.team == "player" && p.reflected && p.direction == glm::vec2(1.0f, 0.0f));
+    p.reflect(shooter.id, "enemy"); // once only
+    CHECK(p.source == iki.id && p.team == "player" && p.direction == glm::vec2(1.0f, 0.0f));
+    // A new flight from the pool is not reflected any more.
+    c.scene.flush();
+    c.steps(40);
+    GameObject* again = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(again == b && !p.reflected && p.team == "enemy" && p.source == shooter.id);
+}
+
+TEST(combat_world_cleans_destroyed_and_unloaded) {
+    CombatScene c;
+    GameObject& destroyed = c.target({0.0f, 0.0f});
+    c.scene.spawnRoomIid = "A";
+    c.target({0.0f, 0.0f});
+    c.scene.spawnRoomIid.clear();
+    GameObject& removed = c.target({0.0f, 0.0f});
+    GameObject& kept = c.target({0.0f, 0.0f});
+    c.scene.flush();
+    CHECK(c.combat.size() == 4);
+    std::vector<Hurtbox*> found;
+    c.combat.query({{-1.0f, -1.0f}, {1.0f, 1.0f}}, found);
+    CHECK(found.size() == 4);
+
+    c.scene.destroy(destroyed.id);
+    c.scene.flush();
+    CHECK(c.combat.size() == 3);
+    LevelLoader loader;
+    loader.unloadRoom("A", c.scene);
+    c.scene.flush();
+    CHECK(c.combat.size() == 2);
+    removed.removeComponent<Hurtbox>();
+    c.scene.flush();
+    CHECK(c.combat.size() == 1);
+    kept.active = false; // a paused object is not hit either
+    c.combat.query({{-1.0f, -1.0f}, {1.0f, 1.0f}}, found);
+    CHECK(found.empty());
+    kept.active = true;
+    c.combat.query({{-1.0f, -1.0f}, {1.0f, 1.0f}}, found);
+    CHECK(found.size() == 1 && found[0] == kept.getComponent<Hurtbox>());
+
+    // Pooled projectiles: a clear() (death restore, hot reload) leaves stale ids the pool forgets.
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(b && c.pool.pooled("test_bolt") == 1);
+    c.scene.clear();
+    CHECK(c.combat.size() == 0);
+    GameObject* fresh = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(fresh && c.scene.find(fresh->id) == fresh && c.pool.pooled("test_bolt") == 1);
+    // A pooled projectile destroyed by other code is dropped as well.
+    c.scene.flush();
+    c.steps(40);
+    c.scene.destroy(fresh->id);
+    c.scene.flush();
+    GameObject* next = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(next && c.scene.find(next->id) == next && c.pool.pooled("test_bolt") == 1);
+}
+
+TEST(stunned_times_out) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    Stunned& s = o.addComponent<Stunned>();
+    scene.flush();
+    CHECK(!s.active());
+    s.start(0.5f);
+    scene.step(0.3f);
+    CHECK(s.active());
+    s.start(0.1f); // a shorter stun does not cut the running one
+    scene.step(0.15f);
+    CHECK(s.active());
+    scene.step(0.1f);
+    CHECK(!s.active());
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

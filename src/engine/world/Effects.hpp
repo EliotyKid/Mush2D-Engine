@@ -20,6 +20,8 @@
 //                  "move:landed": ["land_dust"] }
 // The EffectTriggers component listens to StateChanged, AnimationEvent and MovementCue for its owner and
 // creates the ParticleEmitter, SquashStretch, Blink and Flash it needs. Problems are warnings on stderr, once each.
+// Combat (Damageable, Combat.hpp) fires "hit:taken" and "hit:dealt" (strength = final damage), "hit:immune",
+// "hit:blocked" and "hit:parried" (strength 1) at the object's position.
 
 #include "engine/world/Component.hpp"
 #include "engine/world/EventBus.hpp"

@@ -44,6 +44,9 @@ void IkigaiGame::init(EngineServices& s) {
     s.scene.setService(&effects);
     s.scene.setService(&world);
     s.scene.setService(&world.state);
+    s.scene.setService(&combat);
+    projectiles.scene = &s.scene;
+    s.scene.setService(&projectiles);
     // Health 0 (Resources emits Died): the existing death (fade, room restore, checkpoint).
     diedSubscription = s.scene.events().subscribe<Died>([this, &s](const Died& e) {
         if (currentSceneId == SceneId::Showcase && e.id == playerObjectId) killPlayer(s, e.id);
@@ -210,6 +213,8 @@ void IkigaiGame::shutdown(EngineServices& s) {
     s.scene.setService<EffectLibrary>(nullptr);
     s.scene.setService<World>(nullptr);
     s.scene.setService<WorldState>(nullptr);
+    s.scene.setService<CombatWorld>(nullptr);
+    s.scene.setService<ProjectilePool>(nullptr);
 }
 
 bool IkigaiGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {

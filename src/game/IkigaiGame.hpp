@@ -3,8 +3,10 @@
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/IGame.hpp"
 #include "engine/core/Paths.hpp"
+#include "engine/world/Combat.hpp"
 #include "engine/world/Effects.hpp"
 #include "engine/world/Prefab.hpp"
+#include "engine/world/Projectile.hpp"
 #include "engine/scenes/ISceneDefinition.hpp"
 #include "engine/tools/LookPanel.hpp"
 #include "engine/tools/SceneInspector.hpp"
@@ -24,7 +26,7 @@
 
 // The Ikigai game: the LDtk world (showcase.ldtk until the D12 demo map) with objects from prefabs, plus the
 // older Sandbox and Test scenes (TAB). Registers the scene services the objects use: WorldState, World,
-// GameAssets, AssetRegistry, the PrefabLibrary and the EffectLibrary.
+// GameAssets, AssetRegistry, the PrefabLibrary, the EffectLibrary, the CombatWorld and the ProjectilePool.
 class IkigaiGame : public IGame {
 public:
     void init(EngineServices& s) override;
@@ -81,6 +83,8 @@ private:
     PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")}; // Debug: the source tree, as the regions
     FileWatcher effectFiles; // assets/effects/*.effect.json: rescanned, no room reload (effects are found by name)
     EffectLibrary effects;
+    CombatWorld combat;          // hurtboxes of the scene
+    ProjectilePool projectiles;  // shots by prefab, reused
     bool keepRegions = false; // hot reload of the .ldtk alone keeps the in-memory regions (unsaved panel edits)
     void hotReload(EngineServices& s, bool ldtkOnly);
     std::optional<LdtkProject> preparedProject; // parsed by loadScene before any teardown

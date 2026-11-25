@@ -71,6 +71,22 @@
         }
       ]
     },
+    "Damageable": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 0.20000000298023224,
+          "name": "invulnerableTime",
+          "type": "Float"
+        },
+        {
+          "default": 1.0,
+          "name": "parryStun",
+          "type": "Float"
+        }
+      ]
+    },
     "DoorObject": {
       "base": "GameObject",
       "component": false,
@@ -191,6 +207,91 @@
           "default": false,
           "name": "isTrigger",
           "type": "Bool"
+        }
+      ]
+    },
+    "Hitbox": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": [
+            1.0,
+            1.0
+          ],
+          "name": "size",
+          "type": "Vec2"
+        },
+        {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "name": "offset",
+          "type": "Vec2"
+        },
+        {
+          "default": 1,
+          "name": "damage",
+          "type": "Int"
+        },
+        {
+          "default": "Ice",
+          "enum": "Element",
+          "name": "element",
+          "type": "Enum"
+        },
+        {
+          "default": 0.0,
+          "name": "knockback",
+          "type": "Float"
+        },
+        {
+          "default": "player",
+          "name": "team",
+          "type": "String"
+        },
+        {
+          "default": true,
+          "name": "parryable",
+          "type": "Bool"
+        },
+        {
+          "default": 0.05000000074505806,
+          "name": "activeStart",
+          "type": "Float"
+        },
+        {
+          "default": 0.15000000596046448,
+          "name": "activeEnd",
+          "type": "Float"
+        }
+      ]
+    },
+    "Hurtbox": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": [
+            1.0,
+            1.0
+          ],
+          "name": "size",
+          "type": "Vec2"
+        },
+        {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "name": "offset",
+          "type": "Vec2"
+        },
+        {
+          "default": "enemy",
+          "name": "team",
+          "type": "String"
         }
       ]
     },
@@ -467,6 +568,51 @@
         }
       ]
     },
+    "Projectile": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 10.0,
+          "name": "speed",
+          "type": "Float"
+        },
+        {
+          "default": 8.0,
+          "name": "range",
+          "type": "Float"
+        },
+        {
+          "default": "enemy",
+          "name": "team",
+          "type": "String"
+        },
+        {
+          "default": 1,
+          "name": "damage",
+          "type": "Int"
+        },
+        {
+          "default": "Ice",
+          "enum": "Element",
+          "name": "element",
+          "type": "Enum"
+        },
+        {
+          "default": true,
+          "name": "parryable",
+          "type": "Bool"
+        },
+        {
+          "default": [
+            0.25,
+            0.25
+          ],
+          "name": "size",
+          "type": "Vec2"
+        }
+      ]
+    },
     "PropObject": {
       "base": "GameObject",
       "component": false,
@@ -576,6 +722,11 @@
           "type": "Float"
         }
       ]
+    },
+    "Stunned": {
+      "base": "Component",
+      "component": true,
+      "props": []
     },
     "TeleportObject": {
       "base": "GameObject",

@@ -37,13 +37,14 @@ Só `PlayerStart`, `Light` e `Terrain` têm fábrica em código.
 | `collider` | tamanho, offset, trigger |
 | `animations` | nome do estado → animação do atlas (vira um `SpriteAnimator`) |
 | `animationEvents` | animação → {quadro → evento}: o `SpriteAnimator` emite um `AnimationEvent` cada vez que o quadro entra. O quadro conta a partir de 0 dentro da animação. Veja [Game juice](game-juice.md) |
-| `effects` | gatilho (`state:<máquina>:<estado>`, `anim:<evento>`, `move:<nome>`) → lista de efeitos (nome de `assets/effects/<nome>.effect.json` ou ação inline). Vira um `EffectTriggers`. Veja [Efeitos reaproveitáveis](game-juice.md#efeitos-reaproveitaveis) |
-| `components` | componentes registrados com `MUSH2D_COMPONENT` e os seus `props`. Hoje: `PersistentComponent`, `SpriteAnimator`, `ParticleEmitter`, `SquashStretch`, `Blink`, `VelocityLean` e `EffectTriggers` (veja [Game juice](game-juice.md)). O `LightComponent` do exemplo ainda não é registrado |
+| `effects` | gatilho (`state:<máquina>:<estado>`, `anim:<evento>`, `move:<nome>`, `hit:<resultado>`) → lista de efeitos (nome de `assets/effects/<nome>.effect.json` ou ação inline). Vira um `EffectTriggers`. Veja [Efeitos reaproveitáveis](game-juice.md#efeitos-reaproveitaveis) |
+| `multipliers` | elemento → multiplicador de dano do `Damageable` (`{"Ice": 2.0}`; cria o componente se faltar). Valor inválido avisa e é ignorado. Veja [Combate](combate.md#fraquezas-e-resistencias) |
+| `components` | componentes registrados com `MUSH2D_COMPONENT` e os seus `props`. Hoje: `PersistentComponent`, `SpriteAnimator`, `ParticleEmitter`, `SquashStretch`, `Blink`, `VelocityLean`, `EffectTriggers` (veja [Game juice](game-juice.md)), `Resources`, `Hitbox`, `Hurtbox`, `Damageable`, `Stunned` e `Projectile` (veja [Combate](combate.md)). O `LightComponent` do exemplo ainda não é registrado |
 | `children` | objetos filhos: outro prefab ou um objeto inline |
 
 ## Herança
 
-`props`, `extra`, `sprite`, `collider`, `animations`, `animationEvents` e `effects` são mesclados chave a chave sobre o `base` (em `animationEvents`, a chave é a animação: o filho troca a lista inteira de uma animação; em `effects`, a chave é o gatilho). `components` são mesclados por `type`, e `children` por `name`. `"remove": true` num item tira o item herdado.
+`props`, `extra`, `sprite`, `collider`, `animations`, `animationEvents`, `effects` e `multipliers` são mesclados chave a chave sobre o `base` (em `animationEvents`, a chave é a animação: o filho troca a lista inteira de uma animação; em `effects`, a chave é o gatilho; em `multipliers`, o elemento). `components` são mesclados por `type`, e `children` por `name`. `"remove": true` num item tira o item herdado.
 
 Um ciclo de `base` é recusado com aviso. Um filho cujo prefab é um dos prefabs em que ele está também é recusado.
 
