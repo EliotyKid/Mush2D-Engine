@@ -65,9 +65,9 @@ public:
     MUSH2D_EXPORT(float, invulnerableTime, 0.8f) // copied to the Damageable every step (it runs the timer)
     // Slashes (machine "action"). X within comboWindow after a slash chains the next one, up to 3; X during a
     // slash is kept and chains at its end. Each slash lasts slashDuration and steps attackStep forward on the
-    // ground; ground speed is runSpeed * attackMoveFactor meanwhile. In the air the gravity is multiplied by
+    // ground; ground speed is runSpeed * attackMoveFactor meanwhile. Falling in the air, the gravity is multiplied by
     // airAttackGravityFactor and the fall limited to airAttackMaxFall: one sequence per jump. Slash 3's hitbox
-    // pushes finisherKnockback.
+    // pushes finisherKnockback (the only source: Slash3's Hitbox knockback in the prefab is left out).
     MUSH2D_EXPORT(float, comboWindow, 0.35f)
     MUSH2D_EXPORT(float, slashDuration, 0.22f)
     MUSH2D_EXPORT(float, attackStep, 0.3f)
@@ -183,6 +183,7 @@ private:
     std::vector<EventBus::Subscription> subscriptions_;
     GameObjectId slashes_[3]{}; // the children Slash1..3
     bool animWindow_ = false;   // this slash's animation has hit_on: its events drive the hitbox
+    bool hitOnSeen_ = false;    // this slash's first hit_on came: later ones (a looping animation) do nothing
     bool airComboUsed_ = false; // a slash started in the air since the last ground, wall, ceiling or damage
     float shootLeft_ = 0.0f;
     Scene2D* scene_ = nullptr; // the scene of the running step (physics helpers need it)

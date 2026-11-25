@@ -4885,6 +4885,23 @@ TEST(audio_service_silent_without_device) {
     CHECK(err.str().empty());
 }
 
+// init() opens the real device when there is one (muted here), else warns once and stays silent. Both ways the
+// calls after it are safe.
+TEST(audio_init_then_play_is_safe) {
+    Audio audio;
+    audio.scan(TestAudio);
+    audio.masterVolume = 0.0f;
+    CerrCapture err;
+    const bool device = audio.init();
+    audio.update(0.0f); // applies the master volume before anything plays
+    audio.playSound("beep");
+    audio.playMusic("loop_a");
+    audio.update(0.5f);
+    audio.playMusic("");
+    audio.update(2.0f);
+    CHECK(device ? err.str().empty() : countOf(err.str(), "no audio device") == 1);
+}
+
 TEST(audio_unknown_sound_warns_once) {
     Audio audio;
     audio.scan(TestAudio);
@@ -5633,9 +5650,20 @@ TEST(iki_air_attack_reduced_gravity_once_per_jump) {
     xz.jump.down = true;
     c.step(xz);
     CHECK(c.action("slash1"));
-    const float before = c.iki->velocity_.y;
+    float before = c.iki->velocity_.y;
     c.step(zHeld());
-    CHECK(std::abs((c.iki->velocity_.y - before) / kDt - (-32.0f * 0.25f)) < 0.01f); // airAttackGravityFactor
+    CHECK(std::abs((c.iki->velocity_.y - before) / kDt - (-32.0f)) < 0.01f); // R7: rising, normal gravity (no extra height)
+    // Falling: the slash hangs (airAttackGravityFactor).
+    IkiCombat e;
+    if (!e.iki) return;
+    e.step(zPress());
+    for (int i = 0; i < 60 && e.iki->velocity_.y > 0.0f; ++i) e.step(zHeld());
+    CHECK(!e.iki->grounded && e.iki->velocity_.y <= 0.0f && e.iki->velocity_.y > -2.0f);
+    e.step(xz);
+    CHECK(e.action("slash1"));
+    before = e.iki->velocity_.y;
+    e.step(zHeld());
+    CHECK(std::abs((e.iki->velocity_.y - before) / kDt - (-32.0f * 0.25f)) < 0.01f);
     for (int i = 0; i < 30 && !c.action("none"); ++i) c.step(zHeld()); // Z held: no jump cut
     CHECK(c.action("none"));
     c.step(zHeld(), int(0.36f / kDt)); // past the combo window, still in the air
@@ -5741,6 +5769,16 @@ TEST(iki_shoot_costs_and_cooldown) {
     c.step(cPress());
     c.scene.flush();
     CHECK(c.action("none") && c.count(c.cues, "no_energy") == 1 && c.ice() == 10.0f && c.count(c.actions, "shoot") == 3);
+
+    // The pool cannot spawn (no PrefabLibrary, every shard in flight): no shot, the ice stays.
+    IkiCombat d;
+    if (!d.iki) return;
+    d.step({}, 2);
+    d.scene.setService<PrefabLibrary>(nullptr);
+    CerrCapture err;
+    d.step(cPress());
+    CHECK(d.action("none") && d.ice() == 100.0f && d.count(d.actions, "shoot") == 0);
+    CHECK(err.str().find("no PrefabLibrary") != std::string::npos);
 }
 
 TEST(iki_guard_blocks_front_costs_ice) {
@@ -5911,6 +5949,50 @@ TEST(iki_slash_window_from_animation_events) {
     CHECK(c.hits.empty() && animator->action == "slash1");
     c.step({}, 6);
     CHECK(c.hits.size() == 1 && healthOf(t) == 19);
+    // A second hit_on in the same slash (a looping animation) does not open a new window: no second hit.
+    CHECK(c.until("none"));
+    c.step({}, 30); // past comboWindow: slash 1 again
+    animator->animationEvents["attack_prepare"] = {{1, "hit_on"}, {2, "hit_on"}}; // 0.1 s and 0.2 s
+    c.step(xPress());
+    CHECK(c.action("slash1"));
+    CHECK(c.until("none"));
+    CHECK(c.hits.size() == 2 && healthOf(t) == 18);
+}
+
+TEST(iki_slash_facing_left_hits_left) {
+    IkiCombat c(5.0f);
+    if (!c.iki) return;
+    GameObject& t = c.target(3.8f); // the mirror of target(4.2) for an Iki at 3
+    std::vector<glm::vec2> at; // where the "hit" cue plays (the prefab's slash_hit particles)
+    auto sub = c.scene.events().subscribe<MovementCue>([&](const MovementCue& e) {
+        if (e.object == c.iki->id && e.name == "hit" && e.position) at.push_back(*e.position);
+    });
+    c.iki->facing = -1.0f;
+    c.step(xPress());
+    CHECK(c.until("none"));
+    CHECK(c.hits.size() == 1 && healthOf(t) == 19 && c.iki->flipX);
+    CHECK(c.hits.size() == 1 && c.hits[0].info.direction.x < 0.0f);
+    // At the target's hurtbox centre, not at the Iki's feet.
+    CHECK(at.size() == 1 && glm::length(at[0] - glm::vec2(3.8f, -3.7f)) < 1e-3f);
+}
+
+TEST(iki_shard_point_blank_breaks_at_wall) {
+    IkiCombat c(3.0f, false);
+    if (!c.iki) return;
+    ikiLevel(c.scene, {{{8, 5}, 1}, {{8, 6}, 1}, {{8, 7}, 1}, {{8, 8}, 1}}); // a wall face at x = 4
+    c.iki->transform.position = {3.0f, -4.4f};
+    c.iki->velocity_ = {};
+    c.step({}, 10);
+    c.step(rightHeld(), 40);
+    CHECK(c.iki->grounded && std::abs(c.iki->transform.position.x + 0.3f - 4.0f) < 1e-3f); // touching it
+    std::vector<glm::vec2> breaks;
+    auto sub = c.scene.events().subscribe<MovementCue>([&](const MovementCue& e) {
+        if (e.name == "break" && e.position) breaks.push_back(*e.position);
+    });
+    c.step(cPress());
+    c.step({}, 2);
+    c.scene.flush();
+    CHECK(breaks.size() == 1 && std::abs(breaks[0].x - 4.0f) < 1e-3f);
 }
 
 // --- Training dummies (D3 Task 6) ---------------------------------------------------------------------------

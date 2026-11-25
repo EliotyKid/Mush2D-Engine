@@ -79,6 +79,8 @@ Na seção `effects` do prefab, como os gatilhos `state:`, `anim:` e `move:`:
 | `hit:blocked` | alvo | `guard` devolveu `Blocked` | 1 |
 | `hit:parried` | alvo | `guard` devolveu `Parried` | 1 |
 
+Não há `hit:parry`: quem apara é o alvo, então o efeito de aparar vai em `hit:parried` (o Iki usa assim).
+
 Os efeitos tocam na posição do objeto, espelhados pela direção do golpe. `hit:blocked`, `hit:parried` e `hit:immune` têm força 1, porque não há dano para escalar: um `scaleByStrength` neles toca no tamanho normal.
 
 ```json

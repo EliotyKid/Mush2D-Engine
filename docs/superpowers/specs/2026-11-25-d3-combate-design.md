@@ -116,7 +116,7 @@ O D3 também traz o primeiro áudio da engine (efeitos e música por região) e 
 - **Gatilhos novos:**
   - `hit:dealt` no atacante;
   - `hit:taken`, `hit:blocked`, `hit:parried`, `hit:immune` no alvo;
-  - `hit:parry` no Iki ao aparar.
+  - não há `hit:parry`: quem apara é o Iki, que é o alvo, então o gatilho dele é `hit:parried` (revisão final).
 
   Força = dano final.
 - **Valores iniciais:**

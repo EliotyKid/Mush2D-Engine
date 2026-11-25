@@ -106,11 +106,12 @@ const std::filesystem::path* Audio::usable(const std::string& name, const Files&
 void Audio::playSound(const std::string& name, float volume, float pitch) {
     const std::filesystem::path* path = usable(name, sounds_, "sound");
     if (!path || !device_) return;
-    Sound s = load(&device_->engine, *path, MA_SOUND_FLAG_DECODE); // decoded once, cached by miniaudio
+    Sound s = load(&device_->engine, *path, MA_SOUND_FLAG_DECODE); // decoded on every play: miniaudio frees the data once no sound holds it
     if (!s) return warnOnce("sound '" + name + "'", "sound '" + name + "' failed to play (" + path->string() + ")");
     ma_sound_set_volume(s.get(), volume * sfxVolume);
     ma_sound_set_pitch(s.get(), pitch);
     ma_sound_start(s.get());
+    // shortcut: no voice cap, every play is a new ma_sound; cap per name when spam shows in a profile
     device_->sounds.push_back(std::move(s));
 }
 

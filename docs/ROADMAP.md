@@ -102,7 +102,7 @@ Vem primeiro porque tudo o que vier depois será criado com ele.
 ### D2: Iki se move (estados e poderes de movimento)
 
 **Entra:**
-- [x] **Máquina de estados** reutilizável, usada pelo Iki: parado, correndo, pulando, caindo, preso na parede, escalando (parede e teto), ferido, morto. O estado de ataque entra no D3, como uma classe nova.
+- [x] **Máquina de estados** reutilizável, usada pelo Iki: parado, correndo, pulando, caindo, preso na parede, escalando (parede e teto), ferido, morto. O ataque entrou no D3 como uma segunda máquina, `"action"` (corte, tiro, escudo), ao lado da de movimento.
 - [x] **Sistema de habilidades**: cada poder é um componente, e o desbloqueio fica no `WorldState` (`ability.ice.stakes`).
 - [x] **Gelo: estacas.** Cria pontos de apoio para escalar **certas** paredes e tetos, marcados como superfície escalável no LDtk.
 - [x] **Recursos**: vida e energia elemental. Decidido no D2: uma barra para cada elemento (gelo, fogo), e a travessia não gasta energia (veja "Decisões resolvidas").

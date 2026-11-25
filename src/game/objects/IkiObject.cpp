@@ -40,10 +40,8 @@ void IkiObject::onCreate(Scene2D& scene) {
     sprite = SpriteData{.layer = 2};
     collider = ColliderData{.size = {0.6f, 1.6f}, .offset = {0.0f, 0.8f}}; // position = feet
     addComponent<Resources>(); // the prefab's "components" entries tune these
-    Hurtbox& hurtbox = addComponent<Hurtbox>();
-    hurtbox.team = "player";
-    hurtbox.size = collider->size;
-    hurtbox.offset = collider->offset;
+    addComponent<Hurtbox>().team = "player"; // size and offset: the prefab's Hurtbox entry
+
     Damageable& damageable = addComponent<Damageable>();
     damageable.invulnerableTime = invulnerableTime;
     damageable.guard = [this](const DamageInfo& info) { return guard(info); };
@@ -51,14 +49,21 @@ void IkiObject::onCreate(Scene2D& scene) {
     subscriptions_.push_back(scene.events().subscribe<DamageTaken>([this, self](const DamageTaken& e) {
         if (e.target == self) hurt(e.info);
         // Its own hit dealt damage: a slash 3 weighs more (prefab "move:finisher", else "move:hit").
-        if (e.info.source == self && scene_)
-            emitMovementCue(*scene_, *this, actionIs("slash3") && !e.info.projectile ? "finisher" : "hit");
+        if (e.info.source != self || !scene_) return;
+        // At the contact point: the centre of the target's hurtbox (else its position).
+        const GameObject* target = scene_->findObject(e.target);
+        const Hurtbox* box = target ? target->getComponent<Hurtbox>() : nullptr;
+        const glm::vec2 at = box ? 0.5f * (box->box().min + box->box().max) : target ? target->world().position : transform.position;
+        emitMovementCue(*scene_, *this, actionIs("slash3") && !e.info.projectile ? "finisher" : "hit", 1.0f, at);
     }));
     subscriptions_.push_back(scene.events().subscribe<AnimationEvent>([this, self](const AnimationEvent& e) {
         if (e.object != self || !animWindow_ || !slashing() || (e.name != "hit_on" && e.name != "hit_off")) return;
         if (Hitbox* h = slashHitbox(actionName()[5] - '0')) { // "slash<n>"
-            if (e.name == "hit_on") h->activate();
-            else h->deactivate();
+            if (e.name == "hit_off") h->deactivate();
+            else if (!hitOnSeen_) { // a looping animation repeats hit_on: one window per slash
+                hitOnSeen_ = true;
+                h->activate();
+            }
         }
     }));
 
@@ -146,7 +151,7 @@ void IkiObject::onStep(Scene2D& scene, float dt) {
 
 void IkiObject::applyGravity(float dt) {
     float g = gravity;
-    if (!grounded && slashing()) { // an air slash hangs
+    if (!grounded && slashing() && velocity_.y <= 0.0f) { // an air slash hangs once it falls (R7)
         velocity_.y = std::max(velocity_.y + g * airAttackGravityFactor * dt, airAttackMaxFall);
         return;
     }
@@ -428,6 +433,7 @@ void IkiObject::beginSlash(int n) {
     if (Hitbox* h = slashHitbox(n); h && n == 3) h->knockback = finisherKnockback;
     // The animation drives the hitbox when it has a hit_on event (prefab "animationEvents").
     animWindow_ = false;
+    hitOnSeen_ = false;
     if (const auto* animator = getComponent<SpriteAnimator>()) {
         const auto anim = animator->animations.find(std::string("action:") + actionName());
         const auto events = anim == animator->animations.end() ? animator->animationEvents.end() : animator->animationEvents.find(anim->second);
@@ -468,14 +474,16 @@ const char* IkiObject::tryShoot() {
     auto* pool = scene_ ? scene_->service<ProjectilePool>() : nullptr;
     auto* resources = getComponent<Resources>();
     if (!pool || !resources || shootLeft_ > 0.0f) return nullptr;
-    if (!resources->spend(Element::Ice, shardCost)) {
+    if (resources->energy(Element::Ice) < shardCost) {
         emitMovementCue(*scene_, *this, "no_energy");
         return nullptr;
     }
+    // From the body centre: never inside a wall the Iki touches (its own hurtbox is on its team).
+    const glm::vec2 at = transform.position + glm::vec2(0.0f, collider ? collider->offset.y : 0.8f);
+    if (!pool->spawn("ice_shard", at, {facing, 0.0f}, "player", id)) return nullptr; // the pool warned: no cost
+    resources->spend(Element::Ice, shardCost);
     shootLeft_ = shootCooldown;
     resetCombo();
-    const glm::vec2 at = transform.position + glm::vec2(facing * 0.5f, collider ? collider->offset.y : 0.8f);
-    pool->spawn("ice_shard", at, {facing, 0.0f}, "player", id);
     return "shoot";
 }
 

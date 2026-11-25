@@ -24,7 +24,7 @@ static_assert(sizeof(SpriteInstance) == 96);
 
 constexpr uint32_t SpriteFlagNearest = 1u << 0;
 constexpr uint32_t SpriteFlagAdditive = 1u << 1;
-constexpr uint32_t SpriteFlagAlpha = 1u << 2; // alpha-blended, unlit (non-additive particles); ADDITIVE wins
+constexpr uint32_t SpriteFlagAlpha = 1u << 2; // alpha-blended, lit like the scene (non-additive particles); ADDITIVE wins
 
 class SpriteBatch {
 public:

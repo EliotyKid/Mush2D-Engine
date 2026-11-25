@@ -26,7 +26,7 @@ Cada passada tem um nome nos números de [Desempenho](../desempenho.md): `gbuffe
 | `GpuLight` | Uma luz: `posHeightRadius` (x, y, altura, raio), `colorIntensity` (r, g, b, intensidade), `depthFlicker` (profundidade, amplitude da tremulação, velocidade, 0). |
 | `LightList` | As luzes do frame. |
 | `LightComponent` | Uma luz presa a um objeto (`light` é um `GpuLight`, com x, y relativos ao dono). Ainda não exportada para prefabs. |
-| `SpriteBatch`, `SpriteInstance` | A lista de sprites do frame. A cor de cada sprite é `color * tint`. O campo `flash` (cor e quantidade num `uint`, `packUnorm4x8`) mistura o sprite para essa cor sem luz: o `gbuffer.frag` tira a cor iluminada e põe o flash na emissão, e o `additive.frag` e o `alpha.frag` misturam direto. A flag `SpriteFlagAlpha` põe o sprite no grupo alfa (o `appendSceneSprites` liga nas partículas não aditivas); `SpriteFlagAdditive` tem prioridade. |
+| `SpriteBatch`, `SpriteInstance` | A lista de sprites do frame. A cor de cada sprite é `color * tint`. O campo `flash` (cor e quantidade num `uint`, `packUnorm4x8`) mistura o sprite para essa cor sem luz: o `gbuffer.frag` tira a cor iluminada e põe o flash na emissão, e o `additive.frag` e o `alpha.frag` misturam direto. A flag `SpriteFlagAlpha` põe o sprite no grupo alfa (o `appendParticles` liga nas partículas não aditivas); `SpriteFlagAdditive` tem prioridade. |
 | `Bindless`, `MaterialLibrary` | Carregam as texturas: `.png` mais `_n` (normal), `_e` (emissão), `_m` (máscara). |
 | `RenderTargets` | As imagens intermediárias (G-buffer, HDR, luz, bloom). |
 | `PixelScale` | Pixel art: maior escala inteira que ainda mostra pelo menos 400 pixels de arte na largura. |

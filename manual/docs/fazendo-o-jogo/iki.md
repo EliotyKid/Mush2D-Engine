@@ -145,9 +145,9 @@ A segunda máquina, `"action"`, cuida do combate de gelo. Ela aparece no F1 ao l
 
 - **Regras com a `"move"`:** `wall`, `ceiling`, `hurt` e `dead` levam a ação para `none` e bloqueiam ações novas (o `guard_break` continua durante o `hurt` do golpe que o quebrou). O escudo só sobe em `idle` ou `run`.
 - **Sequência (`X`):** `X` começa o corte 1. Um `X` até `comboWindow` depois do fim de um corte começa o próximo, até o 3. Um `X` durante o corte (ou durante o hit stop) fica guardado e encadeia assim que o corte acaba. Dano 1, 1 e 2. Cada corte avança `attackStep` no chão; correndo, a velocidade cai para `runSpeed * attackMoveFactor`. A sequência zera com dano, parede, teto, escudo e tiro; pousar não zera. Golpe não gasta energia.
-- **No ar:** durante um corte, a gravidade é `gravity * airAttackGravityFactor` e a queda para em `airAttackMaxFall`. Há uma sequência por salto: um corte que começa no ar gasta a do salto, e só tocar o chão, agarrar parede ou teto, ou levar dano a devolve.
-- **Hitboxes:** os filhos `Slash1`, `Slash2` e `Slash3` do prefab têm uma `Hitbox` cada, à frente do Iki (o espelho segue o `flipX` dele). O corte liga a hitbox entre os eventos `hit_on` e `hit_off` da animação, se ela tiver `hit_on` em `animationEvents`. Senão, entre `activeStart` e `activeEnd` da hitbox (0,05 a 0,15 s). Cada corte acerta cada alvo uma vez. O `knockback` do `Slash3` é o `finisherKnockback` do Iki.
-- **Estilhaço (`C`):** custa `shardCost` de gelo e lança o prefab `ice_shard` (do `ProjectilePool`) na direção do olhar. A velocidade (14), o alcance (8) e o dano (1, gelo) são do componente `Projectile` do prefab. Entre tiros há `shootCooldown`. Sem gelo, nada sai e o Iki emite `move:no_energy`.
+- **No ar:** durante um corte que já está caindo (velocidade vertical 0 ou menos), a gravidade é `gravity * airAttackGravityFactor` e a queda para em `airAttackMaxFall`. Há uma sequência por salto: um corte que começa no ar gasta a do salto, e só tocar o chão, agarrar parede ou teto, ou levar dano a devolve.
+- **Hitboxes:** os filhos `Slash1`, `Slash2` e `Slash3` do prefab têm uma `Hitbox` cada, à frente do Iki (o espelho segue o `flipX` dele). O corte liga a hitbox entre os eventos `hit_on` e `hit_off` da animação, se ela tiver `hit_on` em `animationEvents` (só o primeiro `hit_on` de cada corte conta: uma animação que repete não abre outra janela). Senão, entre `activeStart` e `activeEnd` da hitbox (0,05 a 0,15 s). Cada corte acerta cada alvo uma vez. O `knockback` do `Slash3` é o `finisherKnockback` do Iki (o prefab não põe `knockback` nessa hitbox: o valor fica num lugar só, ajustável no F1).
+- **Estilhaço (`C`):** custa `shardCost` de gelo e lança o prefab `ice_shard` (do `ProjectilePool`) na direção do olhar, saindo do centro do corpo (encostado numa parede, ele quebra nela). A velocidade (14), o alcance (8) e o dano (1, gelo) são do componente `Projectile` do prefab. Entre tiros há `shootCooldown`. Sem gelo, nada sai e o Iki emite `move:no_energy`. Se o pool não consegue criar o estilhaço, o gelo não é gasto.
 - **Escudo (`V`):** com ele, o Iki anda a `runSpeed * guardMoveFactor` e não pula. O `Damageable` do Iki chama o escudo antes de tirar vida:
     - golpe de trás (o empurrão aponta para onde o Iki olha) passa;
     - "de frente" olha só o sinal de x do empurrão; um golpe reto de cima ou de baixo conta como de frente;
@@ -155,7 +155,7 @@ A segunda máquina, `"action"`, cuida do combate de gelo. Ela aparece no F1 ao l
     - depois da janela, ou com `parryable` falso, é **bloqueio**: custa `blockCost` de gelo e empurra o Iki `blockPush` para trás;
     - sem gelo para o bloqueio, o golpe passa e a ação vira `guard_break` (emite `move:guard_break`). Para erguer de novo, solte e aperte `V`.
 - **Animações** (provisórias, do `kaa_player`): no mapa `animations`, uma chave `action:<estado>` vale enquanto a ação não é `none` (`"action:slash1": "attack_prepare"`, `"action:slash2": "attack_stay"`, `"action:slash3": "attack_leave"`, `"action:guard": "push"`). Sem a chave, fica a animação da `"move"`. Essas animações ainda não têm `hit_on`: os quadros delas (100 a 143 ms) são longos demais para a janela de 0,05 a 0,15 s.
-- **Peso** (seção `effects` do prefab, arquivos em `assets/effects/`): o Iki emite `move:hit` quando um acerto dele tira vida e `move:finisher` quando é o corte 3.
+- **Peso** (seção `effects` do prefab, arquivos em `assets/effects/`): o Iki emite `move:hit` quando um acerto dele tira vida e `move:finisher` quando é o corte 3, no ponto do acerto (o centro da hurtbox do alvo).
 
 | Gatilho | Efeito | O que faz |
 |---|---|---|
@@ -175,7 +175,7 @@ A segunda máquina, `"action"`, cuida do combate de gelo. Ela aparece no F1 ao l
 | `slashDuration` | `0.22` | Duração de cada corte. |
 | `attackStep` | `0.3` | Avanço de cada corte no chão (u). |
 | `attackMoveFactor` | `0.4` | Velocidade no chão durante o corte, em fração de `runSpeed`. |
-| `airAttackGravityFactor` | `0.25` | Gravidade durante um corte no ar. |
+| `airAttackGravityFactor` | `0.25` | Gravidade durante um corte no ar, só na descida. |
 | `airAttackMaxFall` | `-3` | Queda máxima durante um corte no ar (u/s). |
 | `finisherKnockback` | `8` | Empurrão do corte 3 (vai para o `knockback` da hitbox `Slash3`). |
 | `shardCost` | `15` | Gelo por estilhaço. |
