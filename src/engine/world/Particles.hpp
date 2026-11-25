@@ -37,7 +37,7 @@ struct Particle {
 };
 
 // CPU particles in world space (they stay where they were emitted when the owner moves). Drawn by
-// appendSceneSprites as sprites, with no light and no emission. Over maxParticles the oldest are dropped.
+// appendParticles as sprites: lit by the scene irradiance, never a light source, no emission. Over maxParticles the oldest are dropped.
 class ParticleEmitter : public Component {
     MUSH2D_COMPONENT(ParticleEmitter)
 public:

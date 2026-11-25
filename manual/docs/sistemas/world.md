@@ -89,7 +89,7 @@ Guia: [Combate](../fazendo-o-jogo/combate.md).
 
 | Tipo | Papel |
 |---|---|
-| `ParticleEmitter` (`Particles.hpp`) | Partículas na CPU, em coordenadas de mundo. `burst(config, posição, direção)` (direção `-1` espelha os ângulos), `alive()`, `maxParticles` (128; acima disso a mais velha sai). Desenhadas como sprites pelo `appendSceneSprites`: sem `frame`, um pixel branco tingido. Sem luz e sem emissão. |
+| `ParticleEmitter` (`Particles.hpp`) | Partículas na CPU, em coordenadas de mundo. `burst(config, posição, direção)` (direção `-1` espelha os ângulos), `alive()`, `maxParticles` (128; acima disso a mais velha sai). Desenhadas como sprites pelo `appendParticles`, no passe alfa: sem `frame`, um pixel branco tingido. Recebem a luz da cena, mas não emitem luz nem brilho. |
 | `ParticleConfig` | `count`, `speed`, `angle` (graus) e `lifetime` como [min, max], `gravity`, `drag`, `size` [início, fim], `colorStart`/`colorEnd`, `frame` (do atlas do sprite do dono), `additive`, `layer`. `parseParticleConfig(json, config, erro)` lê o formato JSON (`"color": [início, fim]`). |
 | `SquashStretch` | Molas em x e y que voltam a {1, 1}: `kick({0.8, 1.25})`, `current()`, `apply(sprite)` (multiplica `drawSize` mantendo a base do sprite; sem acumular). Aplica-se sozinho a cada passo, e o `SpriteAnimator` o aplica depois de cada quadro. `stiffness` 300, `damping` 18. Nunca mexe em `transform.scale`. |
 | `Blink` | `start(segundos)` alterna `visible` `rate` vezes por segundo (16) e devolve a visibilidade do começo ao terminar. `active()`. |
