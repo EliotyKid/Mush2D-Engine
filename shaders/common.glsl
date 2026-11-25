@@ -10,7 +10,7 @@ struct SpriteInstance {
     vec4 uvRect; vec4 color;
     float rotation; float depth; vec2 parallax;
     uint albedo, normal, emissive, mask;
-    uint flags; uint pad0, pad1, pad2; // bit0 NEAREST, bit1 ADDITIVE
+    uint flags; uint flash; uint pad1, pad2; // flags: bit0 NEAREST, bit1 ADDITIVE; flash: unorm4x8 rgb + amount
 };
 
 struct GpuLight {
@@ -46,3 +46,11 @@ layout(std430, set = 1, binding = 2) readonly buffer Lights { GpuLight lights[];
 
 // Sprites: firstInstance. Fullscreen passes: t0..t3 = bindless indices / sampler choice.
 layout(push_constant) uniform Push { uint firstInstance; uint t0, t1, t2, t3; } pc;
+
+// Depth fog plus the height gradient (resolve and alpha particles). screenUV: 0,0 = top left.
+vec3 applyFog(vec3 color, float depth, vec2 screenUV) {
+    vec2 worldPos = u.cameraPos + vec2(screenUV.x * 2 - 1, 1 - screenUV.y * 2) * u.halfSize;
+    float fog = 1 - exp(-u.fogDensity * max(depth, 0));
+    fog = clamp(fog + u.fogGradientStrength * (1.0 - smoothstep(u.fogGradientStart, max(u.fogGradientEnd, u.fogGradientStart + 1e-4), worldPos.y)), 0, 1);
+    return mix(color, u.fogColor, fog);
+}

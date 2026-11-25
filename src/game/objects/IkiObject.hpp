@@ -2,7 +2,9 @@
 
 #include "engine/platform/InputState.hpp"
 #include "engine/world/CharacterController.hpp"
+#include "engine/world/Combat.hpp"
 #include "engine/world/Damage.hpp"
+#include "engine/world/EventBus.hpp"
 #include "engine/world/GameObject.hpp"
 #include "engine/world/IPlayer.hpp"
 #include "engine/world/JumpAssist.hpp"
@@ -19,6 +21,10 @@ class Scene2D;
 // code: it emits MovementCue "jumped", "hurt" (strength = invulnerableTime) and calls emitMovementCues every
 // step; the prefab's "effects" section, SquashStretch, VelocityLean and Blink do the juice. Its Resources
 // component (added here, tuned by the prefab) regenerates by itself.
+// Combat (spec D3) runs on a second machine, "action" (src/game/iki/actions/): none, slash1..3, shoot, guard,
+// guard_break. Damage arrives through the Damageable (added here with a Hurtbox): its guard callback is the
+// shield, and each DamageTaken calls hurt (the reaction). The prefab's children Slash1..3 hold the Hitboxes.
+// Cues: "hit" / "finisher" when its hit deals damage (slash 3 = finisher), "no_energy", "guard_break".
 class IkiObject : public GameObject, public IPlayer {
     MUSH2D_OBJECT(IkiObject, GameObject)
 public:
@@ -56,7 +62,30 @@ public:
     // Damage. hurtKnockback: x along the sign of the hit's direction.x, y along direction.y (up when it is 0).
     MUSH2D_EXPORT(float, hurtDuration, 0.35f)
     MUSH2D_EXPORT(glm::vec2, hurtKnockback, glm::vec2(6.0f, 6.0f))
-    MUSH2D_EXPORT(float, invulnerableTime, 0.8f)
+    MUSH2D_EXPORT(float, invulnerableTime, 0.8f) // copied to the Damageable every step (it runs the timer)
+    // Slashes (machine "action"). X within comboWindow after a slash chains the next one, up to 3; X during a
+    // slash is kept and chains at its end. Each slash lasts slashDuration and steps attackStep forward on the
+    // ground; ground speed is runSpeed * attackMoveFactor meanwhile. Falling in the air, the gravity is multiplied by
+    // airAttackGravityFactor and the fall limited to airAttackMaxFall: one sequence per jump. Slash 3's hitbox
+    // pushes finisherKnockback (the only source: Slash3's Hitbox knockback in the prefab is left out).
+    MUSH2D_EXPORT(float, comboWindow, 0.35f)
+    MUSH2D_EXPORT(float, slashDuration, 0.22f)
+    MUSH2D_EXPORT(float, attackStep, 0.3f)
+    MUSH2D_EXPORT(float, attackMoveFactor, 0.4f)
+    MUSH2D_EXPORT(float, airAttackGravityFactor, 0.25f)
+    MUSH2D_EXPORT(float, airAttackMaxFall, -3.0f)
+    MUSH2D_EXPORT(float, finisherKnockback, 8.0f)
+    // Ice shard (C): prefab ice_shard from the ProjectilePool; its speed, range and damage are the prefab's.
+    MUSH2D_EXPORT(float, shardCost, 15.0f)
+    MUSH2D_EXPORT(float, shootCooldown, 0.25f)
+    // Shield (V held, on the ground). A hit from the front costs blockCost ice and pushes blockPush (u/s) back;
+    // within parryWindow of raising it, it is a parry (free; the stun is the Damageable's parryStun). Without
+    // the ice, the hit passes and the Iki has no shield nor attack for guardBreakStun.
+    MUSH2D_EXPORT(float, guardMoveFactor, 0.3f)
+    MUSH2D_EXPORT(float, blockCost, 10.0f)
+    MUSH2D_EXPORT(float, blockPush, 3.0f)
+    MUSH2D_EXPORT(float, parryWindow, 0.15f)
+    MUSH2D_EXPORT(float, guardBreakStun, 0.5f)
 
     // Physics state the states read and write.
     glm::vec2 velocity_{0.0f};
@@ -76,14 +105,17 @@ public:
     void setCheckpoint(glm::vec2 position) override { checkpoint_ = position; }
     void respawnAtCheckpoint() override { respawnAt(checkpoint_); respawn(); }
 
-    // Ignored while dead or invulnerable. Health 0 -> "dead" (Resources emits Died); else "hurt", pushed along
-    // info.direction.
+    // The reaction to a DamageTaken (the Damageable already took the health): health 0 -> "dead"; else "hurt",
+    // pushed along info.direction. Damage goes through the Damageable: emit a HitEvent at the Iki.
     void hurt(const DamageInfo& info);
     // After death: full Resources, no invulnerability, velocity or jump timers, state "idle".
     void respawn();
     const char* stateName() const { return machine_.current(); }
     StateMachine<IkiObject>& states() { return machine_; }
-    bool invulnerable() const { return invulnerableLeft_ > 0.0f; }
+    bool invulnerable() const;
+    StateMachine<IkiObject>& actions() { return actions_; }
+    const char* actionName() const { return actions_.current(); }
+    bool actionIs(const char* name) const;
 
     // Input as the states see it (Hurt and Dead ignore it).
     float moveX() const { return float(input_.moveRight.down) - float(input_.moveLeft.down); }
@@ -91,6 +123,27 @@ public:
     bool jumpHeld() const { return input_.jump.down; }
     bool downHeld() const { return input_.moveDown.down; }
     bool upHeld() const { return input_.moveUp.down; }
+    bool attackPressed() const { return input_.attack.pressed; }
+    bool shootPressed() const { return input_.shoot.pressed; }
+    bool guardPressed() const { return input_.guard.pressed; }
+    bool guardHeld() const { return input_.guard.down; }
+
+    // Combat, for the action states.
+    bool actionsBlocked() const; // move is wall, ceiling, hurt or dead
+    bool canGuard() const;       // move is idle or run
+    bool slashing() const;
+    // "slash<n>" when slash n may start now (one sequence per jump in the air), else nullptr.
+    const char* startSlash(int n);
+    void beginSlash(int n);          // SlashAction::enter: step forward, the window source
+    void slashWindow(int n, float t); // the hitbox active in [activeStart, activeEnd) unless the animation drives it
+    void endSlash(int n);            // the hitbox off
+    void openCombo(int next);        // a slash ended: X within comboWindow starts slash `next`
+    void resetCombo();
+    // "shoot" after firing a shard; nullptr on cooldown or without the ice ("no_energy" cue).
+    const char* tryShoot();
+    int comboNext = 1;
+    float comboLeft = 0.0f;
+    bool attackBuffered = false;
 
     // Physics shared by the states, in this order each step: runHorizontal, tryJump, applyGravity, moveAndCollide.
     void applyGravity(float dt);
@@ -126,13 +179,20 @@ public:
 
 private:
     StateMachine<IkiObject> machine_;
+    StateMachine<IkiObject> actions_;
+    std::vector<EventBus::Subscription> subscriptions_;
+    GameObjectId slashes_[3]{}; // the children Slash1..3
+    bool animWindow_ = false;   // this slash's animation has hit_on: its events drive the hitbox
+    bool hitOnSeen_ = false;    // this slash's first hit_on came: later ones (a looping animation) do nothing
+    bool airComboUsed_ = false; // a slash started in the air since the last ground, wall, ceiling or damage
+    float shootLeft_ = 0.0f;
     Scene2D* scene_ = nullptr; // the scene of the running step (physics helpers need it)
     InputState input_{};
+    bool inputRead_ = true; // a step has read input_ (false through a hit stop: its presses are kept)
     Body body_;
     MoveResult lastMove_;
     glm::vec2 stepVelocity_{0.0f}; // velocity before this step's move (landing strength, turn)
     glm::vec2 checkpoint_{0.0f};
-    float invulnerableLeft_ = 0.0f;
     bool jumped_ = false; // left the ground this step (the controller must not snap it back down)
     bool placed_ = true;  // just created or teleported: no movement cues for the first step (no landing puff)
     float wallJumpLockLeft_ = 0.0f;
@@ -142,6 +202,8 @@ private:
     float climbCueLeft_ = 0.0f;
 
     bool stompBelow(Scene2D& scene);
+    HitResult guard(const DamageInfo& info); // the Damageable's guard callback
+    Hitbox* slashHitbox(int n) const;
     bool iceStakes() const;
     Body bodyHere() const;            // the collider box at transform.position
     CollisionQuery query(float reach) const; // static geometry and solids within reach of the body

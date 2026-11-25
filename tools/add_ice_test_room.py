@@ -14,8 +14,14 @@ Additions only, plus one approved exception (author, D2):
 - the exception: Showcase's left wall gets a doorway, cols 0-1 rows 23-26 (8 Collision cells set to 0, their
   Ground_d0 tiles removed), 2 u high for the Iki's 1.6 u collider. Nothing else in Showcase changes.
 
-The script proves it: the normalized dump of everything that existed (minus the doorway cells and tiles, nextUid)
-is the same before and after. Writes LDtk's own layout (tools/ldtk_json.py).
+D3 (combat, task 6), additions only: three entity defs (TrainingDummyWeak, TrainingDummyResist, TrainingDummyShooter,
+40 x 40 px, made from the training_dummy_* prefabs by their snake_case names) and one instance of each in IceTest:
+the two plain ones on the floor right of the pit, under the high platform (off the climbing path: pit, ice wall,
+ice ceiling, platform), and the shooter on the floor by the doorway in the right wall. Each is added only when
+missing, so a re-run changes nothing.
+
+The script proves it: the normalized dump of everything that existed (minus the doorway cells and tiles, nextUid,
+the dummies' defs) is the same before and after. Writes LDtk's own layout (tools/ldtk_json.py).
 
 Run from the repo root: py tools/add_ice_test_room.py
 """
@@ -65,13 +71,40 @@ ENTITIES = [
     ("Light", (816, 336), {"color": "#8FD8FF", "intensity": 1.8, "radius": 6.0}),
     ("Light", (240, 480), {"color": "#8FB8FF", "intensity": 1.5, "radius": 8.0}),
 ]
+# D3: (identifier, colour, pivot px), the pivot at the bottom centre, on the floor top (y 592).
+DUMMIES = [
+    ("TrainingDummyWeak", "#E0A060", (752, 592)),
+    ("TrainingDummyResist", "#7FA0C8", (816, 592)),
+    ("TrainingDummyShooter", "#E070A0", (952, 592)),
+]
+DUMMY_SIZE = 40
+
+
+def instance(d, lv, px, vals, new_iid):
+    """An LDtk entity instance of def d at pivot px in level lv, its fields from vals or the defaults."""
+    fis = []
+    for fd in d["fieldDefs"]:
+        v = vals.get(fd["identifier"], fd["defaultOverride"]["params"][0] if fd["defaultOverride"] else None)
+        if fd["__type"] == "Color":
+            real = {"id": "V_Int", "params": [int(v[1:], 16)]}
+        else:
+            real = {"id": "V_" + fd["__type"], "params": [v]}
+        fis.append({"__identifier": fd["identifier"], "__type": fd["__type"], "__value": v, "__tile": None,
+                    "defUid": fd["uid"], "realEditorValues": [real]})
+    return {"__identifier": d["identifier"], "__grid": [px[0] // GRID, px[1] // GRID],
+            "__pivot": [d["pivotX"], d["pivotY"]], "__tags": [], "__tile": None,
+            "__smartColor": d["color"], "__worldX": lv["worldX"] + px[0],
+            "__worldY": lv["worldY"] + px[1], "iid": new_iid(), "width": d["width"],
+            "height": d["height"], "defUid": d["uid"], "px": list(px), "fieldInstances": fis}
 
 
 def normalized(root):
     """Everything that existed before this script, as sorted JSON: no IceTest, no value 9, no nextUid, and the
-    doorway cells/tiles of Showcase masked (the approved exception)."""
+    doorway cells/tiles of Showcase masked (the approved exception), no dummy entity defs."""
     r = copy.deepcopy(root)
     r.pop("nextUid")
+    dummies = {name for name, _, _ in DUMMIES}
+    r["defs"]["entities"] = [e for e in r["defs"]["entities"] if e["identifier"] not in dummies]
     r["levels"] = [lv for lv in r["levels"] if lv["identifier"] != NAME]
     for d in r["defs"]["layers"]:
         if d["identifier"] == "Collision":
@@ -145,34 +178,38 @@ def main():
         by_name["Ground_d0"]["gridTiles"] = [
             {"px": [x * GRID, y * GRID], "src": [c * GRID, r * GRID], "f": 0, "t": r * 5 + c, "d": [y * CW + x], "a": 1}
             for y in range(CH) for x in range(CW) if solid[y][x] for c, r in [ground_tile(solid, x, y)]]
-        instances = []
-        for ident, px, vals in ENTITIES:
-            d = ent_defs[ident]
-            fis = []
-            for fd in d["fieldDefs"]:
-                v = vals.get(fd["identifier"], fd["defaultOverride"]["params"][0] if fd["defaultOverride"] else None)
-                if fd["__type"] == "Color":
-                    real = {"id": "V_Int", "params": [int(v[1:], 16)]}
-                else:
-                    real = {"id": "V_" + fd["__type"], "params": [v]}
-                fis.append({"__identifier": fd["identifier"], "__type": fd["__type"], "__value": v, "__tile": None,
-                            "defUid": fd["uid"], "realEditorValues": [real]})
-            instances.append({"__identifier": ident, "__grid": [px[0] // GRID, px[1] // GRID],
-                              "__pivot": [d["pivotX"], d["pivotY"]], "__tags": [], "__tile": None,
-                              "__smartColor": d["color"], "__worldX": lv["worldX"] + px[0],
-                              "__worldY": lv["worldY"] + px[1], "iid": new_iid(), "width": d["width"],
-                              "height": d["height"], "defUid": d["uid"], "px": list(px), "fieldInstances": fis})
-        by_name["Entities"]["entityInstances"] = instances
+        by_name["Entities"]["entityInstances"] = [instance(ent_defs[i], lv, px, vals, new_iid) for i, px, vals in ENTITIES]
         lv["layerInstances"] = layers
         root["levels"].append(lv)
+
+    # 4. D3: the dummies' entity defs (like Checkpoint's: no fields, pivot at the bottom centre) and one instance of
+    # each in IceTest, each only when missing. A random stream of its own: the iids do not depend on step 3.
+    drng = random.Random(63)
+    ent_defs = {e["identifier"]: e for e in defs["entities"]}
+    for ident, color, _ in DUMMIES:
+        if ident not in ent_defs:
+            d = copy.deepcopy(ent_defs["Checkpoint"])
+            d.update({"identifier": ident, "uid": root["nextUid"], "color": color,
+                      "width": DUMMY_SIZE, "height": DUMMY_SIZE})
+            root["nextUid"] += 1
+            defs["entities"].append(d)
+            ent_defs[ident] = d
+    ice = next(lv for lv in root["levels"] if lv["identifier"] == NAME)
+    ents = next(li for li in ice["layerInstances"] if li["__identifier"] == "Entities")
+    present = {e["__identifier"] for e in ents["entityInstances"]}
+    for ident, _, px in DUMMIES:
+        iid = str(uuid.UUID(int=drng.getrandbits(128), version=4))  # drawn for each: every dummy keeps its iid
+        if ident not in present:
+            ents["entityInstances"].append(instance(ent_defs[ident], ice, px, {}, lambda: iid))
 
     assert normalized(root) == before, "an existing part of showcase.ldtk changed"
     out = dumps(root, text)
     if out == text:
-        print("showcase.ldtk already has IceTest and value 9: nothing to do (the doorway is left as painted)")
+        print("showcase.ldtk already has IceTest, value 9 and the dummies: nothing to do (the doorway is left as painted)")
         return
     LDTK.write_bytes(out.encode("utf-8"))
-    print(f"added IntGrid 9 IceClimb, the Showcase doorway and {NAME}; nextUid = {root['nextUid']}")
+    print(f"added what was missing of IntGrid 9 IceClimb, the Showcase doorway, {NAME} and its dummies; "
+          f"nextUid = {root['nextUid']}")
 
 
 if __name__ == "__main__":

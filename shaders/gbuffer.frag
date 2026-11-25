@@ -30,6 +30,9 @@ void main() {
 
     outAlbedo = vec4(albedo.rgb, 1);
     outNormal = vec4(n.xy * 0.5 + 0.5, mask.r, mask.g);
-    outEmissive = vec4(emissive.rgb, 1);
+    // Hit flash: the lit albedo fades out and the flash colour comes in as emissive (unlit, it lights nothing).
+    vec4 flash = unpackUnorm4x8(inst.flash);
+    outAlbedo.rgb *= 1 - flash.a;
+    outEmissive = vec4(mix(emissive.rgb, flash.rgb, flash.a), 1);
     outDepth = inst.depth;
 }

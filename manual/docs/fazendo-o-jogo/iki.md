@@ -53,9 +53,10 @@ Cada passo do Iki segue a mesma ordem:
 
 1. Entrada: o jogo chamou `applyInput` antes do passo.
 2. `JumpAssist::tick`: conta o coyote time e o buffer de pulo.
-3. `states().update`: o estado atual move o Iki com os métodos de física.
-4. `emitMovementCues`, no fim do `onStep`: avisa `landed`, `left_ground` e `turned`. Os avisos são eventos: os efeitos tocam no fim do passo (no flush), depois dos componentes.
-5. Os componentes rodam logo depois do `onStep`, na ordem do prefab (`components`): `SpriteAnimator`, `SquashStretch`, `VelocityLean` e `Blink`. O `SquashStretch` funciona em qualquer ordem: o `SpriteAnimator` o aplica de novo depois de trocar o quadro.
+3. `actions().update`: a máquina `"action"` (golpe, tiro, escudo; veja [Combate do Iki](#combate-do-iki)). Ela roda antes da `"move"`, que lê a ação deste passo (velocidade reduzida, gravidade do golpe no ar).
+4. `states().update`: o estado atual move o Iki com os métodos de física. Depois, se o estado for `wall`, `ceiling`, `hurt` ou `dead`, a ação volta para `none`.
+5. `emitMovementCues`, no fim do `onStep`: avisa `landed`, `left_ground` e `turned`. Os avisos são eventos: os efeitos tocam no fim do passo (no flush), depois dos componentes.
+6. Os componentes rodam logo depois do `onStep`. Primeiro os do `onCreate` (`Resources`, `Hurtbox`, `Damageable`), depois os do prefab na ordem dele: `SpriteAnimator`, `SquashStretch`, `VelocityLean` e `Blink`. O `SquashStretch` funciona em qualquer ordem: o `SpriteAnimator` o aplica de novo depois de trocar o quadro.
 
 Os estados usam estes métodos do `IkiObject`, nesta ordem:
 
@@ -98,14 +99,15 @@ Todos são atributos exportados: aparecem no inspetor F1, mudam ao vivo e podem 
 | `ceilingStickSpeed` | `8` | Velocidade para cima com que ele encosta no teto ao pendurar (u/s). |
 | `hurtDuration` | `0.35` | Segundos sem controle após o dano. |
 | `hurtKnockback` | `[6, 6]` | Empurrão do dano: x no sentido do golpe, y para cima. |
-| `invulnerableTime` | `0.8` | Segundos sem levar dano novo. O dano emite `move:hurt` com este número como força, e o piscar do prefab (`"scaleByStrength": true`) dura o mesmo tempo. |
+| `invulnerableTime` | `0.8` | Segundos sem levar dano novo. O Iki copia este valor para o `invulnerableTime` do seu `Damageable` a cada passo (é o `Damageable` que conta o tempo). O dano emite `move:hurt` com este número como força, e o piscar do prefab (`"scaleByStrength": true`) dura o mesmo tempo. |
 
 Os números de juice (squash, inclinação, piscar, partículas) não ficam no Iki: ficam nos componentes do prefab e nos arquivos de efeito. Veja [Game juice](game-juice.md).
 
 ## Vida, energia, dano e morte
 
 - O componente `Resources` guarda a vida (5) e as energias de gelo e de fogo (100). Ele recarrega sozinho as energias, 10 por segundo, 1 s depois do último gasto.
-- `hurt(DamageInfo)`: tira vida, empurra e entra em `hurt`. Durante `invulnerableTime`, um dano novo é ignorado.
+- O dano chega pelo `Damageable` do Iki (adicionado no `onCreate`, com uma `Hurtbox` do time `"player"` do tamanho do corpo). Para ferir o Iki, emita um `HitEvent` para ele (a tecla de debug `J` faz isso). O `Damageable` pergunta ao escudo, tira a vida uma vez só e emite `DamageTaken`. Durante `invulnerableTime`, um golpe novo é ignorado.
+- `hurt(DamageInfo)` é só a reação ao `DamageTaken`: empurra, entra em `hurt` (ou `dead` com vida 0) e emite `move:hurt` (o piscar). Ele não tira vida.
 - Vida em 0: o Iki entra em `dead` e o `Resources` emite `Died`. O `IkigaiGame` ouve `Died` e chama a morte que já existe: escurece, restaura a sala e leva ao checkpoint.
 - No renascimento, o jogo move o Iki (`respawnAt`) e chama `respawn()`: vida e energias cheias, sem invulnerabilidade, sem velocidade, sem pulo guardado, estado `idle`.
 - O HUD de teste (canto superior esquerdo) mostra 5 corações, a barra azul de gelo e a laranja de fogo. Ele fica em `src/game/ui/DebugHud.cpp` e será trocado pela UI do D9.
@@ -128,6 +130,62 @@ Valem numa superfície `IceClimb` (IntGrid valor 9, ou `Terrain` com `iceClimb`;
     - com `↑` e a direção da parede juntos, a parede ganha e o estado não alterna.
 - **Dano** na parede ou no teto: solta, empurra e entra em `hurt`. Durante `hurt`, nada reagarra e não há salto da parede (o buffer e o coyote de parede são zerados).
 - **Juice:** ao agarrar, o Iki emite `move:grab` nas mãos (parede) ou na cabeça (teto), que toca `ice_stake` (as mãos e a cabeça são calculadas do `collider`: um corpo maior no prefab leva as estacas junto); `state:move:wall` e `state:move:ceiling` tocam um squash; `move:climb` toca `ice_shards` a cada `climbParticleInterval` enquanto ele se move. Travessia nunca gasta energia.
+
+## Combate do Iki
+
+A segunda máquina, `"action"`, cuida do combate de gelo. Ela aparece no F1 ao lado da `"move"` e emite `StateChanged` (`state:action:<estado>`). Os estados ficam em `src/game/iki/actions/`.
+
+| Estado | Quando | Sai para |
+|---|---|---|
+| `none` | Sem ação. `V` no chão ergue o escudo, `C` atira, `X` golpeia. | `slash1..3`, `shoot`, `guard` |
+| `slash1`, `slash2`, `slash3` | Um corte, por `slashDuration`. | o próximo corte, `none`, `guard`, `shoot` |
+| `shoot` | Um passo, logo depois de lançar o estilhaço. | `none` |
+| `guard` | `V` segurado no chão. | `none` |
+| `guard_break` | O escudo quebrou: sem escudo nem golpe por `guardBreakStun`. | `none` |
+
+- **Regras com a `"move"`:** `wall`, `ceiling`, `hurt` e `dead` levam a ação para `none` e bloqueiam ações novas (o `guard_break` continua durante o `hurt` do golpe que o quebrou). O escudo só sobe em `idle` ou `run`.
+- **Sequência (`X`):** `X` começa o corte 1. Um `X` até `comboWindow` depois do fim de um corte começa o próximo, até o 3. Um `X` durante o corte (ou durante o hit stop) fica guardado e encadeia assim que o corte acaba. Dano 1, 1 e 2. Cada corte avança `attackStep` no chão; correndo, a velocidade cai para `runSpeed * attackMoveFactor`. A sequência zera com dano, parede, teto, escudo e tiro; pousar não zera. Golpe não gasta energia.
+- **No ar:** durante um corte que já está caindo (velocidade vertical 0 ou menos), a gravidade é `gravity * airAttackGravityFactor` e a queda para em `airAttackMaxFall`. Há uma sequência por salto: um corte que começa no ar gasta a do salto, e só tocar o chão, agarrar parede ou teto, ou levar dano a devolve.
+- **Hitboxes:** os filhos `Slash1`, `Slash2` e `Slash3` do prefab têm uma `Hitbox` cada, à frente do Iki (o espelho segue o `flipX` dele). O corte liga a hitbox entre os eventos `hit_on` e `hit_off` da animação, se ela tiver `hit_on` em `animationEvents` (só o primeiro `hit_on` de cada corte conta: uma animação que repete não abre outra janela). Senão, entre `activeStart` e `activeEnd` da hitbox (0,05 a 0,15 s). Cada corte acerta cada alvo uma vez. O `knockback` do `Slash3` é o `finisherKnockback` do Iki (o prefab não põe `knockback` nessa hitbox: o valor fica num lugar só, ajustável no F1).
+- **Estilhaço (`C`):** custa `shardCost` de gelo e lança o prefab `ice_shard` (do `ProjectilePool`) na direção do olhar, saindo do centro do corpo (encostado numa parede, ele quebra nela). A velocidade (14), o alcance (8) e o dano (1, gelo) são do componente `Projectile` do prefab. Entre tiros há `shootCooldown`. Sem gelo, nada sai e o Iki emite `move:no_energy`. Se o pool não consegue criar o estilhaço, o gelo não é gasto.
+- **Escudo (`V`):** com ele, o Iki anda a `runSpeed * guardMoveFactor` e não pula. O `Damageable` do Iki chama o escudo antes de tirar vida:
+    - golpe de trás (o empurrão aponta para onde o Iki olha) passa;
+    - "de frente" olha só o sinal de x do empurrão; um golpe reto de cima ou de baixo conta como de frente;
+    - até `parryWindow` depois de apertar `V`, é **aparo**: não custa gelo, quem atacou (`source`) fica `Stunned` por `parryStun` do `Damageable` e um projétil volta, agora do Iki. A janela conta tempo de cena: o hit stop não a gasta, e cada aperto de `V` a reinicia;
+    - depois da janela, ou com `parryable` falso, é **bloqueio**: custa `blockCost` de gelo e empurra o Iki `blockPush` para trás;
+    - sem gelo para o bloqueio, o golpe passa e a ação vira `guard_break` (emite `move:guard_break`). Para erguer de novo, solte e aperte `V`.
+- **Animações** (provisórias, do `kaa_player`): no mapa `animations`, uma chave `action:<estado>` vale enquanto a ação não é `none` (`"action:slash1": "attack_prepare"`, `"action:slash2": "attack_stay"`, `"action:slash3": "attack_leave"`, `"action:guard": "push"`). Sem a chave, fica a animação da `"move"`. Essas animações ainda não têm `hit_on`: os quadros delas (100 a 143 ms) são longos demais para a janela de 0,05 a 0,15 s.
+- **Peso** (seção `effects` do prefab, arquivos em `assets/effects/`): o Iki emite `move:hit` quando um acerto dele tira vida e `move:finisher` quando é o corte 3, no ponto do acerto (o centro da hurtbox do alvo).
+
+| Gatilho | Efeito | O que faz |
+|---|---|---|
+| `state:action:slash1..3` | `slash_1..3` | Som do corte e um squash. |
+| `move:hit` | `slash_hit` | Hit stop 0,05 s, tremor 0,1, som `hit_ice`, cacos. |
+| `move:finisher` | `slash_finisher` | Hit stop 0,09 s, tremor 0,18, som mais grave, mais cacos. |
+| `state:action:shoot` | `shard_throw` | Som do tiro. O estilhaço toca `shard_break` ao quebrar. |
+| `hit:blocked` | `guard_block` | Hit stop 0,04 s, tremor 0,08, som `hit_block`. |
+| `hit:parried` | `parry` | Hit stop 0,15 s, tremor 0,25, flash azul, som `parry`, faíscas. |
+| `move:guard_break` | `guard_break` | Som e tremor do escudo quebrado. |
+| `move:no_energy`, `state:action:guard` | (inline) | Sons `no_energy` e `guard_up`. |
+| `hit:taken` | (inline) | Hit stop 0,06 s, tremor 0,15 e flash vermelho no Iki ferido. |
+
+| Atributo | Padrão | Efeito |
+|---|---|---|
+| `comboWindow` | `0.35` | Segundos depois de um corte em que `X` encadeia o próximo. |
+| `slashDuration` | `0.22` | Duração de cada corte. |
+| `attackStep` | `0.3` | Avanço de cada corte no chão (u). |
+| `attackMoveFactor` | `0.4` | Velocidade no chão durante o corte, em fração de `runSpeed`. |
+| `airAttackGravityFactor` | `0.25` | Gravidade durante um corte no ar, só na descida. |
+| `airAttackMaxFall` | `-3` | Queda máxima durante um corte no ar (u/s). |
+| `finisherKnockback` | `8` | Empurrão do corte 3 (vai para o `knockback` da hitbox `Slash3`). |
+| `shardCost` | `15` | Gelo por estilhaço. |
+| `shootCooldown` | `0.25` | Segundos mínimos entre tiros. |
+| `guardMoveFactor` | `0.3` | Velocidade com o escudo, em fração de `runSpeed`. |
+| `blockCost` | `10` | Gelo por bloqueio. |
+| `blockPush` | `3` | Empurrão para trás ao bloquear (u/s). |
+| `parryWindow` | `0.15` | Segundos depois de apertar `V` em que o golpe de frente vira aparo. |
+| `guardBreakStun` | `0.5` | Segundos sem escudo nem golpe depois de o escudo quebrar. |
+| `parryStun` (no `Damageable`) | `1` | Segundos de `Stunned` para quem foi aparado. |
 
 ## Habilidades
 

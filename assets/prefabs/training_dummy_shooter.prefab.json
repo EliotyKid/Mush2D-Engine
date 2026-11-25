@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "base": "training_dummy_weak",
+  "sprite": { "frame": "crystal 1" },
+  "components": [
+    { "type": "Stunned" },
+    { "type": "DummyShooter", "props": { "shootInterval": 2.5, "range": 10.0, "projectile": "dummy_bolt" } }
+  ],
+  "effects": {
+    "move:shoot": [{"sound": "shard_throw", "volume": 0.6, "pitch": [0.7, 0.75]}, {"flash": {"color": [1.0, 0.6, 0.8], "duration": 0.1}}]
+  }
+}

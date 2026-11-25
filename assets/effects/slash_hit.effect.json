@@ -1,0 +1,6 @@
+{"version": 1, "actions": [
+  {"hitstop": 0.05},
+  {"shake": {"amplitude": 0.1, "duration": 0.1}},
+  {"sound": "hit_ice", "pitch": [0.95, 1.05]},
+  {"particles": {"count": 6, "speed": [2, 5], "angle": [-50, 50], "lifetime": [0.15, 0.3], "gravity": -10, "drag": 2, "size": [0.1, 0.03], "color": [[0.85, 0.97, 1.0, 1.0], [0.6, 0.85, 1.0, 0.0]], "layer": 3}}
+]}

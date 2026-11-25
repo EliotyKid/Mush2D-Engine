@@ -26,9 +26,10 @@ struct RegionLayer {
     std::optional<Material> material; // set by resolveRegionMaterials; empty = unreadable image, not drawn
 };
 
-// assets/regions/<name>.region.json: { "look": <.look.json format>, "layers": [RegionLayer...] }.
+// assets/regions/<name>.region.json: { "look": <.look.json format>, "layers": [RegionLayer...], "music": "<name>" }.
 struct Region {
     std::string name; // file name up to the first '.'; not stored in the file
+    std::string music; // assets/audio/music/<music>.wav, looped while the region is current; "" = silence
     LookFile look;
     std::vector<RegionLayer> layers;
 };

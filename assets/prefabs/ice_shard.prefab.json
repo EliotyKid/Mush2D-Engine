@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "type": "GameObject",
+  "props": { "name": "IceShard", "scale": [0.35, 0.35] },
+  "sprite": { "atlas": "crystals", "frame": "crystal 0", "color": [0.75, 0.92, 1.0, 1.0], "layer": 3 },
+  "components": [
+    { "type": "Projectile", "props": { "speed": 14.0, "range": 8.0, "team": "player", "damage": 1, "element": "Ice", "size": [0.4, 0.25] } }
+  ],
+  "effects": { "move:break": ["shard_break"] }
+}

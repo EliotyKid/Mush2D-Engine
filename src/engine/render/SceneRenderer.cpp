@@ -163,9 +163,10 @@ void SceneRenderer::init(GpuContext& gpu, Bindless& bindless) {
     compositePipeline_ = createPipeline("fullscreen.vert", "composite.frag", &swapFormat, 1);
     const VkFormat* lightFormat = f + RenderTargets::Light;
     resolvePipeline_ = createPipeline("fullscreen.vert", "resolve.frag", f + RenderTargets::Hdr, 1);
-    additivePipeline_ = createPipeline("sprite.vert", "additive.frag", f + RenderTargets::Hdr, 1, true);
+    alphaPipeline_ = createPipeline("sprite.vert", "alpha.frag", f + RenderTargets::Hdr, 1, Blend::Alpha);
+    additivePipeline_ = createPipeline("sprite.vert", "additive.frag", f + RenderTargets::Hdr, 1, Blend::Additive);
     bloomDownPipeline_ = createPipeline("fullscreen.vert", "bloom_down.frag", lightFormat, 1);
-    bloomUpPipeline_ = createPipeline("fullscreen.vert", "bloom_up.frag", lightFormat, 1, true);
+    bloomUpPipeline_ = createPipeline("fullscreen.vert", "bloom_up.frag", lightFormat, 1, Blend::Additive);
     timers_.init(gpu);
 
     VkExtent2D extent = gpu.swapchain().extent();
@@ -186,6 +187,7 @@ void SceneRenderer::shutdown() {
     vkDestroyPipeline(device, gbufferPipeline_, nullptr);
     vkDestroyPipeline(device, lightPipeline_, nullptr);
     vkDestroyPipeline(device, resolvePipeline_, nullptr);
+    vkDestroyPipeline(device, alphaPipeline_, nullptr);
     vkDestroyPipeline(device, additivePipeline_, nullptr);
     vkDestroyPipeline(device, bloomDownPipeline_, nullptr);
     vkDestroyPipeline(device, bloomUpPipeline_, nullptr);
@@ -224,7 +226,7 @@ void SceneRenderer::writeFrameSet(FrameResources& fr) {
 }
 
 VkPipeline SceneRenderer::createPipeline(const char* vert, const char* frag, const VkFormat* formats, uint32_t count,
-                                     bool additiveBlend) {
+                                     Blend blendMode) {
     VkDevice device = gpu_->device();
     VkShaderModule vs = loadShader(device, vert);
     VkShaderModule fs = loadShader(device, frag);
@@ -249,10 +251,16 @@ VkPipeline SceneRenderer::createPipeline(const char* vert, const char* frag, con
     VkPipelineColorBlendAttachmentState blend[4]{};
     for (auto& b : blend) {
         b.colorWriteMask = 0xF;
-        if (additiveBlend) {
+        if (blendMode == Blend::Additive) {
             b.blendEnable = VK_TRUE;
             b.srcColorBlendFactor = b.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
             b.dstColorBlendFactor = b.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        } else if (blendMode == Blend::Alpha) { // straight alpha over the colour; target alpha kept
+            b.blendEnable = VK_TRUE;
+            b.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            b.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            b.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+            b.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
         }
     }
     VkPipelineColorBlendStateCreateInfo blendState{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
@@ -316,7 +324,7 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
 
     FrameUniforms u{};
     u.viewProj = camera.buildProjectionMatrix(extent);
-    u.cameraPos = camera.position;
+    u.cameraPos = camera.position + camera.shakeOffset();
     u.viewport = {static_cast<float>(extent.width), static_cast<float>(extent.height)};
     u.halfSize = camera.halfExtent(extent);
     u.pixelsPerUnit = camera.pixelsPerUnit;
@@ -353,7 +361,8 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
 
     timers_.beginFrame(cmd);
     const uint32_t opaqueCount = static_cast<uint32_t>(sprites_.opaqueCount());
-    const uint32_t additiveCount = static_cast<uint32_t>(instances.size()) - opaqueCount;
+    const uint32_t alphaCount = static_cast<uint32_t>(sprites_.alphaCount());
+    const uint32_t additiveCount = static_cast<uint32_t>(instances.size()) - opaqueCount - alphaCount;
 
     // 1. G-buffer (opaque sprites). Albedo alpha 0 marks "no sprite" (sky) for the light pass.
     timers_.begin(cmd, "gbuffer");
@@ -410,20 +419,34 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     vkCmdEndRendering(cmd);
     timers_.end(cmd);
 
-    // 4. Additive sprites (unlit, blend ONE, ONE) over the native HDR.
+    // 4. Alpha particles (lit by the irradiance, occluded by nearer opaque sprites, fogged; blend SRC_ALPHA,
+    // ONE_MINUS_SRC_ALPHA) over the native HDR.
+    timers_.begin(cmd, "alpha");
+    r.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    if (alphaCount) {
+        transition(cmd, hdr.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        beginRendering(cmd, hdr.extent, &r, 1);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, alphaPipeline_);
+        push({opaqueCount, targets_.index(RenderTargets::Albedo), targets_.index(RenderTargets::Depth),
+              targets_.index(RenderTargets::Light), settings_.pixelateLight ? 0u : 1u});
+        vkCmdDraw(cmd, 6, alphaCount, 0, 0);
+        vkCmdEndRendering(cmd);
+    }
+    timers_.end(cmd);
+
+    // 5. Additive sprites (unlit, blend ONE, ONE) over the native HDR.
     timers_.begin(cmd, "additive");
     if (additiveCount) {
         transition(cmd, hdr.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-        r.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         beginRendering(cmd, hdr.extent, &r, 1);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, additivePipeline_);
-        push({opaqueCount});
+        push({opaqueCount + alphaCount});
         vkCmdDraw(cmd, 6, additiveCount, 0, 0);
         vkCmdEndRendering(cmd);
     }
     transition(cmd, hdr.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     timers_.end(cmd);
-    // 5. Bloom: down chain (first step reads the native HDR, soft threshold), then tent up chain blended additively.
+    // 6. Bloom: down chain (first step reads the native HDR, soft threshold), then tent up chain blended additively.
     // Skipped when intensity is 0; composite then reads the (always valid) HDR image times 0.
     timers_.begin(cmd, "bloom");
     const bool bloomOn = settings_.bloomIntensity > 0.0f;
@@ -456,7 +479,7 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
     }
     timers_.end(cmd);
 
-    // 6. Composite into the swapchain (sampler 0 = NEAREST keeps pixelated light blocky).
+    // 7. Composite into the swapchain (sampler 0 = NEAREST keeps pixelated light blocky).
     timers_.begin(cmd, "composite+ui");
     VkImage swapImage = gpu.swapchain().image(frame.imageIndex);
     transition(cmd, swapImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);

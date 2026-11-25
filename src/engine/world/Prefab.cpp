@@ -1,12 +1,14 @@
 #include "engine/world/Prefab.hpp"
 
 #include "engine/assets/AssetRegistry.hpp"
+#include "engine/world/Combat.hpp"
 #include "engine/world/Effects.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/SpriteAnimator.hpp"
 // Included so their MUSH2D_COMPONENT registration is linked in: prefabs name them in "components".
 #include "engine/world/Blink.hpp"
 #include "engine/world/Particles.hpp"
+#include "engine/world/Projectile.hpp"
 #include "engine/world/SquashStretch.hpp"
 #include "engine/world/VelocityLean.hpp"
 
@@ -23,8 +25,8 @@ namespace {
 constexpr int MaxDepth = 16; // children of children...: also stops a child that instantiates its own parent
 
 const std::set<std::string> KnownKeys = {"version", "base", "type", "props", "extra", "sprite", "collider",
-                                         "animations", "animationEvents", "effects", "components", "children", "name", "position", "prefab", "remove"};
-const std::set<std::string> KeyedSections = {"props", "extra", "sprite", "collider", "animations", "animationEvents", "effects"};
+                                         "animations", "animationEvents", "effects", "multipliers", "components", "children", "name", "position", "prefab", "remove"};
+const std::set<std::string> KeyedSections = {"props", "extra", "sprite", "collider", "animations", "animationEvents", "effects", "multipliers"};
 
 // Prefab section field -> GameObject attribute.
 const std::map<std::string, std::string> SpriteFields = {{"atlas", "spriteAtlas"}, {"frame", "spriteFrame"},
@@ -324,8 +326,9 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
     if (doc.contains("effects")) { // trigger -> [effect name or inline action]
         if (!doc["effects"].is_object()) warn(where + ": effects: expected {trigger: [effects]}");
         else for (const auto& [trigger, items] : doc["effects"].items()) {
-            const bool known = trigger.starts_with("state:") || trigger.starts_with("anim:") || trigger.starts_with("move:");
-            if (!known) warn(where + ": effects." + trigger + ": a trigger starts with state:, anim: or move:");
+            const bool known = trigger.starts_with("state:") || trigger.starts_with("anim:") || trigger.starts_with("move:") ||
+                               trigger.starts_with("hit:");
+            if (!known) warn(where + ": effects." + trigger + ": a trigger starts with state:, anim:, move: or hit:");
             else if (!items.is_array()) warn(where + ": effects." + trigger + ": expected a list of effects");
             else {
                 EffectTriggers* triggers = o.getComponent<EffectTriggers>();
@@ -336,6 +339,21 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
                     if (const std::string error = effectItemError(item); error.empty()) list.push_back(item);
                     else warn(where + ": effects." + trigger + ": " + error);
                 }
+            }
+        }
+    }
+
+    if (doc.contains("multipliers")) { // element -> damage multiplier of the Damageable (added if missing)
+        if (!doc["multipliers"].is_object()) warn(where + ": multipliers: expected {\"Ice\": 2.0, ...}");
+        else {
+            Damageable* damageable = o.getComponent<Damageable>();
+            if (!damageable) damageable = &o.addComponent<Damageable>();
+            for (const auto& [name, value] : doc["multipliers"].items()) {
+                Element element{};
+                std::string error;
+                if (!reflect::fromJson(json(name), element, error)) warn(where + ": multipliers." + name + ": " + error);
+                else if (!value.is_number() || value.get<float>() < 0.0f) warn(where + ": multipliers." + name + ": expected a number >= 0");
+                else damageable->multipliers[element] = value.get<float>();
             }
         }
     }

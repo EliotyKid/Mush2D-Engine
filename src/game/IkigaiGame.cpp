@@ -44,11 +44,14 @@ void IkigaiGame::init(EngineServices& s) {
     s.scene.setService(&effects);
     s.scene.setService(&world);
     s.scene.setService(&world.state);
+    s.scene.setService(&combat);
+    projectiles.scene = &s.scene;
+    s.scene.setService(&projectiles);
     // Health 0 (Resources emits Died): the existing death (fade, room restore, checkpoint).
     diedSubscription = s.scene.events().subscribe<Died>([this, &s](const Died& e) {
         if (currentSceneId == SceneId::Showcase && e.id == playerObjectId) killPlayer(s, e.id);
     });
-    regions.init(s.materials, sourceAssetPath("assets/regions")); // Debug: the source tree, so panel saves survive rebuilds
+    regions.init(s.materials, sourceAssetPath("assets/regions"), &s.audio); // Debug: the source tree, so panel saves survive rebuilds
 
     atlasMaterials.clear();
     for (const AssetRegistry::Atlas& atlas : gameAssets.registry.atlases()) {
@@ -210,6 +213,8 @@ void IkigaiGame::shutdown(EngineServices& s) {
     s.scene.setService<EffectLibrary>(nullptr);
     s.scene.setService<World>(nullptr);
     s.scene.setService<WorldState>(nullptr);
+    s.scene.setService<CombatWorld>(nullptr);
+    s.scene.setService<ProjectilePool>(nullptr);
 }
 
 bool IkigaiGame::tryLoadScene(EngineServices& s, SceneId sceneId, const SceneTransitionData& transitionData) {
@@ -355,7 +360,9 @@ void IkigaiGame::handleGlobalInput(EngineServices& s, float deltaTime) {
 #ifndef NDEBUG
     // Debug J = 1 damage, pushed away from where the Iki faces; L = spend 30 ice and 30 fire (spec D2 "Recursos").
     const bool hurtKey = input.isKeyDown(GLFW_KEY_J), spendKey = input.isKeyDown(GLFW_KEY_L);
-    if (auto* iki = dynamic_cast<IkiObject*>(player); iki && hurtKey && !hurtPressed) iki->hurt({1, {-iki->facing, 0.0f}});
+    // Through the Damageable, as a real hit: the shield and the invulnerability decide (from the front, no source).
+    if (auto* iki = dynamic_cast<IkiObject*>(player); iki && hurtKey && !hurtPressed)
+        scene.events().emit(HitEvent{InvalidGameObjectId, iki->id, DamageInfo{1, {-iki->facing, 0.0f}}});
     if (Resources* resources = player ? player->getComponent<Resources>() : nullptr; resources && spendKey && !spendPressed)
         resources->spendBoth(30.0f, 30.0f);
     hurtPressed = hurtKey;
@@ -606,7 +613,7 @@ void IkigaiGame::onImGui(EngineServices& s) {
         }
     }
     bool save = false;
-    lookPanel.draw(regions.current(), lightEdits, roomLayers, s.renderer.timers(), save);
+    lookPanel.draw(regions.current(), lightEdits, roomLayers, s.renderer.timers(), s.camera, s.audio, save);
     // Look edits reach the renderer through regions.update next frame (it may be blending).
     for (const EditableLayer& l : roomLayers) levelLoader.setLayer(regions.currentName(), l.identifier, l.value.parallax, l.value.depth);
     if (save) {

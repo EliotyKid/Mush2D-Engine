@@ -57,6 +57,7 @@ nav:
       - Terreno: fazendo-o-jogo/terreno.md
       - Prefabs: fazendo-o-jogo/prefabs.md
       - Game juice: fazendo-o-jogo/game-juice.md
+      - Combate: fazendo-o-jogo/combate.md
       - "Iki: estados e habilidades": fazendo-o-jogo/iki.md
       - Objeto novo: fazendo-o-jogo/objeto-novo.md
       - Comunicação entre objetos: fazendo-o-jogo/comunicacao.md
@@ -71,4 +72,5 @@ nav:
       - gpu: sistemas/gpu.md
       - tools: sistemas/tools.md
       - reflect: sistemas/reflect.md
+      - audio: sistemas/audio.md
   - Desempenho: desempenho.md

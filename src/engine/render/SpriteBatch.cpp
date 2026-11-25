@@ -7,6 +7,8 @@
 #include <cmath>
 #include <tuple>
 
+#include <glm/gtc/packing.hpp>
+
 void SpriteBatch::clear() {
     entries_.clear();
 }
@@ -15,18 +17,26 @@ void SpriteBatch::add(const SpriteInstance& instance, int order) {
     entries_.push_back({instance, order});
 }
 
+namespace {
+int group(const SpriteInstance& s) { // 0 opaque, 1 alpha, 2 additive
+    return (s.flags & SpriteFlagAdditive) ? 2 : (s.flags & SpriteFlagAlpha) ? 1 : 0;
+}
+}
+
 const std::vector<SpriteInstance>& SpriteBatch::sorted() {
     std::stable_sort(entries_.begin(), entries_.end(), [](const Entry& a, const Entry& b) {
-        bool addA = (a.instance.flags & SpriteFlagAdditive) != 0, addB = (b.instance.flags & SpriteFlagAdditive) != 0;
-        if (addA != addB) return addB; // opaque before additive
+        const int ga = group(a.instance), gb = group(b.instance);
+        if (ga != gb) return ga < gb;
         if (a.instance.depth != b.instance.depth) return a.instance.depth > b.instance.depth;
         return a.order < b.order;
     });
     sorted_.clear();
-    opaqueCount_ = 0;
+    opaqueCount_ = alphaCount_ = 0;
     for (const Entry& e : entries_) {
         sorted_.push_back(e.instance);
-        if (!(e.instance.flags & SpriteFlagAdditive)) ++opaqueCount_;
+        const int g = group(e.instance);
+        if (g == 0) ++opaqueCount_;
+        else if (g == 1) ++alphaCount_;
     }
     return sorted_;
 }
@@ -60,7 +70,7 @@ void appendParticles(const GameObject& owner, SpriteBatch& batch, const AtlasLoo
             inst.normal = material.normal;
             inst.emissive = material.emissive;
             inst.mask = material.mask;
-            inst.flags = c.additive ? SpriteFlagAdditive : SpriteFlagNearest;
+            inst.flags = c.additive ? SpriteFlagAdditive : SpriteFlagNearest | SpriteFlagAlpha; // alpha: fades to 0
             batch.add(inst, c.layer * 1000);
         }
     }
@@ -86,7 +96,8 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
         inst.position = world.position + glm::vec2(c * off.x - s * off.y, s * off.x + c * off.y);
         inst.size = sprite.drawSize == glm::vec2(0.0f) ? world.scale : world.scale * sprite.drawSize;
         inst.uvRect = uvRect;
-        inst.color = sprite.color;
+        inst.color = sprite.color * sprite.tint;
+        inst.flash = glm::packUnorm4x8(glm::clamp(sprite.flash, 0.0f, 1.0f));
         inst.rotation = world.rotation;
         inst.depth = sprite.depth;
         inst.parallax = sprite.parallax;

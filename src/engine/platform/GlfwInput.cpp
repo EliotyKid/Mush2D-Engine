@@ -82,6 +82,9 @@ void GlfwInput::poll() {
     updateButton(state.hit, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS, previousHit);
     updateButton(state.toggleFollow, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS, previousToggleFollow);
     updateButton(state.respawn, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS, previousRespawn);
+    updateButton(state.attack, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS, previousAttack);
+    updateButton(state.shoot, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS, previousShoot);
+    updateButton(state.guard, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS, previousGuard);
 
     updateButton(
         state.dragCamera,

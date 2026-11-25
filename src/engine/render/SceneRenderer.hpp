@@ -54,7 +54,7 @@ private:
     size_t count_ = 0;
 };
 
-// G-buffer -> irradiance (light, maybe reduced) -> native resolve (albedo, emissive, fog) -> additive sprites -> bloom -> composite (bloom, exposure,
+// G-buffer -> irradiance (light, maybe reduced) -> native resolve (albedo, emissive, fog) -> alpha particles -> additive sprites -> bloom -> composite (bloom, exposure,
 // temperature, AgX, lift/gamma/gain, saturation, sRGB) into the swapchain.
 class SceneRenderer {
 public:
@@ -80,8 +80,9 @@ private:
 
     VkExtent2D lightExtent(VkExtent2D extent) const;
     void writeFrameSet(FrameResources& fr);
+    enum class Blend { None, Additive, Alpha };
     VkPipeline createPipeline(const char* vert, const char* frag, const VkFormat* formats, uint32_t count,
-                             bool additiveBlend = false);
+                             Blend blend = Blend::None);
 
     GpuContext* gpu_ = nullptr;
     Bindless* bindless_ = nullptr;
@@ -96,6 +97,7 @@ private:
     VkPipeline gbufferPipeline_ = VK_NULL_HANDLE;
     VkPipeline lightPipeline_ = VK_NULL_HANDLE;
     VkPipeline resolvePipeline_ = VK_NULL_HANDLE;
+    VkPipeline alphaPipeline_ = VK_NULL_HANDLE;
     VkPipeline additivePipeline_ = VK_NULL_HANDLE;
     VkPipeline bloomDownPipeline_ = VK_NULL_HANDLE;
     VkPipeline bloomUpPipeline_ = VK_NULL_HANDLE;

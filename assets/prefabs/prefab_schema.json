@@ -71,12 +71,54 @@
         }
       ]
     },
+    "Damageable": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 0.20000000298023224,
+          "name": "invulnerableTime",
+          "type": "Float"
+        },
+        {
+          "default": 1.0,
+          "name": "parryStun",
+          "type": "Float"
+        }
+      ]
+    },
     "DoorObject": {
       "base": "GameObject",
       "component": false,
       "props": []
     },
+    "DummyShooter": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 2.5,
+          "name": "shootInterval",
+          "type": "Float"
+        },
+        {
+          "default": 10.0,
+          "name": "range",
+          "type": "Float"
+        },
+        {
+          "default": "dummy_bolt",
+          "name": "projectile",
+          "type": "String"
+        }
+      ]
+    },
     "EffectTriggers": {
+      "base": "Component",
+      "component": true,
+      "props": []
+    },
+    "Flash": {
       "base": "Component",
       "component": true,
       "props": []
@@ -186,6 +228,91 @@
           "default": false,
           "name": "isTrigger",
           "type": "Bool"
+        }
+      ]
+    },
+    "Hitbox": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": [
+            1.0,
+            1.0
+          ],
+          "name": "size",
+          "type": "Vec2"
+        },
+        {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "name": "offset",
+          "type": "Vec2"
+        },
+        {
+          "default": 1,
+          "name": "damage",
+          "type": "Int"
+        },
+        {
+          "default": "Ice",
+          "enum": "Element",
+          "name": "element",
+          "type": "Enum"
+        },
+        {
+          "default": 0.0,
+          "name": "knockback",
+          "type": "Float"
+        },
+        {
+          "default": "player",
+          "name": "team",
+          "type": "String"
+        },
+        {
+          "default": true,
+          "name": "parryable",
+          "type": "Bool"
+        },
+        {
+          "default": 0.05000000074505806,
+          "name": "activeStart",
+          "type": "Float"
+        },
+        {
+          "default": 0.15000000596046448,
+          "name": "activeEnd",
+          "type": "Float"
+        }
+      ]
+    },
+    "Hurtbox": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": [
+            1.0,
+            1.0
+          ],
+          "name": "size",
+          "type": "Vec2"
+        },
+        {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "name": "offset",
+          "type": "Vec2"
+        },
+        {
+          "default": "enemy",
+          "name": "team",
+          "type": "String"
         }
       ]
     },
@@ -357,6 +484,76 @@
           "default": 0.800000011920929,
           "name": "invulnerableTime",
           "type": "Float"
+        },
+        {
+          "default": 0.3499999940395355,
+          "name": "comboWindow",
+          "type": "Float"
+        },
+        {
+          "default": 0.2199999988079071,
+          "name": "slashDuration",
+          "type": "Float"
+        },
+        {
+          "default": 0.30000001192092896,
+          "name": "attackStep",
+          "type": "Float"
+        },
+        {
+          "default": 0.4000000059604645,
+          "name": "attackMoveFactor",
+          "type": "Float"
+        },
+        {
+          "default": 0.25,
+          "name": "airAttackGravityFactor",
+          "type": "Float"
+        },
+        {
+          "default": -3.0,
+          "name": "airAttackMaxFall",
+          "type": "Float"
+        },
+        {
+          "default": 8.0,
+          "name": "finisherKnockback",
+          "type": "Float"
+        },
+        {
+          "default": 15.0,
+          "name": "shardCost",
+          "type": "Float"
+        },
+        {
+          "default": 0.25,
+          "name": "shootCooldown",
+          "type": "Float"
+        },
+        {
+          "default": 0.30000001192092896,
+          "name": "guardMoveFactor",
+          "type": "Float"
+        },
+        {
+          "default": 10.0,
+          "name": "blockCost",
+          "type": "Float"
+        },
+        {
+          "default": 3.0,
+          "name": "blockPush",
+          "type": "Float"
+        },
+        {
+          "default": 0.15000000596046448,
+          "name": "parryWindow",
+          "type": "Float"
+        },
+        {
+          "default": 0.5,
+          "name": "guardBreakStun",
+          "type": "Float"
         }
       ]
     },
@@ -462,6 +659,51 @@
         }
       ]
     },
+    "Projectile": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 10.0,
+          "name": "speed",
+          "type": "Float"
+        },
+        {
+          "default": 8.0,
+          "name": "range",
+          "type": "Float"
+        },
+        {
+          "default": "enemy",
+          "name": "team",
+          "type": "String"
+        },
+        {
+          "default": 1,
+          "name": "damage",
+          "type": "Int"
+        },
+        {
+          "default": "Ice",
+          "enum": "Element",
+          "name": "element",
+          "type": "Enum"
+        },
+        {
+          "default": true,
+          "name": "parryable",
+          "type": "Bool"
+        },
+        {
+          "default": [
+            0.25,
+            0.25
+          ],
+          "name": "size",
+          "type": "Vec2"
+        }
+      ]
+    },
     "PropObject": {
       "base": "GameObject",
       "component": false,
@@ -553,6 +795,11 @@
           "default": "idle",
           "name": "state",
           "type": "String"
+        },
+        {
+          "default": "",
+          "name": "action",
+          "type": "String"
         }
       ]
     },
@@ -572,10 +819,26 @@
         }
       ]
     },
+    "Stunned": {
+      "base": "Component",
+      "component": true,
+      "props": []
+    },
     "TeleportObject": {
       "base": "GameObject",
       "component": false,
       "props": []
+    },
+    "TrainingDummy": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": 3.0,
+          "name": "respawnTime",
+          "type": "Float"
+        }
+      ]
     },
     "VelocityLean": {
       "base": "Component",

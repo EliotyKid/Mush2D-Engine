@@ -15,6 +15,8 @@ Edita o **look** da região atual. Seções:
 | Pixel art | modo (pixel art nítido, pixel art suave, HD), pixelar luz e fator, luz em meia resolução |
 | Fundo da regiao | camadas de parallax: profundidade, repetir em X |
 | Luzes | intensidade, raio, altura e flicker de cada luz |
+| Camera | `maxShake`, o limite do tremor da câmera (só em tempo de execução, não é salvo) |
+| Audio | a música atual, `masterVolume`, `sfxVolume`, `musicVolume` e `musicFade` (só em tempo de execução, não são salvos) |
 | Desempenho | fps e ms de GPU de cada passada (aberta por padrão) |
 
 "Salvar" grava a região atual em `assets/regions/<nome>.region.json` (look e camadas de fundo).

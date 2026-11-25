@@ -40,6 +40,9 @@ private:
     bool previousHit = false;
     bool previousToggleFollow = false;
     bool previousRespawn = false;
+    bool previousAttack = false;
+    bool previousShoot = false;
+    bool previousGuard = false;
 
     bool previousDragCamera = false;
 

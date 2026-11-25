@@ -1,10 +1,13 @@
 #include "engine/assets/AssetRegistry.hpp"
+#include "engine/audio/Audio.hpp"
 #include "engine/assets/AtlasLoader.hpp"
 #include "engine/world/Prefab.hpp"
 #include "engine/world/PrefabSave.hpp"
 #include "engine/world/SpriteAnimator.hpp"
 #include "engine/world/Blink.hpp"
+#include "engine/world/Combat.hpp"
 #include "engine/world/Effects.hpp"
+#include "engine/world/Projectile.hpp"
 #include "engine/world/Particles.hpp"
 #include "engine/world/SquashStretch.hpp"
 #include "engine/world/VelocityLean.hpp"
@@ -37,6 +40,8 @@
 #include "game/objects/CheckpointObject.hpp"
 #include "game/objects/CrystalObject.hpp"
 #include "game/objects/DoorObject.hpp"
+#include "game/objects/DummyShooter.hpp"
+#include "game/objects/TrainingDummy.hpp"
 #include "game/objects/IkiObject.hpp"
 #include "game/objects/ItemObject.hpp"
 #include "game/objects/LeverObject.hpp"
@@ -127,6 +132,37 @@ TEST(sprite_batch_sorts_back_to_front) {
     const auto& s = b.sorted();
     CHECK(s.size() == 4);
     CHECK(s[0].rotation == 2 && s[1].rotation == 3 && s[2].rotation == 4 && s[3].rotation == 1);
+}
+TEST(particles_nonadditive_go_to_alpha_group) {
+    // Batch level: opaque, then alpha, then additive; each back to front.
+    SpriteBatch b;
+    auto inst = [](uint32_t flags, float depth, float tag) { SpriteInstance s{}; s.flags = flags; s.depth = depth; s.rotation = tag; return s; };
+    b.add(inst(SpriteFlagAdditive, 9, 1));
+    b.add(inst(SpriteFlagAlpha, 0, 2));
+    b.add(inst(0, 0, 3));
+    b.add(inst(SpriteFlagAlpha, 4, 4));
+    const auto& s = b.sorted();
+    CHECK(b.opaqueCount() == 1 && b.alphaCount() == 2);
+    CHECK(s[0].rotation == 3 && s[1].rotation == 4 && s[2].rotation == 2 && s[3].rotation == 1);
+
+    // appendSceneSprites flags non-additive particles as alpha, additive ones stay additive.
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& e = o.addComponent<ParticleEmitter>();
+    scene.flush();
+    ParticleConfig c;
+    c.count = 2;
+    e.burst(c, {0.0f, 0.0f});
+    c.count = 1;
+    c.additive = true;
+    e.burst(c, {0.0f, 0.0f});
+    Material white{7, 8, 9, 10, 1, 1};
+    auto lookup = [](std::uint32_t, const std::string&) { return std::make_pair(Material{}, glm::vec4(0, 0, 0, 0)); };
+    SpriteBatch p;
+    appendSceneSprites(scene, p, lookup, &white);
+    const auto& ps = p.sorted();
+    CHECK(p.opaqueCount() == 0 && p.alphaCount() == 2 && ps.size() == 3);
+    CHECK((ps[0].flags & SpriteFlagAlpha) && (ps[2].flags & SpriteFlagAdditive) && !(ps[2].flags & SpriteFlagAlpha));
 }
 
 TEST(intgrid_merges_rects) {
@@ -2612,9 +2648,9 @@ TEST(prefab_application_order_and_hook) {
 namespace {
 // EngineServices without a GPU: the loader only touches the scene, the factories get the struct.
 struct FakeServices {
-    GpuContext gpu; SceneRenderer renderer; MaterialLibrary materials; GlfwInput input; Camera2D camera;
+    GpuContext gpu; SceneRenderer renderer; MaterialLibrary materials; GlfwInput input; Camera2D camera; Audio audio;
     PrefabScene t;
-    EngineServices s{gpu, renderer, materials, input, camera, t.scene};
+    EngineServices s{gpu, renderer, materials, input, camera, t.scene, audio};
 };
 LdtkEntity entityOf(std::string identifier, std::string iid, nlohmann::json fields = nlohmann::json::object()) {
     LdtkEntity e{};
@@ -2833,6 +2869,7 @@ TEST(game_prefabs_load_without_warnings) {
     scene.setService(&assets);
     scene.setService(&prefabs);
     int count = 0;
+    std::vector<std::string> named; // effect files every prefab's triggers name (directly or by an "effect" action)
     for (const auto& file : std::filesystem::directory_iterator(prefabs.dir())) {
         const std::string fileName = file.path().filename().string();
         const std::string suffix = ".prefab.json";
@@ -2842,9 +2879,29 @@ TEST(game_prefabs_load_without_warnings) {
         CHECK(o != nullptr);
         CHECK(prefabs.warnings().empty());
         for (const std::string& w : prefabs.warnings()) std::printf("    %s: %s\n", name.c_str(), w.c_str());
+        if (auto* triggers = o ? o->getComponent<EffectTriggers>() : nullptr)
+            for (const auto& [key, items] : triggers->triggers)
+                for (const nlohmann::json& item : items)
+                    if (item.is_string()) named.push_back(item.get<std::string>());
+                    else if (item.contains("effect") && item["effect"].is_string()) named.push_back(item["effect"].get<std::string>());
         ++count;
     }
-    CHECK(count >= 10);
+    CHECK(count >= 15);
+
+    // The training dummies (D3 Task 6): 10 health, no invulnerability, Ice x2 (weak, shooter) or x0.5 (resist).
+    for (const auto& [name, ice] : {std::pair{"training_dummy_weak", 2.0f}, {"training_dummy_resist", 0.5f}, {"training_dummy_shooter", 2.0f}}) {
+        GameObject* d = prefabs.instantiate(scene, name);
+        auto* damageable = d ? d->getComponent<Damageable>() : nullptr;
+        auto* dummy = d ? d->getComponent<TrainingDummy>() : nullptr;
+        CHECK(damageable && damageable->invulnerableTime == 0.0f && damageable->multipliers[Element::Ice] == ice);
+        CHECK(dummy && dummy->respawnTime == 3.0f && d->getComponent<Resources>()->maxHealth == 10 && d->getComponent<Hurtbox>());
+    }
+    auto* shooter = prefabs.instantiate(scene, "training_dummy_shooter");
+    auto* gun = shooter ? shooter->getComponent<DummyShooter>() : nullptr;
+    CHECK(gun && gun->shootInterval == 2.5f && gun->range == 10.0f && gun->projectile == "dummy_bolt" && shooter->getComponent<Stunned>());
+    auto* bolt = prefabs.instantiate(scene, "dummy_bolt");
+    auto* shot = bolt ? bolt->getComponent<Projectile>() : nullptr;
+    CHECK(shot && shot->speed == 5.0f && shot->damage == 1 && shot->parryable && shot->team == "enemy");
 
     // SlimeFast (criterion 3): only a prefab inheriting from the slime.
     auto* fast = dynamic_cast<SlimeEnemy*>(prefabs.instantiate(scene, "slime_fast"));
@@ -2860,27 +2917,22 @@ TEST(game_prefabs_load_without_warnings) {
 
     // The Iki: the juice components in update order, its effects and their files (D2 Task 5).
     auto* iki = dynamic_cast<IkiObject*>(prefabs.instantiate(scene, "iki"));
-    CHECK(iki && iki->components().size() >= 5 && iki->getComponent<EffectTriggers>());
-    if (iki && iki->components().size() >= 5) {
-        const char* order[] = {"Resources", "SpriteAnimator", "SquashStretch", "VelocityLean", "Blink"}; // Resources: onCreate
-        for (int i = 0; i < 5; ++i) CHECK(typeOf(*iki->components()[i]).name == order[i]);
-        CHECK(iki->getComponent<SpriteAnimator>()->state == "idle" && iki->getComponent<SpriteAnimator>()->animations.size() == 8);
+    CHECK(iki && iki->components().size() >= 7 && iki->getComponent<EffectTriggers>());
+    if (iki && iki->components().size() >= 7) {
+        // Resources, Hurtbox and Damageable: onCreate.
+        const char* order[] = {"Resources", "Hurtbox", "Damageable", "SpriteAnimator", "SquashStretch", "VelocityLean", "Blink"};
+        for (int i = 0; i < 7; ++i) CHECK(typeOf(*iki->components()[i]).name == order[i]);
+        CHECK(iki->getComponent<SpriteAnimator>()->state == "idle" && iki->getComponent<SpriteAnimator>()->animations.size() == 12);
     }
-    // Every effect the Iki's triggers name (directly or by an "effect" action) has a valid, non-empty file.
+    // Every effect a prefab's triggers name has a valid, non-empty file; every effect file loads without warnings.
     EffectLibrary effects;
     CerrCapture err;
     effects.scan(sourceAssetPath("assets/effects"));
-    int named = 0;
-    if (auto* triggers = iki ? iki->getComponent<EffectTriggers>() : nullptr)
-        for (const auto& [key, items] : triggers->triggers)
-            for (const nlohmann::json& item : items) {
-                const nlohmann::json* name = item.is_string() ? &item : item.contains("effect") ? &item["effect"] : nullptr;
-                if (!name) continue;
-                ++named;
-                const Effect* effect = effects.find(name->get<std::string>());
-                CHECK(effect && !effect->actions.empty());
-            }
-    CHECK(named >= 6 && err.str().empty());
+    for (const std::string& name : named) {
+        const Effect* effect = effects.find(name);
+        CHECK(effect && !effect->actions.empty());
+    }
+    CHECK(named.size() >= 8 && std::count(named.begin(), named.end(), "dummy_break") >= 1 && err.str().empty());
 }
 
 // --- Inspector save (D1 Task 4) -------------------------------------------------------------------------
@@ -3431,7 +3483,7 @@ TEST(particles_burst_lifetime_and_pool_limit) {
     auto lookup = [](std::uint32_t, const std::string&) { return std::make_pair(Material{}, glm::vec4(0, 0, 0, 0)); };
     SpriteBatch b;
     appendSceneSprites(scene, b, lookup, &white);
-    CHECK(b.size() == 8 && b.sorted()[0].albedo == 7 && b.sorted()[0].emissive == 9 && b.sorted()[0].flags == SpriteFlagNearest);
+    CHECK(b.size() == 8 && b.sorted()[0].albedo == 7 && b.sorted()[0].emissive == 9 && b.sorted()[0].flags == (SpriteFlagNearest | SpriteFlagAlpha));
     SpriteBatch none;
     appendSceneSprites(scene, none, lookup); // no white material: untextured particles are skipped
     CHECK(none.size() == 0);
@@ -3969,6 +4021,176 @@ TEST(squash_scale_by_strength) {
     CHECK(std::abs(s->current().x - 1.4f) < 1e-5f && std::abs(s->current().y - 0.6f) < 1e-5f);
 }
 
+// --- Hit stop, shake, flash (D3 Task 1) -------------------------------------------------------------------
+
+namespace {
+struct StepCounter : GameObject {
+    int steps = 0, lateSteps = 0;
+    void onStep(Scene2D&, float) override { ++steps; }
+    void onLateStep(Scene2D&, float) override { ++lateSteps; }
+};
+}
+
+TEST(hitstop_freezes_scene_step_keeps_realtime) {
+    Scene2D scene;
+    auto& o = scene.createObject<StepCounter>();
+    scene.flush();
+    auto& blink = o.addComponent<Blink>();
+    blink.start(0.05f);
+    playEffect(scene, o, nlohmann::json::parse(R"({"particles": {"count": 1, "speed": [2, 2], "angle": [0, 0]}})"), 1.0f, {0.0f, 0.0f}, 1);
+    playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.2, 0.8], "delay": 0.03})"), 1.0f, {0.0f, 0.0f}, 1);
+    auto* e = o.getComponent<ParticleEmitter>();
+    CHECK(scene.timeScale() == 1.0f && e && e->alive() == 1);
+    if (!e || !e->alive()) return;
+
+    scene.hitstop(0.1f);
+    CHECK(scene.timeScale() == 0.0f);
+    for (int i = 0; i < 2; ++i) { scene.step(0.06f); if (i == 0) scene.lateStep(0.06f); }
+    // 0.12 s of real time: the hit stop is over, but nothing in the scene moved.
+    CHECK(scene.timeScale() == 1.0f && o.steps == 0 && o.lateSteps == 0);
+    CHECK(blink.active() && e->particles()[0].position == glm::vec2(0.0f) && !o.getComponent<SquashStretch>());
+    scene.step(0.04f);
+    CHECK(o.steps == 1 && e->particles()[0].position.x > 0.0f && o.getComponent<SquashStretch>());
+    scene.lateStep(0.04f);
+    CHECK(o.lateSteps == 1);
+}
+
+TEST(hitstop_requests_take_max) {
+    Scene2D scene;
+    auto& o = scene.createObject<StepCounter>();
+    scene.hitstop(0.05f);
+    scene.hitstop(0.12f);
+    scene.hitstop(0.03f);
+    scene.hitstop(-1.0f);
+    scene.hitstop(std::numeric_limits<float>::quiet_NaN());
+    scene.step(0.1f);
+    CHECK(scene.timeScale() == 0.0f && o.steps == 0);
+    scene.step(0.03f); // 0.13 s: the longest request, not the 0.2 s sum
+    CHECK(scene.timeScale() == 1.0f);
+    scene.step(0.01f);
+    CHECK(o.steps == 1);
+}
+
+TEST(camera_shake_decays_to_zero) {
+    Camera2D cam;
+    CHECK(cam.shakeOffset() == glm::vec2(0.0f) && cam.maxShake == 0.5f);
+    cam.addShake(0.2f, 0.5f);
+    cam.updateShake(0.1f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.16f) < 1e-4f); // linear: 0.2 * 0.4 / 0.5
+    cam.updateShake(0.1f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.12f) < 1e-4f);
+    cam.addShake(0.1f, 1.0f); // shakes add up
+    cam.updateShake(0.0f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.22f) < 1e-4f);
+    cam.addShake(1.0f, 1.0f); // up to maxShake
+    cam.updateShake(0.0f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.5f) < 1e-4f);
+    cam.updateShake(1.0f);
+    CHECK(cam.shakeOffset() == glm::vec2(0.0f));
+
+    // With a viewport, the shaken view never goes past the bounds: at the right edge it shakes inward only.
+    Camera2D edge;
+    edge.pixelArt = false;
+    edge.position = {100.0f, 0.0f};
+    const VkExtent2D view{800, 600};
+    edge.clampToBounds(view);
+    const float rightMost = edge.position.x;
+    edge.addShake(0.4f, 1.0f);
+    bool moved = false;
+    for (int i = 0; i < 20; ++i) {
+        edge.updateShake(0.01f, view);
+        CHECK(edge.position.x == rightMost && edge.position.x + edge.shakeOffset().x <= rightMost + 1e-5f);
+        moved = moved || edge.shakeOffset() != glm::vec2(0.0f);
+    }
+    CHECK(moved);
+}
+
+TEST(effect_actions_shake_flash_hitstop) {
+    Scene2D scene;
+    Camera2D cam;
+    scene.setService(&cam);
+    GameObject& o = scene.createObject<GameObject>();
+    o.sprite = SpriteData{};
+    scene.flush();
+
+    playEffect(scene, o, nlohmann::json::parse(R"({"hitstop": 0.05, "scaleByStrength": true})"), 2.0f, {0.0f, 0.0f}, 1);
+    CHECK(scene.timeScale() == 0.0f);
+    scene.step(0.09f);
+    CHECK(scene.timeScale() == 0.0f); // 0.05 * 2
+    scene.step(0.02f);
+    CHECK(scene.timeScale() == 1.0f);
+
+    playEffect(scene, o, nlohmann::json::parse(R"({"shake": {"amplitude": 0.1, "duration": 0.2}, "scaleByStrength": true})"), 2.0f, {0.0f, 0.0f}, 1);
+    cam.updateShake(0.2f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.1f) < 1e-4f); // 0.2 u over 0.4 s, half gone
+    cam.updateShake(0.2f);
+    playEffect(scene, o, nlohmann::json::parse(R"({"shake": {"amplitude": 0.1, "duration": 0.2}})"), 2.0f, {0.0f, 0.0f}, 1);
+    cam.updateShake(0.0f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.1f) < 1e-4f);
+
+    // Flash: full colour at once, then eases linearly to 0 over the duration; the tint is left alone.
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.1}})"), 1.0f, {0.0f, 0.0f}, 1);
+    CHECK(o.sprite->flash == glm::vec4(1.0f) && o.sprite->tint == glm::vec4(1.0f));
+    scene.hitstop(0.5f);
+    scene.step(0.5f); // frozen: the flash waits too
+    CHECK(o.sprite->flash == glm::vec4(1.0f));
+    scene.step(0.05f);
+    CHECK(std::abs(o.sprite->flash.a - 0.5f) < 1e-4f && glm::vec3(o.sprite->flash) == glm::vec3(1.0f));
+    scene.step(0.06f);
+    CHECK(o.sprite->flash.a == 0.0f && o.getComponent<Flash>() && !o.getComponent<Flash>()->active());
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [0.2, 0.4, 1], "duration": 0.2}, "scaleByStrength": true})"), 0.5f, {0.0f, 0.0f}, 1);
+    scene.step(0.05f);
+    CHECK(std::abs(o.sprite->flash.a - 0.5f) < 1e-4f && std::abs(o.sprite->flash.b - 1.0f) < 1e-6f); // 0.2 * 0.5 s
+    scene.step(0.06f);
+    // Zero length (also strength 0 on a scaled flash): no flash at all, nothing left on the sprite.
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0}})"), 1.0f, {0.0f, 0.0f}, 1);
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.1}, "scaleByStrength": true})"), 0.0f, {0.0f, 0.0f}, 1);
+    CHECK(o.sprite->flash.a == 0.0f && !o.getComponent<Flash>()->active());
+    GameObject& fresh = scene.createObject<GameObject>();
+    fresh.sprite = SpriteData{};
+    scene.flush();
+    playEffect(scene, fresh, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0}})"), 1.0f, {0.0f, 0.0f}, 1);
+    scene.step(0.1f);
+    CHECK(fresh.sprite->flash == glm::vec4(0.0f) && fresh.sprite->tint == glm::vec4(1.0f));
+
+    // Wrong types: dropped at load (each warned) and skipped at play, never thrown.
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_weight";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "weight.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [
+        {"hitstop": "0.05"}, {"hitstop": -1}, {"shake": 0.1}, {"shake": {"amplitude": 0.1}},
+        {"shake": {"amplitude": 0.1, "duration": "x"}}, {"flash": {"color": [1, 1], "duration": 0.1}},
+        {"flash": {"color": [1, 1, 1]}}, {"flash": [1, 1, 1]},
+        {"shake": {"amplitude": 0.1, "duration": 0.1, "mode": "x"}}, {"flash": {"color": [1, 1, 1], "duration": 0.1, "colour": 1}},
+        {"hitstop": 0.05}, {"shake": {"amplitude": 0.1, "duration": 0.1}}, {"flash": {"color": [1, 1, 1], "duration": 0.1}}]})";
+    EffectLibrary lib;
+    CerrCapture err;
+    lib.scan(dir);
+    const Effect* weight = lib.find("weight");
+    CHECK(weight && weight->actions.size() == 3);
+    CHECK(countOf(err.str(), "weight.effect.json: hitstop: expected seconds") == 2);
+    CHECK(countOf(err.str(), "weight.effect.json: shake: expected") == 3);
+    CHECK(countOf(err.str(), "weight.effect.json: flash: expected") == 3);
+    CHECK(countOf(err.str(), "weight.effect.json: shake: unknown key 'mode'") == 1);
+    CHECK(countOf(err.str(), "weight.effect.json: flash: unknown key 'colour'") == 1);
+    CHECK(effectItemError(nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.08}})")).empty());
+    CHECK(!effectItemError(nlohmann::json::parse(R"({"shake": {"amplitude": -1, "duration": 0.1}})")).empty());
+
+    Scene2D bare; // no Camera2D service: a shake warns, nothing throws
+    GameObject& b = bare.createObject<GameObject>();
+    bare.flush();
+    bool threw = false;
+    try {
+        playEffect(bare, b, nlohmann::json::parse(R"({"hitstop": "x"})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(bare, b, nlohmann::json::parse(R"({"shake": {"amplitude": 0.1, "duration": 0.1}})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(bare, b, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.1}})"), 1.0f, {0.0f, 0.0f}, 1);
+        bare.step(0.2f);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(!threw && bare.timeScale() == 1.0f);
+    CHECK(countOf(err.str(), "no Camera2D service") == 1);
+}
+
 // --- IkiObject (D2 Task 5) -------------------------------------------------------------------------------
 
 namespace {
@@ -3996,6 +4218,11 @@ InputState zPress() { InputState in; in.jump.pressed = in.jump.down = true; retu
 InputState zHeld() { InputState in; in.jump.down = true; return in; }
 InputState rightHeld() { InputState in; in.moveRight.down = true; return in; }
 bool inState(const IkiObject& iki, const char* name) { return std::string(iki.stateName()) == name; }
+// A hit on the Iki through its Damageable (no attacker), as the game deals damage.
+void damageIki(Scene2D& scene, IkiObject& iki, DamageInfo info) {
+    scene.events().emit(HitEvent{InvalidGameObjectId, iki.id, info});
+    scene.flush();
+}
 }
 
 TEST(iki_run_accel_decel) {
@@ -4003,7 +4230,8 @@ TEST(iki_run_accel_decel) {
     ikiLevel(scene);
     IkiObject& iki = ikiOnFloor(scene, 3.0f);
     CHECK(iki.grounded && inState(iki, "idle") && std::abs(iki.transform.position.y + 4.5f) < 1e-3f); // position = feet
-    CHECK(iki.hasTag("player") && iki.stateMachines().size() == 1 && iki.stateMachines()[0].first == "move");
+    CHECK(iki.hasTag("player") && iki.stateMachines().size() == 2 && iki.stateMachines()[0].first == "move");
+    CHECK(iki.stateMachines().size() == 2 && iki.stateMachines()[1].first == "action" && std::string(iki.actionName()) == "none");
     stepIki(scene, iki, rightHeld());
     CHECK(std::abs(iki.velocity_.x - 60.0f * kDt) < 1e-3f && inState(iki, "run") && iki.facing == 1.0f);
     stepIki(scene, iki, rightHeld(), 10);
@@ -4078,6 +4306,43 @@ TEST(iki_jump_coyote_and_buffer) {
     jumped = false;
     drop(land - 10, jumped);
     CHECK(!jumped);
+}
+
+TEST(iki_jump_pressed_during_hitstop_is_kept) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    scene.hitstop(0.06f); // 4 frames
+    stepIki(scene, iki, zPress()); // the press lands in a frozen frame
+    stepIki(scene, iki, {}, 2);
+    CHECK(scene.timeScale() == 0.0f && iki.grounded && iki.velocity_.y <= 0.0f);
+    stepIki(scene, iki, {}, 3); // the hit stop ends; the kept press jumps
+    CHECK(scene.timeScale() == 1.0f && iki.velocity_.y > 0.0f);
+
+    // Press and release inside the freeze: a one-frame tap, so the first running step is a full jump, not cut.
+    Scene2D tap;
+    ikiLevel(tap);
+    IkiObject& t = ikiOnFloor(tap, 3.0f);
+    tap.hitstop(0.06f);
+    InputState release;
+    release.jump.released = true;
+    stepIki(tap, t, zPress());
+    stepIki(tap, t, release);
+    stepIki(tap, t, {}, 2); // still frozen
+    stepIki(tap, t, {});    // first running step
+    CHECK(tap.timeScale() == 1.0f && t.velocity_.y > 9.0f && inState(t, "jump"));
+    stepIki(tap, t, {}); // now the release cuts it, as a normal tap
+    CHECK(t.velocity_.y < 6.0f);
+
+    // Presses are kept only across a frozen step: an inactive Iki does not replay a stale press.
+    Scene2D idle;
+    ikiLevel(idle);
+    IkiObject& i = ikiOnFloor(idle, 3.0f);
+    i.active = false;
+    stepIki(idle, i, zPress());
+    i.active = true;
+    stepIki(idle, i, {}, 3);
+    CHECK(i.grounded && i.velocity_.y <= 0.0f);
 }
 
 TEST(iki_variable_jump_cut) {
@@ -4168,27 +4433,27 @@ TEST(iki_hurt_knockback_and_invulnerability) {
     auto* resources = iki.getComponent<Resources>();
     CHECK(resources && resources->health() == 5);
     if (!resources) return;
-    iki.hurt({1, {-1.0f, 0.0f}});
+    damageIki(scene, iki, {1, {-1.0f, 0.0f}});
     CHECK(inState(iki, "hurt") && resources->health() == 4 && iki.invulnerable());
     stepIki(scene, iki, rightHeld()); // input is ignored while hurt
     CHECK(iki.velocity_.x < -4.0f && iki.velocity_.y > 0.0f && !iki.grounded && iki.facing == 1.0f);
-    iki.hurt({1, {1.0f, 0.0f}});
+    damageIki(scene, iki, {1, {1.0f, 0.0f}});
     CHECK(resources->health() == 4); // invulnerable
     stepIki(scene, iki, {}, int(0.35f / kDt) + 2);
     CHECK(!inState(iki, "hurt"));
     stepIki(scene, iki, {}, int(0.8f / kDt));
     CHECK(!iki.invulnerable());
-    iki.hurt({1, {}});
+    damageIki(scene, iki, {1, {}});
     CHECK(resources->health() == 3);
     stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
-    iki.hurt({1, {0.0f, -1.0f}}); // a hit from above pushes down, not up
+    damageIki(scene, iki, {1, {0.0f, -1.0f}}); // a hit from above pushes down, not up
     CHECK(resources->health() == 2 && iki.velocity_.y == -6.0f && iki.velocity_.x == 0.0f);
     // "hurt" carries invulnerableTime: the prefab's blink lasts as long as the invulnerability.
     stepIki(scene, iki, {}, int(0.8f / kDt) + 30);
     std::vector<MovementCue> cues;
     auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { if (c.name == "hurt") cues.push_back(c); });
     iki.invulnerableTime = 1.25f;
-    iki.hurt({1, {}});
+    damageIki(scene, iki, {1, {}});
     scene.flush();
     CHECK(cues.size() == 1 && !cues.empty() && cues[0].strength == 1.25f);
 }
@@ -4199,7 +4464,7 @@ TEST(iki_death_emits_died) {
     IkiObject& iki = ikiOnFloor(scene, 3.0f);
     std::vector<GameObjectId> died;
     auto sub = scene.events().subscribe<Died>([&](const Died& e) { died.push_back(e.id); });
-    iki.hurt({5, {-1.0f, 0.0f}});
+    damageIki(scene, iki, {5, {-1.0f, 0.0f}});
     scene.flush();
     CHECK(died.size() == 1 && died[0] == iki.id && inState(iki, "dead"));
     InputState all = rightHeld();
@@ -4207,7 +4472,7 @@ TEST(iki_death_emits_died) {
     stepIki(scene, iki, all, 30);
     CHECK(inState(iki, "dead") && iki.velocity_.x == 0.0f && iki.grounded); // no control
     stepIki(scene, iki, {}, int(1.0f / kDt));
-    iki.hurt({1, {}});
+    damageIki(scene, iki, {1, {}});
     scene.flush();
     CHECK(died.size() == 1);
 }
@@ -4219,7 +4484,7 @@ TEST(iki_respawn_resets_state) {
     auto* resources = iki.getComponent<Resources>();
     if (!resources) { CHECK(false); return; }
     CHECK(resources->spend(Element::Ice, 30.0f));
-    iki.hurt({5, {}});
+    damageIki(scene, iki, {5, {}});
     stepIki(scene, iki, zPress()); // a Z while dead must not jump after the respawn
     iki.respawnAt({6.0f, -4.4f});
     iki.respawn();
@@ -4231,7 +4496,7 @@ TEST(iki_respawn_resets_state) {
         jumped = jumped || iki.velocity_.y > 0.0f;
     }
     CHECK(!jumped && iki.grounded);
-    iki.hurt({1, {}});
+    damageIki(scene, iki, {1, {}});
     CHECK(resources->health() == 4);
 }
 
@@ -4593,6 +4858,1342 @@ TEST(iki_hurt_releases_cling) {
         stepIki(scene2, hanging, keys(false, false, true, false, f % 2 == 0, true));
         CHECK(inState(hanging, "hurt"));
     }
+}
+
+const std::filesystem::path TestAudio = MUSH2D_TEST_DATA "/audio";
+
+TEST(audio_service_silent_without_device) {
+    Audio audio; // init() never called: no device, as in the tests and headless
+    audio.scan(TestAudio);
+    CHECK(audio.knows("beep") && audio.knows("loop_a") && audio.knows("broken") && !audio.knows("nope"));
+    CerrCapture err;
+    audio.playSound("beep", 0.5f, 1.2f);
+    audio.playMusic("loop_a");
+    audio.update(0.25f);
+    CHECK(audio.currentMusic() == "loop_a" && std::abs(audio.musicMix() - 0.25f) < 1e-5f); // musicFade 1 s
+    audio.update(5.0f);
+    CHECK(audio.musicMix() == 1.0f);
+    CHECK(err.str().empty());
+
+    // The sound action reaches the service; without one it is silent too.
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    playEffect(scene, o, nlohmann::json::parse(R"({"sound": "beep", "pitch": [0.9, 1.1]})"), 1.0f, {0.0f, 0.0f}, 1);
+    scene.setService(&audio);
+    playEffect(scene, o, nlohmann::json::parse(R"({"sound": "beep", "volume": 0.5})"), 1.0f, {0.0f, 0.0f}, 1);
+    CHECK(err.str().empty());
+}
+
+// init() opens the real device when there is one (muted here), else warns once and stays silent. Both ways the
+// calls after it are safe.
+TEST(audio_init_then_play_is_safe) {
+    Audio audio;
+    audio.scan(TestAudio);
+    audio.masterVolume = 0.0f;
+    CerrCapture err;
+    const bool device = audio.init();
+    audio.update(0.0f); // applies the master volume before anything plays
+    audio.playSound("beep");
+    audio.playMusic("loop_a");
+    audio.update(0.5f);
+    audio.playMusic("");
+    audio.update(2.0f);
+    CHECK(device ? err.str().empty() : countOf(err.str(), "no audio device") == 1);
+}
+
+TEST(audio_unknown_sound_warns_once) {
+    Audio audio;
+    audio.scan(TestAudio);
+    CerrCapture err;
+    audio.playSound("nope");
+    audio.playSound("nope");
+    audio.playMusic("nope_theme");
+    audio.playMusic("");
+    audio.playMusic("nope_theme");
+    CHECK(countOf(err.str(), "unknown sound 'nope'") == 1);
+    CHECK(err.str().find((TestAudio / "sfx" / "nope.wav").string()) != std::string::npos);
+    CHECK(countOf(err.str(), "unknown music 'nope_theme'") == 1);
+    CHECK(audio.currentMusic() == "nope_theme"); // still the request: a later scan may bring the file
+}
+
+TEST(audio_bad_file_warns_once) {
+    Audio audio;
+    audio.scan(TestAudio);
+    CerrCapture err;
+    audio.playSound("broken");
+    audio.playSound("broken");
+    CHECK(countOf(err.str(), "'broken'") == 1);
+    CHECK(err.str().find((TestAudio / "sfx" / "broken.wav").string()) != std::string::npos);
+    audio.playSound("beep"); // a good file never warns
+    CHECK(countOf(err.str(), "Audio:") == 1);
+}
+
+TEST(region_music_field_and_crossfade_request) {
+    namespace fs = std::filesystem;
+    Region r;
+    r.music = "forest_theme";
+    auto back = parseRegion(serializeRegion(r), FrameSettings{});
+    CHECK(back && back->music == "forest_theme");
+    CHECK(parseRegion("{}", FrameSettings{})->music.empty());
+
+    const fs::path dir = fs::temp_directory_path() / "mush2d_region_music_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    Region forest; forest.music = "loop_a";
+    saveRegion(dir / "forest.region.json", forest);
+    Region cave; cave.music = "loop_b";
+    saveRegion(dir / "cave.region.json", cave);
+    Region grove; grove.music = "loop_a"; // same music as forest
+    saveRegion(dir / "grove.region.json", grove);
+    LdtkProject p = roomsInRow({320, 320, 320}); // forest x 0..10, cave 10..20, grove 20..30
+    p.levels[1].region = "cave";
+    p.levels[2].region = "grove";
+    World w; StreamLog log; hookWorld(w, log);
+    LevelLoader loader;
+    w.open(p, loader, nullptr);
+    MaterialLibrary lib;
+    Audio audio;
+    audio.scan(TestAudio);
+    RegionSet rs;
+    rs.init(lib, dir, &audio);
+    rs.open(w, 0, false);
+    CHECK(audio.currentMusic() == "loop_a");
+    w.loadAround(0);
+    rs.update(FrameSettings{}, 0.0f);
+    audio.update(5.0f);
+    w.update({15.0f, -5.0f}); // into the cave
+    rs.update(FrameSettings{}, 0.1f);
+    CHECK(audio.currentMusic() == "loop_b" && audio.musicMix() == 0.0f);
+    audio.update(0.5f * audio.musicFade);
+    rs.update(FrameSettings{}, 0.1f); // same region: no new request
+    audio.playMusic("loop_b");        // same music: the fade goes on
+    CHECK(std::abs(audio.musicMix() - 0.5f) < 1e-5f);
+    w.update({25.0f, -5.0f}); // grove, back to loop_a: cross-fades again
+    rs.update(FrameSettings{}, 0.1f);
+    CHECK(audio.currentMusic() == "loop_a" && audio.musicMix() == 0.0f);
+    fs::remove_all(dir);
+}
+
+TEST(effect_action_sound_validates) {
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": "beep"})")).empty());
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": "beep", "volume": 0.5, "pitch": [0.9, 1.1], "delay": 0.1})")).empty());
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": 3})")) == "sound: expected a sound name");
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": "beep", "volume": "loud"})")) == "sound: volume expected a number >= 0");
+    CHECK(effectItemError(nlohmann::json::parse(R"({"sound": "beep", "volume": -1})")) == "sound: volume expected a number >= 0");
+    for (const char* pitch : {"1.1", "[1.2, 0.8]", "[0, 1]", "[1, \"x\"]", "[1]"})
+        CHECK(effectItemError(nlohmann::json::parse(std::string(R"({"sound": "beep", "pitch": )") + pitch + "}")) ==
+              "sound: pitch expected [min, max] (0 < min <= max)");
+    CHECK(effectItemError(nlohmann::json::parse(R"({"volume": 0.5})")) == "unknown action 'volume'"); // only beside a sound
+
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_sound";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "noise.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [
+        {"sound": "beep", "volume": 0.4, "pitch": [0.9, 1.1]}, {"sound": ["beep"]}, {"sound": "beep", "pitch": [2, 1]},
+        {"sound": "beep", "volume": null}]})";
+    EffectLibrary lib;
+    CerrCapture err;
+    lib.scan(dir);
+    const Effect* noise = lib.find("noise");
+    CHECK(noise && noise->actions.size() == 1);
+    CHECK(countOf(err.str(), "noise.effect.json: sound:") == 3);
+
+    Scene2D scene;
+    Audio audio;
+    audio.scan(TestAudio);
+    scene.setService(&audio);
+    GameObject& o = scene.createObject<GameObject>();
+    scene.flush();
+    bool threw = false;
+    try {
+        playEffect(scene, o, "noise", 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(scene, o, nlohmann::json::parse(R"({"sound": "beep", "pitch": "high"})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(scene, o, nlohmann::json::parse(R"({"sound": "beep", "delay": 0.05})"), 1.0f, {0.0f, 0.0f}, 1);
+        scene.step(0.1f);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(!threw && countOf(err.str(), "sound: pitch expected") == 2); // load, then play
+    std::filesystem::remove_all(dir);
+}
+
+// --- Combat (D3): hitbox, hurtbox, damageable, projectiles ---
+namespace {
+// A scene with the combat services and the test prefabs.
+struct CombatScene {
+    Scene2D scene;
+    CombatWorld combat;
+    PrefabLibrary prefabs{TestPrefabs};
+    ProjectilePool pool;
+    std::vector<HitEvent> hits;
+    std::vector<DamageTaken> taken;
+    std::vector<MovementCue> breaks;
+    std::vector<EventBus::Subscription> subs;
+    CombatScene() {
+        scene.setService(&combat);
+        scene.setService(&prefabs);
+        pool.scene = &scene;
+        scene.setService(&pool);
+        subs.push_back(scene.events().subscribe<HitEvent>([this](const HitEvent& e) { hits.push_back(e); }));
+        subs.push_back(scene.events().subscribe<DamageTaken>([this](const DamageTaken& e) { taken.push_back(e); }));
+        subs.push_back(scene.events().subscribe<MovementCue>([this](const MovementCue& e) { if (e.name == "break") breaks.push_back(e); }));
+    }
+    GameObject& attacker(glm::vec2 at, const std::string& team = "player") {
+        GameObject& o = scene.createObject<GameObject>();
+        o.transform.position = at;
+        Hitbox& h = o.addComponent<Hitbox>();
+        h.team = team;
+        return o;
+    }
+    // Hurtbox 1x1, Damageable (no invulnerability), Resources with 10 health.
+    GameObject& target(glm::vec2 at, const std::string& team = "enemy") {
+        GameObject& o = scene.createObject<GameObject>();
+        o.transform.position = at;
+        o.addComponent<Hurtbox>().team = team;
+        o.addComponent<Damageable>().invulnerableTime = 0.0f;
+        o.addComponent<Resources>().maxHealth = 10;
+        return o;
+    }
+    void steps(int n, float dt = 1.0f / 60.0f) { for (int i = 0; i < n; ++i) scene.step(dt); }
+};
+int healthOf(GameObject& o) { return o.getComponent<Resources>()->health(); }
+void hitOnce(Scene2D& scene, GameObjectId attacker, GameObjectId target, DamageInfo info = {}) {
+    scene.events().emit(HitEvent{attacker, target, info});
+    scene.flush();
+}
+}
+
+TEST(hitbox_hits_other_team_once_per_activation) {
+    CombatScene c;
+    GameObject& a = c.attacker({0.0f, 0.0f});
+    GameObject& t = c.target({0.5f, 0.0f});
+    c.scene.flush();
+    c.steps(2);
+    CHECK(c.hits.empty()); // not active yet
+    a.getComponent<Hitbox>()->activate();
+    c.steps(5);
+    CHECK(c.hits.size() == 1);
+    if (!c.hits.empty()) {
+        const HitEvent& h = c.hits[0];
+        CHECK(h.attacker == a.id && h.target == t.id && h.info.source == a.id);
+        CHECK(h.info.amount == 1 && h.info.element == Element::Ice && h.info.parryable && !h.info.projectile);
+        CHECK(h.info.direction.x > 0.99f); // from the attacker to the target
+    }
+    CHECK(healthOf(t) == 9 && c.taken.size() == 1 && c.taken[0].finalAmount == 1);
+
+    // A disabled hurtbox is not hit.
+    GameObject& off = c.target({-0.5f, 0.0f});
+    off.getComponent<Hurtbox>()->enabled = false;
+    c.scene.flush();
+    a.getComponent<Hitbox>()->activate();
+    c.steps(2);
+    CHECK(c.hits.size() == 2 && c.hits.back().target == t.id);
+}
+
+TEST(hitbox_ignores_same_team) {
+    CombatScene c;
+    GameObject& a = c.attacker({0.0f, 0.0f}, "enemy");
+    GameObject& t = c.target({0.5f, 0.0f}, "enemy");
+    c.scene.flush();
+    a.getComponent<Hitbox>()->activate();
+    c.steps(3);
+    CHECK(c.hits.empty() && healthOf(t) == 10);
+}
+
+TEST(hitbox_reactivation_hits_again) {
+    CombatScene c;
+    GameObject& a = c.attacker({0.0f, 0.0f});
+    GameObject& t = c.target({0.0f, 0.5f});
+    c.scene.flush();
+    Hitbox& h = *a.getComponent<Hitbox>();
+    h.activate();
+    c.steps(3);
+    h.deactivate();
+    CHECK(!h.active());
+    c.steps(3);
+    CHECK(c.hits.size() == 1);
+    h.activate();
+    CHECK(h.active());
+    c.steps(3);
+    CHECK(c.hits.size() == 2 && healthOf(t) == 8);
+}
+
+TEST(damageable_applies_multipliers_and_rounding) {
+    Damageable d;
+    DamageInfo ice;
+    ice.element = Element::Ice;
+    d.multipliers[Element::Ice] = 2.0f;
+    CHECK(d.finalAmount(ice) == 2); // 1 x 2
+    d.multipliers[Element::Ice] = 0.5f;
+    CHECK(d.finalAmount(ice) == 1); // 1 x 0.5 rounds up to the minimum 1
+    ice.amount = 2;
+    CHECK(d.finalAmount(ice) == 1); // 2 x 0.5
+    ice.amount = 3;
+    CHECK(d.finalAmount(ice) == 2); // 1.5 to the nearest
+    DamageInfo fire;
+    fire.element = Element::Fire;
+    CHECK(d.finalAmount(fire) == 1); // no multiplier = 1
+
+    // From the prefab section, through Resources and DamageTaken.
+    CombatScene c;
+    GameObject* t = c.prefabs.instantiate(c.scene, "test_target");
+    CHECK(t && c.prefabs.warnings().empty());
+    if (!t) return;
+    Damageable* td = t->getComponent<Damageable>();
+    CHECK(td && td->multipliers.size() == 1 && td->multipliers[Element::Ice] == 2.0f);
+    c.scene.flush();
+    DamageInfo hit;
+    hit.element = Element::Ice;
+    hitOnce(c.scene, InvalidGameObjectId, t->id, hit);
+    CHECK(healthOf(*t) == 8 && c.taken.size() == 1 && c.taken[0].finalAmount == 2 && c.taken[0].target == t->id);
+    CHECK(t->getComponent<Blink>() && t->getComponent<Blink>()->active()); // "hit:taken" from the prefab
+
+    // Bad multipliers warn, never throw; the good ones stay.
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_multipliers";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "bad_mult.prefab.json", std::ios::trunc)
+        << R"({"version": 1, "multipliers": {"Ice": "x", "Wind": 2, "Fire": -1, "None": 0.5}})";
+    std::ofstream(dir / "bad_mult2.prefab.json", std::ios::trunc) << R"({"version": 1, "multipliers": [1]})";
+    PrefabLibrary lib{dir};
+    Scene2D scene;
+    CerrCapture err;
+    GameObject* b = lib.instantiate(scene, "bad_mult");
+    CHECK(b && hasWarning(lib.warnings(), "multipliers.Ice") && hasWarning(lib.warnings(), "multipliers.Wind") &&
+          hasWarning(lib.warnings(), "multipliers.Fire"));
+    CHECK(b && b->getComponent<Damageable>() && b->getComponent<Damageable>()->multipliers.size() == 1);
+    CHECK(lib.instantiate(scene, "bad_mult2") && hasWarning(lib.warnings(), "multipliers: expected"));
+    std::filesystem::remove_all(dir);
+}
+
+TEST(damageable_immune_zero_multiplier) {
+    CombatScene c;
+    GameObject& t = c.target({0.0f, 0.0f});
+    t.getComponent<Damageable>()->multipliers[Element::Ice] = 0.0f;
+    EffectTriggers& fx = t.addComponent<EffectTriggers>();
+    fx.triggers["hit:immune"] = {nlohmann::json{{"blink", 0.5}}};
+    fx.triggers["hit:taken"] = {nlohmann::json{{"squash", {1.2, 0.8}}}};
+    c.scene.flush();
+    DamageInfo hit;
+    hit.element = Element::Ice;
+    hitOnce(c.scene, InvalidGameObjectId, t.id, hit);
+    CHECK(healthOf(t) == 10 && c.taken.empty());
+    CHECK(t.getComponent<Blink>() && t.getComponent<Blink>()->active() && !t.getComponent<SquashStretch>());
+}
+
+TEST(damageable_invulnerable_window) {
+    CombatScene c;
+    GameObject& t = c.target({0.0f, 0.0f});
+    Damageable& d = *t.getComponent<Damageable>();
+    d.invulnerableTime = 0.2f;
+    c.scene.flush();
+    hitOnce(c.scene, InvalidGameObjectId, t.id);
+    CHECK(healthOf(t) == 9 && d.invulnerable());
+    hitOnce(c.scene, InvalidGameObjectId, t.id); // ignored
+    c.scene.step(0.1f);
+    hitOnce(c.scene, InvalidGameObjectId, t.id); // still ignored
+    CHECK(healthOf(t) == 9 && c.taken.size() == 1);
+    c.scene.step(0.15f);
+    CHECK(!d.invulnerable());
+    hitOnce(c.scene, InvalidGameObjectId, t.id);
+    CHECK(healthOf(t) == 8 && c.taken.size() == 2);
+}
+
+TEST(damageable_guard_blocked_and_parried_no_damage) {
+    CombatScene c;
+    GameObject& t = c.target({0.0f, 0.0f}, "player");
+    Damageable& d = *t.getComponent<Damageable>();
+    d.invulnerableTime = 1.0f;
+    EffectTriggers& fx = t.addComponent<EffectTriggers>();
+    fx.triggers["hit:blocked"] = {nlohmann::json{{"blink", 0.5}}};
+    fx.triggers["hit:parried"] = {nlohmann::json{{"squash", {1.2, 0.8}}}};
+    HitResult answer = HitResult::Blocked;
+    DamageInfo seen;
+    d.guard = [&](const DamageInfo& info) { seen = info; return answer; };
+    GameObject& shooter = c.scene.createObject<GameObject>();
+    Stunned& stun = shooter.addComponent<Stunned>();
+    c.scene.flush();
+
+    DamageInfo hit;
+    hit.amount = 3;
+    hit.source = shooter.id;
+    hitOnce(c.scene, shooter.id, t.id, hit);
+    CHECK(healthOf(t) == 10 && c.taken.empty() && !d.invulnerable() && seen.amount == 3);
+    CHECK(t.getComponent<Blink>() && t.getComponent<Blink>()->active() && !stun.active());
+
+    // Parry: no damage, the source is stunned and a projectile is reflected toward it.
+    answer = HitResult::Parried;
+    GameObject* bolt = c.pool.spawn("test_bolt", {1.0f, 0.0f}, {-1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(bolt != nullptr);
+    if (!bolt) return;
+    c.scene.flush();
+    hit.projectile = true;
+    hitOnce(c.scene, bolt->id, t.id, hit);
+    Projectile& p = *bolt->getComponent<Projectile>();
+    CHECK(healthOf(t) == 10 && c.taken.empty() && !d.invulnerable());
+    CHECK(t.getComponent<SquashStretch>() != nullptr);
+    CHECK(stun.active() && p.reflected && p.team == "player" && p.source == t.id && p.direction.x > 0.99f);
+
+    // A plain hit after the guard says Hit.
+    answer = HitResult::Hit;
+    hitOnce(c.scene, shooter.id, t.id, hit);
+    CHECK(healthOf(t) == 7 && c.taken.size() == 1 && d.invulnerable());
+}
+
+TEST(projectile_breaks_on_wall_and_hit) {
+    CombatScene c;
+    c.scene.collision.addRoom("r", {Segment{{2.0f, 5.0f}, {2.0f, -5.0f}, {-1.0f, 0.0f}}});
+    GameObject& shooter = c.scene.createObject<GameObject>();
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(b != nullptr);
+    if (!b) return;
+    c.scene.flush();
+    c.steps(30); // 10 u/s: the wall at 2 u is reached in 0.2 s
+    Projectile& p = *b->getComponent<Projectile>();
+    CHECK(!p.flying() && !b->visible && c.breaks.size() == 1);
+    if (!c.breaks.empty()) CHECK(c.breaks[0].position && std::abs(c.breaks[0].position->x - 2.0f) < 0.2f);
+    CHECK(c.hits.empty());
+
+    // A one-way segment lets it pass; a hurtbox of another team breaks it after one hit.
+    c.scene.collision.addRoom("r", {Segment{{2.0f, 5.0f}, {2.0f, -5.0f}, {-1.0f, 0.0f}, true}});
+    GameObject& t = c.target({3.0f, 0.0f}, "player");
+    c.scene.flush();
+    c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", shooter.id);
+    c.steps(40);
+    CHECK(c.hits.size() == 1 && healthOf(t) == 9 && c.breaks.size() == 2 && !p.flying());
+    if (!c.hits.empty()) {
+        const DamageInfo& info = c.hits[0].info;
+        CHECK(c.hits[0].attacker == b->id && info.source == shooter.id && info.projectile && info.parryable);
+        CHECK(info.direction == glm::vec2(1.0f, 0.0f) && info.element == Element::Ice);
+    }
+}
+
+TEST(projectile_pool_reuses) {
+    CombatScene c;
+    GameObject* a = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 1.0f}, {-1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(a && b && a != b && c.pool.pooled("test_bolt") == 2); // both flying
+    if (!a || !b) return;
+    CHECK(b->flipX && b->transform.position == glm::vec2(0.0f, 1.0f));
+    const GameObjectId aId = a->id;
+    c.scene.flush();
+    c.steps(40); // range 5 at 10 u/s: both land after 0.5 s
+    CHECK(!a->getComponent<Projectile>()->flying() && !a->visible && c.breaks.empty());
+    GameObject* again = c.pool.spawn("test_bolt", {4.0f, 0.0f}, {0.0f, 1.0f}, "player", InvalidGameObjectId);
+    CHECK(again && again->id == aId && again->visible && again->getComponent<Projectile>()->flying());
+    CHECK(c.pool.pooled("test_bolt") == 2 && again->transform.position == glm::vec2(4.0f, 0.0f));
+    CHECK(again->getComponent<Projectile>()->team == "player");
+
+    CerrCapture err;
+    CHECK(!c.pool.spawn("nope_prefab", {}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId));
+    CHECK(!c.pool.spawn("test_target", {}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId)); // no Projectile
+    CHECK(countOf(err.str(), "no Projectile") == 1);
+}
+
+TEST(projectile_reflect_changes_team_and_source_once) {
+    CombatScene c;
+    GameObject& shooter = c.scene.createObject<GameObject>();
+    GameObject& iki = c.scene.createObject<GameObject>();
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {-1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(b != nullptr);
+    if (!b) return;
+    Projectile& p = *b->getComponent<Projectile>();
+    CHECK(p.source == shooter.id && p.team == "enemy" && !p.reflected);
+    p.reflect(iki.id, "player");
+    CHECK(p.source == iki.id && p.team == "player" && p.reflected && p.direction == glm::vec2(1.0f, 0.0f));
+    p.reflect(shooter.id, "enemy"); // once only
+    CHECK(p.source == iki.id && p.team == "player" && p.direction == glm::vec2(1.0f, 0.0f));
+    // A new flight from the pool is not reflected any more.
+    c.scene.flush();
+    c.steps(40);
+    GameObject* again = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(again == b && !p.reflected && p.team == "enemy" && p.source == shooter.id);
+}
+
+TEST(combat_world_cleans_destroyed_and_unloaded) {
+    CombatScene c;
+    GameObject& destroyed = c.target({0.0f, 0.0f});
+    c.scene.spawnRoomIid = "A";
+    c.target({0.0f, 0.0f});
+    c.scene.spawnRoomIid.clear();
+    GameObject& removed = c.target({0.0f, 0.0f});
+    GameObject& kept = c.target({0.0f, 0.0f});
+    c.scene.flush();
+    CHECK(c.combat.size() == 4);
+    std::vector<Hurtbox*> found;
+    c.combat.query({{-1.0f, -1.0f}, {1.0f, 1.0f}}, found);
+    CHECK(found.size() == 4);
+
+    c.scene.destroy(destroyed.id);
+    c.scene.flush();
+    CHECK(c.combat.size() == 3);
+    LevelLoader loader;
+    loader.unloadRoom("A", c.scene);
+    c.scene.flush();
+    CHECK(c.combat.size() == 2);
+    removed.removeComponent<Hurtbox>();
+    c.scene.flush();
+    CHECK(c.combat.size() == 1);
+    kept.active = false; // a paused object is not hit either
+    c.combat.query({{-1.0f, -1.0f}, {1.0f, 1.0f}}, found);
+    CHECK(found.empty());
+    kept.active = true;
+    c.combat.query({{-1.0f, -1.0f}, {1.0f, 1.0f}}, found);
+    CHECK(found.size() == 1 && found[0] == kept.getComponent<Hurtbox>());
+
+    // Pooled projectiles: a clear() (death restore, hot reload) leaves stale ids the pool forgets.
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(b && c.pool.pooled("test_bolt") == 1);
+    c.scene.clear();
+    CHECK(c.combat.size() == 0);
+    GameObject* fresh = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(fresh && c.scene.find(fresh->id) == fresh && c.pool.pooled("test_bolt") == 1);
+    // A pooled projectile destroyed by other code is dropped as well.
+    c.scene.flush();
+    c.steps(40);
+    c.scene.destroy(fresh->id);
+    c.scene.flush();
+    GameObject* next = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(next && c.scene.find(next->id) == next && c.pool.pooled("test_bolt") == 1);
+}
+
+TEST(combat_boxes_mirror_with_root_facing) {
+    CombatScene c;
+    // Own offset: a hitbox 1 u in front of its owner.
+    GameObject& a = c.attacker({0.0f, 0.0f});
+    Hitbox& h = *a.getComponent<Hitbox>();
+    h.size = {0.5f, 0.5f};
+    h.offset = {1.0f, 0.0f};
+    GameObject& right = c.target({1.0f, 0.0f});
+    GameObject& left = c.target({-1.0f, 0.0f});
+    c.scene.flush();
+    h.activate();
+    c.steps(1);
+    CHECK(c.hits.size() == 1 && c.hits.back().target == right.id);
+    a.flipX = true;
+    h.activate();
+    c.steps(1);
+    CHECK(c.hits.size() == 2 && c.hits.back().target == left.id);
+
+    // A child placed in front of the root, with no offset: follows the root's facing.
+    CombatScene d;
+    GameObject& root = d.scene.createObject<GameObject>();
+    GameObject& bite = d.attacker({1.0f, 0.0f});
+    bite.getComponent<Hitbox>()->size = {0.5f, 0.5f};
+    d.scene.setParent(bite.id, root.id, false);
+    GameObject& r2 = d.target({1.0f, 0.0f});
+    GameObject& l2 = d.target({-1.0f, 0.0f});
+    d.scene.flush();
+    Hitbox& hb = *bite.getComponent<Hitbox>();
+    hb.activate();
+    d.steps(1);
+    CHECK(d.hits.size() == 1 && d.hits.back().target == r2.id && d.hits.back().info.source == root.id);
+    root.flipX = true;
+    hb.activate();
+    d.steps(1);
+    CHECK(d.hits.size() == 2 && d.hits.back().target == l2.id);
+
+    // A hurtbox on a child mirrors too; the fallback direction (same place) is the root's facing.
+    CombatScene e;
+    GameObject& body = e.scene.createObject<GameObject>();
+    GameObject& part = e.target({1.0f, 0.0f}, "player");
+    e.scene.setParent(part.id, body.id, false);
+    GameObject& foe = e.attacker({-1.0f, 0.0f}, "enemy");
+    foe.getComponent<Hitbox>()->size = {0.5f, 0.5f};
+    e.scene.flush();
+    Hitbox& fh = *foe.getComponent<Hitbox>();
+    fh.activate();
+    e.steps(1);
+    CHECK(e.hits.empty()); // the part is on the right
+    body.flipX = true;
+    e.steps(1);
+    CHECK(e.hits.size() == 1 && e.hits.back().target == part.id);
+    GameObject& same = e.attacker({-1.0f, 0.0f}, "enemy");
+    same.flipX = true;
+    e.scene.flush();
+    same.getComponent<Hitbox>()->activate();
+    e.steps(1);
+    CHECK(e.hits.size() == 2 && e.hits.back().info.direction == glm::vec2(-1.0f, 0.0f));
+}
+
+TEST(damageable_parryable_false_is_a_block) {
+    CombatScene c;
+    GameObject& t = c.target({0.0f, 0.0f}, "player");
+    Damageable& d = *t.getComponent<Damageable>();
+    EffectTriggers& fx = t.addComponent<EffectTriggers>();
+    fx.triggers["hit:blocked"] = {nlohmann::json{{"blink", 0.5}}};
+    fx.triggers["hit:parried"] = {nlohmann::json{{"squash", {1.2, 0.8}}}};
+    d.guard = [](const DamageInfo&) { return HitResult::Parried; };
+    GameObject& shooter = c.scene.createObject<GameObject>();
+    Stunned& stun = shooter.addComponent<Stunned>();
+    GameObject* bolt = c.pool.spawn("test_bolt", {1.0f, 0.0f}, {-1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(bolt != nullptr);
+    if (!bolt) return;
+    c.scene.flush();
+    DamageInfo hit;
+    hit.source = shooter.id;
+    hit.parryable = false;
+    hit.projectile = true;
+    hitOnce(c.scene, bolt->id, t.id, hit);
+    const Projectile& p = *bolt->getComponent<Projectile>();
+    CHECK(healthOf(t) == 10 && c.taken.empty() && !stun.active() && !p.reflected && p.team == "enemy");
+    CHECK(t.getComponent<Blink>() && t.getComponent<Blink>()->active() && !t.getComponent<SquashStretch>());
+}
+
+TEST(projectile_hits_invulnerable_target_breaks_without_damage) {
+    CombatScene c;
+    GameObject& t = c.target({2.0f, 0.0f}, "player");
+    t.getComponent<Damageable>()->invulnerableTime = 5.0f;
+    c.scene.flush();
+    hitOnce(c.scene, InvalidGameObjectId, t.id);
+    CHECK(healthOf(t) == 9);
+    GameObject* b = c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    CHECK(b != nullptr);
+    if (!b) return;
+    c.steps(20);
+    CHECK(c.hits.size() == 2 && c.breaks.size() == 1 && !b->getComponent<Projectile>()->flying()); // hitOnce + the bolt
+    CHECK(healthOf(t) == 9 && c.taken.size() == 1);
+}
+
+TEST(projectile_hits_nearest_hurtbox_along_step) {
+    CombatScene c;
+    GameObject& farther = c.target({3.4f, 0.0f}, "player"); // first in grid order
+    GameObject& nearer = c.target({2.6f, 0.0f}, "player");
+    c.scene.flush();
+    c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "enemy", InvalidGameObjectId);
+    c.scene.flush();
+    c.scene.step(0.3f); // one 3 u step: its box overlaps both
+    CHECK(c.hits.size() == 1 && c.hits[0].target == nearer.id);
+    CHECK(healthOf(nearer) == 9 && healthOf(farther) == 10);
+}
+
+TEST(stunned_times_out) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    Stunned& s = o.addComponent<Stunned>();
+    scene.flush();
+    CHECK(!s.active());
+    s.start(0.5f);
+    scene.step(0.3f);
+    CHECK(s.active());
+    s.start(0.1f); // a shorter stun does not cut the running one
+    scene.step(0.15f);
+    CHECK(s.active());
+    scene.step(0.1f);
+    CHECK(!s.active());
+}
+
+// --- Iki combat (D3 Task 5): machine "action" --------------------------------------------------------------
+
+namespace {
+AssetRegistry& realAssets() {
+    static AssetRegistry r = [] { AssetRegistry a; a.scan(sourceAssetPath("assets")); return a; }();
+    return r;
+}
+// The real iki prefab (Slash1..3, effects) on the floor of ikiLevel, with every combat and juice service.
+struct IkiCombat {
+    Scene2D scene;
+    CombatWorld combat;
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")};
+    EffectLibrary effects;
+    ProjectilePool pool;
+    Camera2D camera;
+    IkiObject* iki = nullptr;
+    std::vector<HitEvent> hits;
+    std::vector<DamageTaken> taken;
+    std::vector<std::string> cues, actions; // MovementCue names of the Iki; "action" machine changes
+    std::vector<EventBus::Subscription> subs;
+    explicit IkiCombat(float x = 3.0f, bool level = true) {
+        scene.setService(&realAssets());
+        scene.setService(&combat);
+        scene.setService(&prefabs);
+        effects.scan(sourceAssetPath("assets/effects"));
+        scene.setService(&effects);
+        pool.scene = &scene;
+        scene.setService(&pool);
+        scene.setService(&camera);
+        if (level) ikiLevel(scene);
+        iki = dynamic_cast<IkiObject*>(prefabs.instantiate(scene, "iki"));
+        CHECK(iki != nullptr && prefabs.warnings().empty());
+        if (!iki) return;
+        iki->transform.position = {x, -4.4f};
+        subs.push_back(scene.events().subscribe<HitEvent>([this](const HitEvent& e) { hits.push_back(e); }));
+        subs.push_back(scene.events().subscribe<DamageTaken>([this](const DamageTaken& e) { taken.push_back(e); }));
+        subs.push_back(scene.events().subscribe<MovementCue>([this](const MovementCue& e) { if (iki && e.object == iki->id) cues.push_back(e.name); }));
+        subs.push_back(scene.events().subscribe<StateChanged>([this](const StateChanged& e) { if (e.label == "action") actions.push_back(e.to); }));
+        step({}, 20);
+        actions.clear();
+    }
+    void step(const InputState& in, int frames = 1) { for (int i = 0; i < frames; ++i) { iki->applyInput(in); scene.step(kDt); } }
+    // A target with a 0.8 x 1.6 hurtbox standing at feet x, no invulnerability, 20 health, stunnable.
+    GameObject& target(float x, float y = -4.5f) {
+        GameObject& o = scene.createObject<GameObject>();
+        o.transform.position = {x, y};
+        Hurtbox& h = o.addComponent<Hurtbox>();
+        h.size = {0.8f, 1.6f};
+        h.offset = {0.0f, 0.8f};
+        o.addComponent<Damageable>().invulnerableTime = 0.0f;
+        o.addComponent<Resources>().maxHealth = 20;
+        o.addComponent<Stunned>();
+        scene.flush();
+        return o;
+    }
+    bool action(const char* name) const { return std::string(iki->actionName()) == name; }
+    // Steps with no input until the action is `name` (at most limit frames).
+    bool until(const char* name, int limit = 90) {
+        for (int f = 0; f < limit && !action(name); ++f) step({});
+        return action(name);
+    }
+    int count(const std::vector<std::string>& v, const char* s) const { return int(std::count(v.begin(), v.end(), s)); }
+    float ice() const { return iki->getComponent<Resources>()->energy(Element::Ice); }
+};
+InputState xPress() { InputState in; in.attack.pressed = in.attack.down = true; return in; }
+InputState cPress() { InputState in; in.shoot.pressed = in.shoot.down = true; return in; }
+InputState vPress() { InputState in; in.guard.pressed = in.guard.down = true; return in; }
+InputState vHeld() { InputState in; in.guard.down = true; return in; }
+// A hit on the Iki whose push is `dir` (from the front of a right-facing Iki: x < 0).
+void hitIki(IkiCombat& c, glm::vec2 dir, GameObjectId source = InvalidGameObjectId, int amount = 1, bool parryable = true) {
+    DamageInfo info{amount, dir};
+    info.source = source;
+    info.parryable = parryable;
+    c.scene.events().emit(HitEvent{source, c.iki->id, info});
+    c.scene.flush();
+}
+} // namespace
+
+TEST(iki_combo_three_slashes_chain_within_window) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject& t = c.target(4.2f);
+    const float x0 = c.iki->transform.position.x;
+    c.step(xPress());
+    CHECK(c.action("slash1") && std::abs(c.iki->transform.position.x - x0 - 0.3f) < 1e-3f); // attackStep
+    CHECK(c.until("none"));
+    c.step({}, 6); // 0.1 s: inside comboWindow
+    c.step(xPress());
+    CHECK(c.action("slash2"));
+    c.step({}, 3);
+    c.step(xPress()); // during slash 2: kept, chains at its end
+    CHECK(c.until("slash3"));
+    CHECK(c.until("none"));
+    CHECK(c.actions == std::vector<std::string>({"slash1", "none", "slash2", "slash3", "none"}));
+    CHECK(c.hits.size() == 3 && c.taken.size() == 3 && healthOf(t) == 16); // 1 + 1 + 2, each slash once
+    // After the finisher, X starts over.
+    c.step({}, 2);
+    c.step(xPress());
+    CHECK(c.action("slash1"));
+    // While slashing the ground speed is runSpeed * attackMoveFactor.
+    c.step(rightHeld(), 10);
+    CHECK(c.iki->velocity_.x <= 5.0f * 0.4f + 1e-3f && c.iki->velocity_.x > 1.0f);
+}
+
+TEST(iki_combo_resets_after_window) {
+    for (float wait : {0.3f, 0.45f}) {
+        IkiCombat c;
+        if (!c.iki) return;
+        c.step(xPress());
+        CHECK(c.until("none"));
+        c.step({}, int(wait / kDt));
+        c.step(xPress());
+        CHECK(c.action(wait < 0.35f ? "slash2" : "slash1"));
+    }
+}
+
+TEST(iki_combo_third_slash_damage_and_knockback) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.target(4.2f);
+    std::vector<int> frozen; // frozen steps after each hit
+    for (int n = 0; n < 3; ++n) {
+        c.step(xPress());
+        int f = 0, hitsBefore = int(c.hits.size());
+        for (int i = 0; i < 40 && int(c.hits.size()) == hitsBefore; ++i) c.step({});
+        for (int i = 0; i < 20; ++i) {
+            c.step({});
+            if (c.scene.lastStepFrozen()) ++f;
+            else if (f > 0) break;
+        }
+        frozen.push_back(f);
+        CHECK(c.until("none"));
+    }
+    CHECK(c.hits.size() == 3);
+    if (c.hits.size() != 3) return;
+    CHECK(c.hits[0].info.amount == 1 && c.hits[1].info.amount == 1 && c.hits[2].info.amount == 2);
+    CHECK(c.hits[0].info.knockback == 2.0f && c.hits[2].info.knockback == c.iki->finisherKnockback && c.iki->finisherKnockback == 8.0f);
+    CHECK(c.hits[2].info.element == Element::Ice && c.hits[2].info.source == c.iki->id && c.hits[2].info.direction.x > 0.0f);
+    CHECK(c.count(c.cues, "hit") == 2 && c.count(c.cues, "finisher") == 1);
+    // The weight: hit stop 0.05 s (3 frames) for a common hit, 0.09 s (6 frames) for the finisher.
+    CHECK(frozen == std::vector<int>({3, 3, 6}));
+}
+
+TEST(iki_combo_buffered_during_hitstop) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.target(4.2f);
+    c.step(xPress());
+    for (int i = 0; i < 30 && !c.scene.lastStepFrozen(); ++i) c.step({});
+    CHECK(c.scene.lastStepFrozen() && c.action("slash1"));
+    InputState release;
+    release.attack.released = true;
+    c.step(xPress()); // pressed and released while frozen
+    c.step(release);
+    CHECK(c.until("slash2", 30));
+    CHECK(c.actions == std::vector<std::string>({"slash1", "slash2"})); // no "none" between: it was kept
+}
+
+TEST(iki_air_attack_reduced_gravity_once_per_jump) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(zPress());
+    c.step(zHeld(), 2);
+    CHECK(!c.iki->grounded && c.iki->velocity_.y > 5.0f);
+    InputState xz = xPress();
+    xz.jump.down = true;
+    c.step(xz);
+    CHECK(c.action("slash1"));
+    float before = c.iki->velocity_.y;
+    c.step(zHeld());
+    CHECK(std::abs((c.iki->velocity_.y - before) / kDt - (-32.0f)) < 0.01f); // R7: rising, normal gravity (no extra height)
+    // Falling: the slash hangs (airAttackGravityFactor).
+    IkiCombat e;
+    if (!e.iki) return;
+    e.step(zPress());
+    for (int i = 0; i < 60 && e.iki->velocity_.y > 0.0f; ++i) e.step(zHeld());
+    CHECK(!e.iki->grounded && e.iki->velocity_.y <= 0.0f && e.iki->velocity_.y > -2.0f);
+    e.step(xz);
+    CHECK(e.action("slash1"));
+    before = e.iki->velocity_.y;
+    e.step(zHeld());
+    CHECK(std::abs((e.iki->velocity_.y - before) / kDt - (-32.0f * 0.25f)) < 0.01f);
+    for (int i = 0; i < 30 && !c.action("none"); ++i) c.step(zHeld()); // Z held: no jump cut
+    CHECK(c.action("none"));
+    c.step(zHeld(), int(0.36f / kDt)); // past the combo window, still in the air
+    CHECK(!c.iki->grounded);
+    c.step(xz);
+    CHECK(c.action("none")); // one sequence per jump
+    for (int i = 0; i < 120 && !c.iki->grounded; ++i) c.step({});
+    c.step({});
+    c.step(xPress());
+    CHECK(c.iki->grounded && c.action("slash1")); // the ground gives it back
+
+    // The fall is limited to airAttackMaxFall while slashing (nothing to land on).
+    IkiCombat d(0.0f, false);
+    if (!d.iki) return;
+    d.step(xPress());
+    d.iki->velocity_.y = -10.0f;
+    d.step({});
+    CHECK(d.iki->velocity_.y == -3.0f && d.action("slash1"));
+}
+
+TEST(iki_combo_reset_by_hurt_wall_guard_shoot) {
+    auto afterSlash = [](IkiCombat& c) {
+        c.step(xPress());
+        CHECK(c.until("none"));
+        CHECK(c.iki->comboLeft > 0.0f && c.iki->comboNext == 2);
+    };
+    { // hurt
+        IkiCombat c;
+        if (!c.iki) return;
+        afterSlash(c);
+        hitIki(c, {-1.0f, 0.0f});
+        c.step({}, 5); // past the hit's hit stop
+        CHECK(inState(*c.iki, "hurt") && c.iki->comboLeft == 0.0f && c.iki->comboNext == 1);
+        c.step(xPress());
+        CHECK(c.action("none")); // no action while hurt
+        // A hit during a slash cuts it.
+        IkiCombat d;
+        d.step(xPress());
+        hitIki(d, {-1.0f, 0.0f});
+        d.step({}, 5);
+        CHECK(d.action("none"));
+    }
+    { // guard
+        IkiCombat c;
+        afterSlash(c);
+        c.step(vPress());
+        CHECK(c.action("guard") && c.iki->comboLeft == 0.0f && c.iki->comboNext == 1);
+        // V during a slash cancels it.
+        c.step({}, 2);
+        c.step(xPress());
+        c.step(vPress());
+        CHECK(c.action("guard"));
+    }
+    { // shoot
+        IkiCombat c;
+        afterSlash(c);
+        c.step(cPress());
+        CHECK(c.action("shoot") && c.iki->comboLeft == 0.0f && c.iki->comboNext == 1);
+    }
+    { // wall: an air slash toward an ice wall is cut by the grab; the wall gives the air sequence back
+        Scene2D scene;
+        WorldState state;
+        IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
+        InputState xr = rightHeld();
+        xr.attack.pressed = xr.attack.down = true;
+        stepIki(scene, iki, xr);
+        CHECK(std::string(iki.actionName()) == "slash1");
+        CHECK(stepUntil(scene, iki, rightHeld(), "wall", 30));
+        stepIki(scene, iki, rightHeld());
+        CHECK(std::string(iki.actionName()) == "none" && iki.comboLeft == 0.0f);
+        stepIki(scene, iki, xr);
+        CHECK(std::string(iki.actionName()) == "none"); // no slash on the wall
+        stepIki(scene, iki, keys(false, false, false, false, true)); // wall jump
+        stepIki(scene, iki, {});
+        CHECK(!iki.grounded && inState(iki, "jump"));
+        stepIki(scene, iki, xPress());
+        CHECK(std::string(iki.actionName()) == "slash1");
+    }
+}
+
+TEST(iki_shoot_costs_and_cooldown) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(cPress());
+    CHECK(c.action("shoot") && c.ice() == 85.0f && c.pool.pooled("ice_shard") == 1);
+    c.step({});
+    CHECK(c.action("none"));
+    c.step(cPress()); // within shootCooldown (0.25 s): nothing
+    CHECK(c.ice() == 85.0f && c.count(c.actions, "shoot") == 1);
+    c.step({}, int(0.25f / kDt));
+    c.step(cPress());
+    CHECK(c.ice() == 70.0f && c.count(c.actions, "shoot") == 2 && c.pool.pooled("ice_shard") == 2);
+    // A shard flies right at 14 u/s and hits for 1 ice damage that counts for the Iki (prefab ice_shard).
+    c.step({}, 40); // both shards land at their range
+    GameObject& t = c.target(7.0f);
+    c.step(cPress());
+    c.step({}, 30);
+    CHECK(healthOf(t) == 19 && c.taken.size() == 1 && c.pool.pooled("ice_shard") == 2); // reused
+    CHECK(c.taken.size() == 1 && c.taken[0].info.projectile && c.taken[0].info.element == Element::Ice);
+    CHECK(c.taken.size() == 1 && c.taken[0].info.source == c.iki->id && c.count(c.cues, "hit") == 1);
+    // Without the ice: no shard, the "no_energy" cue (the prefab plays the failure sound).
+    c.iki->getComponent<Resources>()->spend(Element::Ice, c.ice() - 10.0f);
+    c.step(cPress());
+    c.scene.flush();
+    CHECK(c.action("none") && c.count(c.cues, "no_energy") == 1 && c.ice() == 10.0f && c.count(c.actions, "shoot") == 3);
+
+    // The pool cannot spawn (no PrefabLibrary, every shard in flight): no shot, the ice stays.
+    IkiCombat d;
+    if (!d.iki) return;
+    d.step({}, 2);
+    d.scene.setService<PrefabLibrary>(nullptr);
+    CerrCapture err;
+    d.step(cPress());
+    CHECK(d.action("none") && d.ice() == 100.0f && d.count(d.actions, "shoot") == 0);
+    CHECK(err.str().find("no PrefabLibrary") != std::string::npos);
+}
+
+TEST(iki_guard_blocks_front_costs_ice) {
+    IkiCombat c;
+    if (!c.iki) return;
+    auto& resources = *c.iki->getComponent<Resources>();
+    c.step(vPress());
+    CHECK(c.action("guard"));
+    c.step(vHeld(), int(0.2f / kDt)); // past the parry window
+    hitIki(c, {-1.0f, 0.0f}, InvalidGameObjectId, 2);
+    CHECK(resources.health() == 5 && c.taken.empty() && c.ice() == 90.0f && !c.iki->invulnerable());
+    CHECK(c.iki->velocity_.x == -3.0f); // blockPush, away from the hit
+    // Straight from above counts as the front (only the sign of x).
+    c.step(vHeld(), 30);
+    hitIki(c, {0.0f, -1.0f});
+    CHECK(resources.health() == 5 && c.ice() == 80.0f);
+    // Not parryable inside the window: a block, with its cost.
+    c.step({});
+    c.step(vPress());
+    hitIki(c, {-1.0f, 0.0f}, InvalidGameObjectId, 1, false);
+    CHECK(resources.health() == 5 && c.ice() == 70.0f);
+}
+
+TEST(iki_guard_back_hit_passes) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(vPress());
+    c.step(vHeld(), 20);
+    hitIki(c, {1.0f, 0.0f}); // pushes forward: it came from behind
+    CHECK(c.iki->getComponent<Resources>()->health() == 4 && c.taken.size() == 1 && c.ice() == 100.0f);
+    c.step({}, 5); // past the hit's hit stop
+    CHECK(inState(*c.iki, "hurt") && c.action("none"));
+}
+
+TEST(iki_parry_window_stuns_and_free) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject& foe = c.target(4.5f);
+    c.step(vPress());
+    c.step(vHeld(), 5); // 0.083 s < parryWindow 0.15
+    hitIki(c, {-1.0f, 0.0f}, foe.id);
+    CHECK(c.iki->getComponent<Resources>()->health() == 5 && c.ice() == 100.0f && c.taken.empty());
+    CHECK(foe.getComponent<Stunned>()->active());
+    // The weight: hit stop 0.15 s and a blue flash on the Iki.
+    CHECK(c.scene.timeScale() == 0.0f && c.iki->sprite && c.iki->sprite->flash.b > 0.9f && c.iki->sprite->flash.r < 0.6f);
+    // The stun lasts the Damageable's parryStun (1 s of scene time).
+    c.step(vHeld(), int(0.15f / kDt) + 1 + int(0.9f / kDt));
+    CHECK(foe.getComponent<Stunned>()->active());
+    c.step(vHeld(), 12);
+    CHECK(!foe.getComponent<Stunned>()->active());
+}
+
+TEST(iki_parry_reflects_projectile_and_stuns_shooter) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject& shooter = c.target(8.0f);
+    c.step(vPress());
+    // A bolt from the right toward the Iki, fired by the shooter (team enemy), as the dummy shooter will.
+    GameObject* bolt = c.pool.spawn("ice_shard", {3.7f, -3.7f}, {-1.0f, 0.0f}, "enemy", shooter.id);
+    CHECK(bolt != nullptr);
+    if (!bolt) return;
+    c.step(vHeld()); // reaches the Iki's hurtbox within the window
+    c.step(vHeld());
+    const Projectile& p = *bolt->getComponent<Projectile>();
+    CHECK(p.reflected && p.team == "player" && p.source == c.iki->id && p.direction.x > 0.99f);
+    CHECK(shooter.getComponent<Stunned>()->active() && c.taken.empty());
+    c.step(vHeld(), 60); // back to the shooter: its hit counts for the Iki
+    CHECK(healthOf(shooter) == 19 && c.taken.size() == 1 && c.taken[0].info.source == c.iki->id);
+}
+
+TEST(iki_parry_window_restarts_per_press) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(vPress());
+    c.step(vHeld(), 30); // the window is long gone
+    InputState up;
+    up.guard.released = true;
+    c.step(up);
+    CHECK(c.action("none"));
+    c.step(vPress());
+    c.step(vHeld(), 3);
+    hitIki(c, {-1.0f, 0.0f});
+    CHECK(c.ice() == 100.0f); // a parry again
+    // The parry's own hit stop does not use up the window: frozen steps do not count.
+    c.step(vHeld(), 20);
+    c.step(up);
+    c.step(vPress());
+    c.scene.hitstop(0.5f);
+    c.step(vHeld(), 30);
+    hitIki(c, {-1.0f, 0.0f});
+    CHECK(c.ice() == 100.0f);
+}
+
+TEST(iki_guard_break_without_energy) {
+    IkiCombat c;
+    if (!c.iki) return;
+    auto& resources = *c.iki->getComponent<Resources>();
+    resources.spend(Element::Ice, 95.0f);
+    c.step(vPress());
+    c.step(vHeld(), 20);
+    hitIki(c, {-1.0f, 0.0f});
+    CHECK(resources.health() == 4 && c.action("guard_break") && c.count(c.cues, "guard_break") == 1);
+    c.step(vHeld(), 3);
+    CHECK(c.action("guard_break") && inState(*c.iki, "hurt"));
+    c.step(xPress());
+    CHECK(c.action("guard_break")); // no attack
+    c.step(vHeld(), int(0.5f / kDt) + 6); // guardBreakStun, plus the frozen steps of the hit's hit stop
+    CHECK(c.action("none"));
+    c.step(vHeld(), 10);
+    CHECK(c.action("none")); // V still held: raising again needs a new press
+    c.step({});
+    c.step(vPress());
+    CHECK(c.action("guard"));
+}
+
+TEST(iki_guard_only_on_ground_and_slow) {
+    IkiCombat c;
+    if (!c.iki) return;
+    c.step(zPress());
+    c.step(vPress());
+    CHECK(!c.iki->grounded && c.action("none"));
+    for (int i = 0; i < 120 && !c.iki->grounded; ++i) c.step({});
+    c.step({}, 5);
+    InputState v = vPress();
+    v.moveRight.down = true;
+    c.step(v);
+    CHECK(c.action("guard"));
+    InputState vr = vHeld();
+    vr.moveRight.down = true;
+    c.step(vr, 30);
+    CHECK(std::abs(c.iki->velocity_.x - 5.0f * 0.3f) < 1e-3f); // guardMoveFactor
+    vr.jump.pressed = vr.jump.down = true;
+    c.step(vr);
+    vr.jump.pressed = false;
+    c.step(vr, 3);
+    CHECK(c.iki->grounded && c.action("guard")); // no jump
+}
+
+TEST(iki_damage_via_damageable_single_subtraction) {
+    IkiCombat c;
+    if (!c.iki) return;
+    auto& resources = *c.iki->getComponent<Resources>();
+    hitIki(c, {-1.0f, 0.0f}, InvalidGameObjectId, 2);
+    CHECK(resources.health() == 3 && c.taken.size() == 1 && inState(*c.iki, "hurt") && c.iki->invulnerable());
+    CHECK(c.iki->getComponent<Damageable>()->invulnerableTime == c.iki->invulnerableTime);
+    hitIki(c, {-1.0f, 0.0f}); // invulnerable
+    CHECK(resources.health() == 3 && c.taken.size() == 1);
+    // A hit from an enemy hitbox goes the same way.
+    c.step({}, int(0.8f / kDt) + 30);
+    GameObject& foe = c.scene.createObject<GameObject>();
+    foe.transform.position = c.iki->transform.position + glm::vec2(0.5f, 0.8f);
+    Hitbox& h = foe.addComponent<Hitbox>();
+    h.team = "enemy";
+    c.scene.flush();
+    h.activate();
+    c.step({}, 2);
+    CHECK(resources.health() == 2 && c.taken.size() == 2);
+}
+
+TEST(iki_slash_window_from_animation_events) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject& t = c.target(4.2f);
+    auto* animator = c.iki->getComponent<SpriteAnimator>();
+    animator->animationEvents["attack_prepare"] = {{1, "hit_on"}}; // frame 1 = 0.1 s: later than activeStart
+    c.step(xPress());
+    c.step({}, 4); // 0.083 s: the fallback window would have hit by now
+    CHECK(c.hits.empty() && animator->action == "slash1");
+    c.step({}, 6);
+    CHECK(c.hits.size() == 1 && healthOf(t) == 19);
+    // A second hit_on in the same slash (a looping animation) does not open a new window: no second hit.
+    CHECK(c.until("none"));
+    c.step({}, 30); // past comboWindow: slash 1 again
+    animator->animationEvents["attack_prepare"] = {{1, "hit_on"}, {2, "hit_on"}}; // 0.1 s and 0.2 s
+    c.step(xPress());
+    CHECK(c.action("slash1"));
+    CHECK(c.until("none"));
+    CHECK(c.hits.size() == 2 && healthOf(t) == 18);
+}
+
+TEST(iki_slash_facing_left_hits_left) {
+    IkiCombat c(5.0f);
+    if (!c.iki) return;
+    GameObject& t = c.target(3.8f); // the mirror of target(4.2) for an Iki at 3
+    std::vector<glm::vec2> at; // where the "hit" cue plays (the prefab's slash_hit particles)
+    auto sub = c.scene.events().subscribe<MovementCue>([&](const MovementCue& e) {
+        if (e.object == c.iki->id && e.name == "hit" && e.position) at.push_back(*e.position);
+    });
+    c.iki->facing = -1.0f;
+    c.step(xPress());
+    CHECK(c.until("none"));
+    CHECK(c.hits.size() == 1 && healthOf(t) == 19 && c.iki->flipX);
+    CHECK(c.hits.size() == 1 && c.hits[0].info.direction.x < 0.0f);
+    // At the target's hurtbox centre, not at the Iki's feet.
+    CHECK(at.size() == 1 && glm::length(at[0] - glm::vec2(3.8f, -3.7f)) < 1e-3f);
+}
+
+TEST(iki_shard_point_blank_breaks_at_wall) {
+    IkiCombat c(3.0f, false);
+    if (!c.iki) return;
+    ikiLevel(c.scene, {{{8, 5}, 1}, {{8, 6}, 1}, {{8, 7}, 1}, {{8, 8}, 1}}); // a wall face at x = 4
+    c.iki->transform.position = {3.0f, -4.4f};
+    c.iki->velocity_ = {};
+    c.step({}, 10);
+    c.step(rightHeld(), 40);
+    CHECK(c.iki->grounded && std::abs(c.iki->transform.position.x + 0.3f - 4.0f) < 1e-3f); // touching it
+    std::vector<glm::vec2> breaks;
+    auto sub = c.scene.events().subscribe<MovementCue>([&](const MovementCue& e) {
+        if (e.name == "break" && e.position) breaks.push_back(*e.position);
+    });
+    c.step(cPress());
+    c.step({}, 2);
+    c.scene.flush();
+    CHECK(breaks.size() == 1 && std::abs(breaks[0].x - 4.0f) < 1e-3f);
+}
+
+// --- Training dummies (D3 Task 6) ---------------------------------------------------------------------------
+
+namespace {
+DamageInfo iceHit(int amount) {
+    DamageInfo info;
+    info.amount = amount;
+    info.element = Element::Ice;
+    return info;
+}
+// A real dummy prefab standing on ikiLevel's floor (its box centre 0.6 u above it), flushed.
+GameObject* dummyAt(IkiCombat& c, const char* prefab, float x) {
+    GameObject* d = c.prefabs.instantiate(c.scene, prefab, {{"position", {x, -3.9f}}});
+    CHECK(d != nullptr && c.prefabs.warnings().empty());
+    c.scene.flush();
+    return d;
+}
+} // namespace
+
+TEST(training_dummy_breaks_and_respawns) {
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject* weak = dummyAt(c, "training_dummy_weak", 6.0f);
+    GameObject* resist = dummyAt(c, "training_dummy_resist", 8.0f);
+    if (!weak || !resist) return;
+    // The combo's 1, 1, 2 (no invulnerability between them): 2, 2, 4 on the weak one, 1, 1, 1 on the resistant one.
+    for (int n : {1, 1, 2}) {
+        hitOnce(c.scene, c.iki->id, weak->id, iceHit(n));
+        hitOnce(c.scene, c.iki->id, resist->id, iceHit(n));
+    }
+    std::vector<int> weakTaken, resistTaken;
+    for (const DamageTaken& t : c.taken) (t.target == weak->id ? weakTaken : resistTaken).push_back(t.finalAmount);
+    CHECK(weakTaken == std::vector<int>({2, 2, 4}) && resistTaken == std::vector<int>({1, 1, 1}));
+    CHECK(healthOf(*weak) == 2 && healthOf(*resist) == 7);
+
+    // At 0 it breaks: hidden, its Hurtbox out of the combat grid; back full after respawnTime (3 s).
+    hitOnce(c.scene, c.iki->id, weak->id, iceHit(1));
+    CHECK(healthOf(*weak) == 0);
+    c.step({});
+    Hurtbox* hurt = weak->getComponent<Hurtbox>();
+    CHECK(!weak->visible && !hurt->enabled && weak->getComponent<TrainingDummy>()->broken());
+    std::vector<Hurtbox*> found;
+    c.combat.query(hurt->box(), found);
+    CHECK(std::find(found.begin(), found.end(), hurt) == found.end());
+    c.step({}, int(2.8f / kDt));
+    CHECK(!weak->visible);
+    c.step({}, int(0.3f / kDt));
+    CHECK(weak->visible && hurt->enabled && healthOf(*weak) == 10 && !weak->getComponent<TrainingDummy>()->broken());
+    hitOnce(c.scene, c.iki->id, weak->id, iceHit(1));
+    CHECK(healthOf(*weak) == 8);
+}
+
+TEST(dummy_shooter_fires_toward_player_in_range) {
+    int shots = 0;
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject* s = dummyAt(c, "training_dummy_shooter", 8.0f);
+    if (!s) return;
+    auto sub = c.scene.events().subscribe<MovementCue>([&](const MovementCue& e) { if (e.object == s->id && e.name == "shoot") ++shots; });
+    c.step({}, int(2.4f / kDt));
+    CHECK(shots == 0); // every shootInterval (2.5 s)
+    c.step({}, int(0.2f / kDt));
+    CHECK(shots == 1 && c.pool.pooled("dummy_bolt") == 1 && s->flipX); // faces the Iki on its left
+    // The slow bolt (5 u/s) reaches the Iki ~5 u away: 1 damage, counted for the shooter, flying toward the Iki.
+    c.step({}, int(1.2f / kDt));
+    CHECK(c.taken.size() == 1);
+    if (!c.taken.empty()) {
+        const DamageTaken& t = c.taken[0];
+        CHECK(t.target == c.iki->id && t.finalAmount == 1 && t.info.source == s->id && t.info.projectile);
+        CHECK(t.info.direction.x < -0.99f && t.info.parryable);
+    }
+    // Out of range (more than 10 u): silent.
+    s->transform.position.x = 14.5f;
+    shots = 0;
+    c.step({}, int(3.0f / kDt));
+    CHECK(shots == 0);
+}
+
+TEST(dummy_shooter_silent_when_stunned) {
+    int shots = 0;
+    IkiCombat c;
+    if (!c.iki) return;
+    GameObject* s = dummyAt(c, "training_dummy_shooter", 8.0f);
+    if (!s) return;
+    auto sub = c.scene.events().subscribe<MovementCue>([&](const MovementCue& e) { if (e.object == s->id && e.name == "shoot") ++shots; });
+    s->getComponent<Stunned>()->start(4.0f);
+    c.step({}, int(4.0f / kDt));
+    CHECK(shots == 0);
+    c.step({}, int(1.0f / kDt)); // the stun restarts the wait: a full interval after it ends
+    CHECK(shots == 0);
+    c.step({}, int(1.7f / kDt));
+    CHECK(shots == 1);
+    // Broken (health 0): silent until it is back.
+    s->getComponent<Resources>()->damage(10);
+    shots = 0;
+    c.step({}, int(2.8f / kDt));
+    CHECK(shots == 0 && !s->visible);
+    // Inactive: silent.
+    s->active = false;
+    c.step({}, int(6.0f / kDt));
+    CHECK(shots == 0);
+}
+
+TEST(dummy_shooter_only_targets_living_player_in_its_room) {
+    // The real layout: the shooter by IceTest's doorway is within range of Showcase's PlayerStart through the open
+    // doorway, and IceTest is loaded as Showcase's neighbour. A player at the start must never be targeted.
+    const LdtkProject p = loadLdtkProject(sourceAssetPath("assets/levels/showcase.ldtk"));
+    const LdtkLevel* ice = nullptr;
+    glm::vec2 start{}, shooterAt{};
+    for (const LdtkLevel& lv : p.levels)
+        for (const LdtkLayer& L : lv.layers)
+            for (const LdtkEntity& e : L.entities) {
+                if (lv.identifier == "Showcase" && e.identifier == "PlayerStart") start = ldtkToWorld(lv.worldPx, e.px + glm::vec2(e.size.x * 0.5f, e.size.y));
+                if (lv.identifier == "IceTest" && e.identifier == "TrainingDummyShooter") {
+                    ice = &lv;
+                    shooterAt = ldtkToWorld(lv.worldPx, e.px + e.size * 0.5f);
+                }
+            }
+    CHECK(ice != nullptr);
+    if (!ice) return;
+    World world;
+    world.onLoad = [](int) {};
+    LevelLoader loader;
+    world.open(p, loader, nullptr);
+    Scene2D scene;
+    CombatWorld combat;
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")};
+    ProjectilePool pool;
+    EffectLibrary effects;
+    effects.scan(sourceAssetPath("assets/effects"));
+    pool.scene = &scene;
+    scene.setService(&realAssets());
+    scene.setService(&combat);
+    scene.setService(&prefabs);
+    scene.setService(&pool);
+    scene.setService(&effects);
+    scene.setService(&world);
+    GameObject* s = prefabs.instantiate(scene, "training_dummy_shooter", {{"position", {shooterAt.x, shooterAt.y}}});
+    CHECK(s != nullptr && prefabs.warnings().empty());
+    if (!s) return;
+    s->roomIid = ice->iid; // as LevelLoader spawns it
+    GameObject& player = scene.createObject<GameObject>();
+    player.addTag("player");
+    player.transform.position = start;
+    Hurtbox& h = player.addComponent<Hurtbox>();
+    h.team = "player";
+    h.size = {0.6f, 1.6f};
+    h.offset = {0.0f, 0.8f};
+    player.addComponent<Resources>();
+    scene.flush();
+    int shots = 0;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& e) { if (e.object == s->id && e.name == "shoot") ++shots; });
+    auto run = [&](float seconds) { for (int i = 0; i < int(seconds / kDt); ++i) scene.step(kDt); };
+    CHECK(glm::distance(start, shooterAt) < s->getComponent<DummyShooter>()->range); // the case that matters
+    run(8.0f);
+    CHECK(shots == 0);
+    // In its room: a grace of shootInterval after coming in reach, then a shot.
+    player.transform.position = shooterAt + glm::vec2(-3.0f, -0.6f);
+    run(2.4f);
+    CHECK(shots == 0);
+    run(0.2f);
+    CHECK(shots == 1);
+    // A dead player is not a target.
+    player.getComponent<Resources>()->damage(100);
+    shots = 0;
+    run(6.0f);
+    CHECK(shots == 0);
+}
+
+TEST(projectile_ignores_disabled_hurtbox) {
+    CombatScene c;
+    GameObject& t = c.target({2.0f, 0.0f});
+    t.getComponent<Hurtbox>()->enabled = false;
+    c.scene.flush();
+    c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "player", InvalidGameObjectId);
+    c.steps(40);
+    CHECK(c.hits.empty() && healthOf(t) == 10 && c.breaks.empty());
+    t.getComponent<Hurtbox>()->enabled = true;
+    c.pool.spawn("test_bolt", {0.0f, 0.0f}, {1.0f, 0.0f}, "player", InvalidGameObjectId);
+    c.steps(40);
+    CHECK(c.hits.size() == 1 && healthOf(t) == 9);
+}
+
+TEST(showcase_ice_test_dummies_load) {
+    // tools/add_ice_test_room.py: two dummies on IceTest's floor right of the pit (off the climbing path) and the
+    // shooter by the doorway in the right wall, each made from its prefab.
+    auto p = loadLdtkProject(sourceAssetPath("assets/levels/showcase.ldtk"));
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")};
+    std::map<std::string, glm::vec2> feet; // identifier -> the bottom centre of its box, room pixels
+    for (auto& lv : p.levels)
+        if (lv.identifier == "IceTest")
+            for (auto& L : lv.layers)
+                for (auto& e : L.entities) {
+                    if (e.identifier.rfind("TrainingDummy", 0) != 0) continue;
+                    CHECK(!feet.count(e.identifier) && prefabs.has(snakeCase(e.identifier)));
+                    feet[e.identifier] = glm::vec2(e.px) + glm::vec2(e.size.x * 0.5f, float(e.size.y));
+                }
+    CHECK(feet.size() == 3 && feet.count("TrainingDummyWeak") && feet.count("TrainingDummyResist") && feet.count("TrainingDummyShooter"));
+    for (const auto& [id, at] : feet) CHECK(at.y == 592.0f && at.x > 704.0f && at.x < 992.0f); // floor top row 37
+    CHECK(feet["TrainingDummyShooter"].x > feet["TrainingDummyWeak"].x && feet["TrainingDummyShooter"].x > feet["TrainingDummyResist"].x);
 }
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else

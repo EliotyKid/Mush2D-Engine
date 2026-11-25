@@ -102,7 +102,7 @@ Vem primeiro porque tudo o que vier depois será criado com ele.
 ### D2: Iki se move (estados e poderes de movimento)
 
 **Entra:**
-- [x] **Máquina de estados** reutilizável, usada pelo Iki: parado, correndo, pulando, caindo, preso na parede, escalando (parede e teto), ferido, morto. O estado de ataque entra no D3, como uma classe nova.
+- [x] **Máquina de estados** reutilizável, usada pelo Iki: parado, correndo, pulando, caindo, preso na parede, escalando (parede e teto), ferido, morto. O ataque entrou no D3 como uma segunda máquina, `"action"` (corte, tiro, escudo), ao lado da de movimento.
 - [x] **Sistema de habilidades**: cada poder é um componente, e o desbloqueio fica no `WorldState` (`ability.ice.stakes`).
 - [x] **Gelo: estacas.** Cria pontos de apoio para escalar **certas** paredes e tetos, marcados como superfície escalável no LDtk.
 - [x] **Recursos**: vida e energia elemental. Decidido no D2: uma barra para cada elemento (gelo, fogo), e a travessia não gasta energia (veja "Decisões resolvidas").
@@ -122,12 +122,12 @@ Tudo isso entra como novos componentes de habilidade e novos estados, sem mudar 
 ### D3: Combate e "peso" (feedback)
 
 **Entra:**
-- [ ] **Hitbox e hurtbox** como nós filhos do prefab.
-- [ ] **`DamageInfo`** com quantidade, `Element`, knockback e origem. **Resistências e fraquezas por elemento** ficam no prefab.
-- [ ] **Ataque corpo a corpo de gelo**, **projétil de gelo** (com pool de projéteis) e **defesa de gelo**.
-- [ ] **Invencibilidade breve ao ser atingido**, **hit stop** (congelar o frame no impacto) e **tremor de câmera** simples.
-- [ ] **Partículas básicas**, na CPU, para o essencial: estilhaços de gelo, poeira e impacto.
-- [ ] **Áudio básico** com miniaudio: efeitos e música por região.
+- [x] **Hitbox e hurtbox** como nós filhos do prefab.
+- [x] **`DamageInfo`** com quantidade, `Element`, knockback e origem. **Resistências e fraquezas por elemento** ficam no prefab.
+- [x] **Ataque corpo a corpo de gelo**, **projétil de gelo** (com pool de projéteis) e **defesa de gelo**.
+- [x] **Invencibilidade breve ao ser atingido**, **hit stop** (congelar o frame no impacto) e **tremor de câmera** simples.
+- [x] **Partículas básicas**, na CPU, para o essencial: estilhaços de gelo, poeira e impacto.
+- [x] **Áudio básico** com miniaudio: efeitos e música por região.
 
 **Cresce para:**
 - **efeitos de status** como componentes (congelado, queimando);
@@ -136,7 +136,7 @@ Tudo isso entra como novos componentes de habilidade e novos estados, sem mudar 
 - áudio posicional;
 - música adaptativa.
 
-**Pronto quando:** um combate contra um alvo de teste tem impacto, som e partículas, e o dano respeita as fraquezas.
+**Pronto quando:** um combate contra um alvo de teste tem impacto, som e partículas, e o dano respeita as fraquezas. Feito com os bonecos de treino da sala `IceTest` do `showcase.ldtk`.
 
 ### D4: Inimigos
 
@@ -309,4 +309,3 @@ Cada uma será decidida no design da fase indicada.
 - Salvar o look grava valores que ninguém editou.
 - Itens permanentes reaparecem ao morrer, o que permite duplicar itens quando houver inventário. Resolver em D10.
 - Não há aviso quando o chão de salas vizinhas fica em alturas diferentes.
-- Partículas com alfa abaixo de 0,5 não são desenhadas (vão no passe opaco), então elas somem de uma vez em vez de desbotar até o fim. Resolver com um caminho de partículas com blend em D3.

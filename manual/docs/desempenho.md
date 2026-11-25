@@ -4,11 +4,13 @@
 
 Release, `MUSH2D_PERF_LOG`, 30 s parado na sala vitrine. Média por passada, em ms de GPU. O vsync prende o fps ao monitor.
 
-| Máquina | gbuffer | light | resolve | additive | bloom | composite | soma | frame | fps |
-|---|---|---|---|---|---|---|---|---|---|
-| Intel UHD, 1280×720, luz em resolução cheia | 3,16 | 1,66 | 1,30 | 0,09 | 0,56 | 0,41 | 7,19 | 16,67 ms | 60 |
-| Intel UHD, 1280×720, luz em meia resolução (`lightHalfRes`) | 3,49 | 0,60 | 0,89 | 0,11 | 0,65 | 0,48 | 6,23 | 16,67 ms | 60 |
-| RTX 2060 Super (Arch), 1920×1080 | | | | | | | a medir | | |
+| Máquina | gbuffer | light | resolve | alpha | additive | bloom | composite | soma | frame | fps |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Intel UHD, 1280×720, luz em resolução cheia | 3,16 | 1,66 | 1,30 | — | 0,09 | 0,56 | 0,41 | 7,19 | 16,67 ms | 60 |
+| Intel UHD, 1280×720, luz em meia resolução (`lightHalfRes`) | 3,49 | 0,60 | 0,89 | — | 0,11 | 0,65 | 0,48 | 6,23 | 16,67 ms | 60 |
+| RTX 2060 Super (Arch), 1920×1080 | | | | | | | | a medir | | |
+
+"—": medido antes do passe `alpha` (partículas não aditivas, D3). Esse passe só desenha quando há partículas vivas; ainda não medido.
 
 Orçamento de 60 fps: 16,6 ms. Nos primeiros segundos o fps oscila (~49-59) enquanto a GPU integrada sobe o clock; depois fica em 60. Meta no PC Arch: soma < 3 ms.
 
