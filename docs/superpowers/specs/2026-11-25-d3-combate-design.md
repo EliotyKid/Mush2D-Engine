@@ -326,3 +326,4 @@ As partículas não aditivas passam a ser desenhadas num passe com mistura alfa,
    - `hit:taken` só dispara com dano maior que 0; com multiplicador 0, dispara `hit:immune`.
    - Os bonecos têm `invulnerableTime` 0, para a sequência 2-2-4 funcionar. A hitbox já evita acerto duplo por corte.
 10. **Quebra do boneco:** um componente `TrainingDummy` cuida dela. Ao zerar a vida, desativa a `Hurtbox` (sai da grade de combate) e esconde o sprite. Depois de `respawnTime`, enche a vida e reativa.
+11. **Bonecos sem animação e sem empurrão:** os bonecos não têm `SpriteAnimator` até haver arte; o sprite é um frame fixo. Eles também ignoram o `knockback` do golpe e ficam parados. O atirador só atira no player vivo e na mesma sala dele, porque a sala vizinha fica carregada e alcançável pela porta.

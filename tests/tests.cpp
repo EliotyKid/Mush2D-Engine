@@ -6015,6 +6015,72 @@ TEST(dummy_shooter_silent_when_stunned) {
     CHECK(shots == 0);
 }
 
+TEST(dummy_shooter_only_targets_living_player_in_its_room) {
+    // The real layout: the shooter by IceTest's doorway is within range of Showcase's PlayerStart through the open
+    // doorway, and IceTest is loaded as Showcase's neighbour. A player at the start must never be targeted.
+    const LdtkProject p = loadLdtkProject(sourceAssetPath("assets/levels/showcase.ldtk"));
+    const LdtkLevel* ice = nullptr;
+    glm::vec2 start{}, shooterAt{};
+    for (const LdtkLevel& lv : p.levels)
+        for (const LdtkLayer& L : lv.layers)
+            for (const LdtkEntity& e : L.entities) {
+                if (lv.identifier == "Showcase" && e.identifier == "PlayerStart") start = ldtkToWorld(lv.worldPx, e.px + glm::vec2(e.size.x * 0.5f, e.size.y));
+                if (lv.identifier == "IceTest" && e.identifier == "TrainingDummyShooter") {
+                    ice = &lv;
+                    shooterAt = ldtkToWorld(lv.worldPx, e.px + e.size * 0.5f);
+                }
+            }
+    CHECK(ice != nullptr);
+    if (!ice) return;
+    World world;
+    world.onLoad = [](int) {};
+    LevelLoader loader;
+    world.open(p, loader, nullptr);
+    Scene2D scene;
+    CombatWorld combat;
+    PrefabLibrary prefabs{sourceAssetPath("assets/prefabs")};
+    ProjectilePool pool;
+    EffectLibrary effects;
+    effects.scan(sourceAssetPath("assets/effects"));
+    pool.scene = &scene;
+    scene.setService(&realAssets());
+    scene.setService(&combat);
+    scene.setService(&prefabs);
+    scene.setService(&pool);
+    scene.setService(&effects);
+    scene.setService(&world);
+    GameObject* s = prefabs.instantiate(scene, "training_dummy_shooter", {{"position", {shooterAt.x, shooterAt.y}}});
+    CHECK(s != nullptr && prefabs.warnings().empty());
+    if (!s) return;
+    s->roomIid = ice->iid; // as LevelLoader spawns it
+    GameObject& player = scene.createObject<GameObject>();
+    player.addTag("player");
+    player.transform.position = start;
+    Hurtbox& h = player.addComponent<Hurtbox>();
+    h.team = "player";
+    h.size = {0.6f, 1.6f};
+    h.offset = {0.0f, 0.8f};
+    player.addComponent<Resources>();
+    scene.flush();
+    int shots = 0;
+    auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& e) { if (e.object == s->id && e.name == "shoot") ++shots; });
+    auto run = [&](float seconds) { for (int i = 0; i < int(seconds / kDt); ++i) scene.step(kDt); };
+    CHECK(glm::distance(start, shooterAt) < s->getComponent<DummyShooter>()->range); // the case that matters
+    run(8.0f);
+    CHECK(shots == 0);
+    // In its room: a grace of shootInterval after coming in reach, then a shot.
+    player.transform.position = shooterAt + glm::vec2(-3.0f, -0.6f);
+    run(2.4f);
+    CHECK(shots == 0);
+    run(0.2f);
+    CHECK(shots == 1);
+    // A dead player is not a target.
+    player.getComponent<Resources>()->damage(100);
+    shots = 0;
+    run(6.0f);
+    CHECK(shots == 0);
+}
+
 TEST(projectile_ignores_disabled_hurtbox) {
     CombatScene c;
     GameObject& t = c.target({2.0f, 0.0f});

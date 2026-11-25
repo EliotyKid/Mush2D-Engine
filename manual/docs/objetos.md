@@ -242,13 +242,13 @@ Nada vai para o `WorldState`. Cada acerto pisca o boneco de branco (`hit:taken` 
 
 O resistente arredonda 0,5 para 1: um golpe com multiplicador maior que 0 tira pelo menos 1 (veja [Combate](fazendo-o-jogo/combate.md#fraquezas-e-resistencias)).
 
-**O atirador** tem também `Stunned` e `DummyShooter`. A cada `shootInterval` segundos, ele atira um `dummy_bolt` no Iki, se o Iki estiver a até `range` u:
+**O atirador** tem também `Stunned` e `DummyShooter`. A cada `shootInterval` segundos, ele atira um `dummy_bolt` no Iki, se o Iki estiver ao alcance: a até `range` u, vivo e na mesma sala do atirador. A sala vizinha fica carregada e pode estar a menos de `range` u pela porta, mas o atirador da `IceTest` não atira no Iki que está na `Showcase`.
 
 - o tiro mira do centro da hurtbox do atirador ao centro da hurtbox do player;
 - o atirador vira para o lado do tiro e emite o gatilho `move:shoot` (som e flash);
 - o `dummy_bolt` é lento (5 u/s), tira 1 de vida, não tem elemento e é aparável.
 
-O atirador fica quieto quando está atordoado (`Stunned`), quebrado ou inativo. Atordoado ou quebrado, ele recomeça a contagem: o próximo tiro sai um intervalo inteiro depois.
+O atirador fica quieto quando está atordoado (`Stunned`), quebrado ou inativo, e quando o Iki está fora de alcance. Em todos esses casos, ele recomeça a contagem: o primeiro tiro sai um intervalo inteiro depois que o Iki entra no alcance.
 
 O aparo do Iki reflete o tiro de volta e atordoa o atirador por 1 s (o `parryStun` do Iki). Se um boneco estiver na linha, o tiro refletido acerta ele primeiro.
 
@@ -270,7 +270,7 @@ As entidades têm 40 × 40 px.
 
 **Casos de uso:**
 
-- Um boneco que demora a voltar: campo `respawnTime` = `10` na entidade, ou no prefab.
+- Um boneco que demora a voltar: `respawnTime` = `10` no componente `TrainingDummy` do prefab, ou ao vivo no `F1`. Um campo da entidade no LDtk não serve: ele muda atributos do objeto, e `respawnTime` é de um componente.
 - Um alvo imune a gelo: um prefab novo com `"base": "training_dummy"` e `"multipliers": {"Ice": 0}`. Os golpes disparam `hit:immune` (flash cinza) e não tiram vida.
 - Treinar o aparo com calma: no `F1`, aumente o `shootInterval` do atirador.
 - Um atirador de outro projétil: um prefab com `Projectile` e o nome dele em `projectile`.
