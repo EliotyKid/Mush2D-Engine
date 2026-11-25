@@ -7,6 +7,8 @@
 #include <cmath>
 #include <tuple>
 
+#include <glm/gtc/packing.hpp>
+
 void SpriteBatch::clear() {
     entries_.clear();
 }
@@ -87,6 +89,7 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
         inst.size = sprite.drawSize == glm::vec2(0.0f) ? world.scale : world.scale * sprite.drawSize;
         inst.uvRect = uvRect;
         inst.color = sprite.color * sprite.tint;
+        inst.flash = glm::packUnorm4x8(glm::clamp(sprite.flash, 0.0f, 1.0f));
         inst.rotation = world.rotation;
         inst.depth = sprite.depth;
         inst.parallax = sprite.parallax;

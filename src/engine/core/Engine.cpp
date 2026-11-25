@@ -198,7 +198,7 @@ void Engine::run(IGame& game) {
             prevMode = mode;
             camera.updateFollow(scene, deltaTime);
             camera.clampToBounds(gpu.swapchain().extent());
-            camera.updateShake(deltaTime); // real time: a hit stop freezes the scene, not the shake
+            camera.updateShake(deltaTime, gpu.swapchain().extent()); // real time: a hit stop freezes the scene, not the shake
 
             if (showPanel) {
                 game.onImGui(services);

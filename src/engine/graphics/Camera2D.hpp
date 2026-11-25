@@ -39,7 +39,8 @@ public:
     bool boundsEnabled = true;
     WorldBounds bounds{};
 
-    // Limit of the summed shake amplitude, world units (Camera2D is not reflected: a plain field, not F1).
+    // Limit of the summed shake amplitude, world units (Camera2D is not reflected: the Look panel's "Camera"
+    // section edits it).
     float maxShake = 0.5f;
 
 public:
@@ -47,7 +48,8 @@ public:
     // add up to maxShake. The offset is added to `position` only when the renderer builds the view.
     void addShake(float amplitude, float duration);
     // Advances the shakes by real time (the Engine calls it every frame: a hit stop does not freeze them).
-    void updateShake(float deltaTime);
+    // With a viewport, the shaken view is clamped to the bounds like position (at an edge it shakes inward only).
+    void updateShake(float deltaTime, VkExtent2D viewportExtent = {});
     glm::vec2 shakeOffset() const { return shakeOffset_; }
 
     void updateFollow(const Scene2D& scene, float deltaTime);

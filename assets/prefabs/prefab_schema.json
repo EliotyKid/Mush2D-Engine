@@ -81,6 +81,11 @@
       "component": true,
       "props": []
     },
+    "Flash": {
+      "base": "Component",
+      "component": true,
+      "props": []
+    },
     "GameObject": {
       "base": "",
       "component": false,

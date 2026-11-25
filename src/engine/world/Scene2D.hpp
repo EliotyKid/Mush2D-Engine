@@ -122,6 +122,8 @@ public:
     // particles, effects, flash) and the frame's lateStep do not advance. Requests keep the longest, they do not add up.
     void hitstop(float seconds) { if (seconds > hitstop_) hitstop_ = seconds; }
     float timeScale() const { return hitstop_ > 0.0f ? 0.0f : 1.0f; }
+    // The last step was frozen (it ran nothing): input read for it must wait for the next step.
+    bool lastStepFrozen() const { return frozenStep_; }
 
     void step(float deltaTime);
     void lateStep(float deltaTime);

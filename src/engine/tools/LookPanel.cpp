@@ -5,7 +5,7 @@
 #include <string>
 
 void LookPanel::draw(Region& region, std::vector<EditableLight>& lights, std::vector<EditableLayer>& layers,
-                     const GpuTimers& timers, bool& saveRequested) {
+                     const GpuTimers& timers, Camera2D& camera, bool& saveRequested) {
     FrameSettings& s = region.look.settings;
     ImGui::SetNextWindowPos({10, 10}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({380, 620}, ImGuiCond_FirstUseEver);
@@ -81,6 +81,9 @@ void LookPanel::draw(Region& region, std::vector<EditableLight>& lights, std::ve
             }
             ImGui::PopID();
         }
+    }
+    if (ImGui::CollapsingHeader("Camera")) {
+        ImGui::SliderFloat("tremor max (u)", &camera.maxShake, 0.0f, 2.0f); // runtime only, not saved
     }
     if (ImGui::CollapsingHeader("Desempenho", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("%.0f fps (%.2f ms)", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);

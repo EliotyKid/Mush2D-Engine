@@ -18,7 +18,7 @@ struct SpriteInstance {
     glm::vec4 uvRect;   glm::vec4 color;
     float rotation; float depth; glm::vec2 parallax;  // parallax 1 = gameplay layer
     uint32_t albedo, normal, emissive, mask;
-    uint32_t flags; uint32_t _pad[3];        // bit0 NEAREST, bit1 ADDITIVE
+    uint32_t flags; uint32_t flash; uint32_t _pad[2]; // flags: bit0 NEAREST, bit1 ADDITIVE; flash: packUnorm4x8(rgb, amount)
 };
 static_assert(sizeof(SpriteInstance) == 96);
 

@@ -78,7 +78,7 @@
 | `ParticleConfig` | `count`, `speed`, `angle` (graus) e `lifetime` como [min, max], `gravity`, `drag`, `size` [início, fim], `colorStart`/`colorEnd`, `frame` (do atlas do sprite do dono), `additive`, `layer`. `parseParticleConfig(json, config, erro)` lê o formato JSON (`"color": [início, fim]`). |
 | `SquashStretch` | Molas em x e y que voltam a {1, 1}: `kick({0.8, 1.25})`, `current()`, `apply(sprite)` (multiplica `drawSize` mantendo a base do sprite; sem acumular). Aplica-se sozinho a cada passo, e o `SpriteAnimator` o aplica depois de cada quadro. `stiffness` 300, `damping` 18. Nunca mexe em `transform.scale`. |
 | `Blink` | `start(segundos)` alterna `visible` `rate` vezes por segundo (16) e devolve a visibilidade do começo ao terminar. `active()`. |
-| `Flash` (`Effects.hpp`) | `start(cor, segundos, dono)` põe a cor em `sprite->tint` (multiplicada por `sprite->color` ao desenhar) e volta a `{1, 1, 1, 1}` no fim. `active()`. Usado pela ação de efeito `flash`. |
+| `Flash` (`Effects.hpp`) | `start(cor rgb, segundos, dono)` põe `sprite->flash` = (cor, 1) e baixa a quantidade em linha reta até 0 no fim. Segundos <= 0 não faz nada. `active()`. Usado pela ação de efeito `flash`. |
 | `VelocityLean` | Inclina `transform.rotation` pela velocidade horizontal medida pela posição: até `maxDegrees` (4) a partir de `fullSpeed` (5 u/s), suavizado por `smoothing` (12/s); um salto maior que `teleportDistance` (1 u) num passo é ignorado. O `SpriteBatch` gira o sprite em torno do pivô (os pés). |
 | `EffectLibrary` (`Effects.hpp`) | Serviço da cena com os efeitos de `assets/effects/<nome>.effect.json`: `scan(pasta)`, `find(nome)` (nome desconhecido avisa uma vez), `reload(arquivo)` (arquivo inválido mantém a versão anterior). Hot reload no Debug. |
 | `playEffect` | `playEffect(scene, obj, item, força, posição, direção)`: `item` é um nome de efeito ou uma ação inline (`particles`, `squash`, `blink`, `hitstop`, `shake` e `flash`, estas cinco com `scaleByStrength`, e `effect`; qualquer uma com `delay`). Cria os componentes que faltam. |
@@ -160,7 +160,7 @@ Com `MUSH2D_COMPONENT`, ele pode ser listado em `"components"` de um prefab.
 
 ### Congelar a cena num acerto (hit stop)
 
-`scene.hitstop(0.06f);` (ou a ação de efeito `{"hitstop": 0.06}`). Enquanto dura, `timeScale()` é 0 e `step(dt)` só desconta `dt` do hit stop: objetos, componentes, física, partículas, esperas de efeito e `Flash` ficam parados, e o `lateStep` desse quadro também. Pedidos ficam com o maior, sem somar; `clear()` zera. O tremor da câmera, a interface e a leitura das teclas seguem em tempo real. O `IkiObject::applyInput` guarda os apertos (`keepEdges`, em `InputState.hpp`) até um passo lê-los, então o buffer de pulo atravessa o congelamento.
+`scene.hitstop(0.06f);` (ou a ação de efeito `{"hitstop": 0.06}`). Enquanto dura, `timeScale()` é 0 e `step(dt)` só desconta `dt` do hit stop: objetos, componentes, física, partículas, esperas de efeito e `Flash` ficam parados, e o `lateStep` desse quadro também. Pedidos ficam com o maior, sem somar; `clear()` zera. O tremor da câmera, a interface e a leitura das teclas seguem em tempo real. Depois de um passo congelado, `lastStepFrozen()` é verdadeiro. O `IkiObject::applyInput` usa isso para guardar os apertos (`keepEdges`, em `InputState.hpp`) até um passo lê-los, então o buffer de pulo atravessa o congelamento. Um botão novo no `InputState` precisa entrar no `keepEdges`.
 
 ## Arquivos
 

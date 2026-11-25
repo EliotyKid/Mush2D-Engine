@@ -24,6 +24,7 @@
 #include "engine/world/EventBus.hpp"
 #include "engine/world/GameObject.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -87,26 +88,34 @@ std::string effectItemError(const nlohmann::json& item);
 // Where an effect lands when its trigger has no position: the bottom of the collider, else the position.
 glm::vec2 effectFeet(const GameObject& obj);
 
-// Tints the owner's sprite (SpriteData::tint) for a while, then sets it back to {1, 1, 1, 1}. Scene time:
-// a hit stop holds it.
+// Hit flash: the owner's sprite turns fully `color` (SpriteData::flash, unlit) and eases linearly back to
+// its own look over `seconds`. Scene time: a hit stop holds it. seconds <= 0 does nothing.
 class Flash : public Component {
     MUSH2D_COMPONENT(Flash)
 public:
-    void start(glm::vec4 color, float seconds, GameObject& owner) {
-        remaining_ = seconds;
-        if (owner.sprite) owner.sprite->tint = color;
+    void start(glm::vec3 color, float seconds, GameObject& owner) {
+        if (!(seconds > 0.0f)) return;
+        color_ = color;
+        duration_ = remaining_ = seconds;
+        apply(owner);
     }
     bool active() const { return remaining_ > 0.0f; }
 
     void onStep(GameObject& owner, Scene2D&, float dt) override {
-        if (active() && (remaining_ -= dt) <= 0.0f && owner.sprite) owner.sprite->tint = glm::vec4(1.0f);
+        if (!active()) return;
+        remaining_ = std::max(remaining_ - dt, 0.0f);
+        apply(owner);
     }
     void onDetach(GameObject& owner, Scene2D&) override {
-        if (active() && owner.sprite) owner.sprite->tint = glm::vec4(1.0f);
+        if (active() && owner.sprite) owner.sprite->flash = glm::vec4(0.0f);
     }
 
 private:
-    float remaining_ = 0.0f;
+    void apply(GameObject& owner) const {
+        if (owner.sprite) owner.sprite->flash = glm::vec4(color_, remaining_ / duration_);
+    }
+    glm::vec3 color_{1.0f};
+    float duration_ = 1.0f, remaining_ = 0.0f;
 };
 
 // Prefab "effects": trigger key -> items, played when the owner's trigger fires.

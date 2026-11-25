@@ -48,14 +48,23 @@ float byStrength(const Play& p, const json& action) {
 // Value checks of the actions whose value effectItemError validates (at load and before playing); empty = fine.
 std::string valueError(const std::string& key, const json& v) {
     auto nonNegative = [](const json& j, const char* field) { return j.contains(field) && j[field].is_number() && j[field].get<float>() >= 0.0f; };
+    auto unknownKey = [&](const char* a, const char* b) -> std::string {
+        for (const auto& [k, unused] : v.items())
+            if (k != a && k != b) return key + ": unknown key '" + k + "'";
+        return {};
+    };
     if (key == "hitstop" && !(v.is_number() && v.get<float>() >= 0.0f)) return "hitstop: expected seconds (a number >= 0)";
-    if (key == "shake" && !(v.is_object() && v.size() == 2 && nonNegative(v, "amplitude") && nonNegative(v, "duration")))
-        return "shake: expected {\"amplitude\": units, \"duration\": seconds} (numbers >= 0)";
+    if (key == "shake") {
+        if (!v.is_object() || !nonNegative(v, "amplitude") || !nonNegative(v, "duration"))
+            return "shake: expected {\"amplitude\": units, \"duration\": seconds} (numbers >= 0)";
+        return unknownKey("amplitude", "duration");
+    }
     if (key == "flash") {
         const bool color = v.is_object() && v.contains("color") && v["color"].is_array() && v["color"].size() == 3 &&
                            std::all_of(v["color"].begin(), v["color"].end(), [](const json& c) { return c.is_number(); });
-        if (!color || v.size() != 2 || !nonNegative(v, "duration"))
+        if (!color || !nonNegative(v, "duration"))
             return "flash: expected {\"color\": [r, g, b], \"duration\": seconds}";
+        return unknownKey("color", "duration");
     }
     return {};
 }
@@ -94,8 +103,9 @@ const std::map<std::string, Action>& actions() {
         }},
         {"flash", [](const Play& p, const json& a, const json& v, int) {
             const json& c = v["color"];
-            componentOf<Flash>(p.obj).start({c[0].get<float>(), c[1].get<float>(), c[2].get<float>(), 1.0f},
-                                            v["duration"].get<float>() * byStrength(p, a), p.obj);
+            const float seconds = v["duration"].get<float>() * byStrength(p, a);
+            if (seconds > 0.0f) // 0 (or strength 0) is no flash at all
+                componentOf<Flash>(p.obj).start({c[0].get<float>(), c[1].get<float>(), c[2].get<float>()}, seconds, p.obj);
         }},
     };
     return table;

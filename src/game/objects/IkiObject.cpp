@@ -59,7 +59,9 @@ void IkiObject::onPrefabApplied(Scene2D&) {
 
 void IkiObject::applyInput(const InputState& input) {
     InputState next = input;
-    if (!inputRead_) keepEdges(next, input_); // no step since the last input (hit stop): its presses still count
+    // The last step was frozen by a hit stop and did not read the input: its presses still count. A pause or an
+    // inactive Iki (a step without the Iki) keeps nothing.
+    if (!inputRead_ && scene_ && scene_->lastStepFrozen()) keepEdges(next, input_);
     input_ = next;
     inputRead_ = false;
 }

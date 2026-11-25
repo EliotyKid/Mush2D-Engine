@@ -10,7 +10,7 @@ struct SpriteInstance {
     vec4 uvRect; vec4 color;
     float rotation; float depth; vec2 parallax;
     uint albedo, normal, emissive, mask;
-    uint flags; uint pad0, pad1, pad2; // bit0 NEAREST, bit1 ADDITIVE
+    uint flags; uint flash; uint pad1, pad2; // flags: bit0 NEAREST, bit1 ADDITIVE; flash: unorm4x8 rgb + amount
 };
 
 struct GpuLight {

@@ -128,7 +128,7 @@ private:
     StateMachine<IkiObject> machine_;
     Scene2D* scene_ = nullptr; // the scene of the running step (physics helpers need it)
     InputState input_{};
-    bool inputRead_ = true; // a step has read input_ (false through a hit stop: presses are kept)
+    bool inputRead_ = true; // a step has read input_ (false through a hit stop: its presses are kept)
     Body body_;
     MoveResult lastMove_;
     glm::vec2 stepVelocity_{0.0f}; // velocity before this step's move (landing strength, turn)

@@ -8,6 +8,7 @@ struct ButtonState {
     bool released = false;
 };
 
+// A new button also goes into keepEdges below, or its presses are lost during a hit stop.
 struct InputState {
     ButtonState moveLeft;
     ButtonState moveRight;
@@ -39,8 +40,9 @@ struct InputState {
     double scrollDeltaY = 0.0;
 };
 
-// Adds earlier's presses and releases to now: input read in frames the scene did not step (hit stop) keeps
-// its edges until a step reads them.
+// Adds earlier's presses and releases to now: input read in frames the scene froze (hit stop) keeps its edges
+// until a step reads them. A press and release inside the freeze plays as a one-frame tap: the Iki jumps at the
+// first running step and the jump cut (checked from the next step on) cuts it then, as a normal tap.
 inline void keepEdges(InputState& now, const InputState& earlier) {
     for (ButtonState InputState::*b : {&InputState::moveLeft, &InputState::moveRight, &InputState::moveUp, &InputState::moveDown,
                                        &InputState::cameraLeft, &InputState::cameraRight, &InputState::cameraUp,

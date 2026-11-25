@@ -4035,6 +4035,22 @@ TEST(camera_shake_decays_to_zero) {
     CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.5f) < 1e-4f);
     cam.updateShake(1.0f);
     CHECK(cam.shakeOffset() == glm::vec2(0.0f));
+
+    // With a viewport, the shaken view never goes past the bounds: at the right edge it shakes inward only.
+    Camera2D edge;
+    edge.pixelArt = false;
+    edge.position = {100.0f, 0.0f};
+    const VkExtent2D view{800, 600};
+    edge.clampToBounds(view);
+    const float rightMost = edge.position.x;
+    edge.addShake(0.4f, 1.0f);
+    bool moved = false;
+    for (int i = 0; i < 20; ++i) {
+        edge.updateShake(0.01f, view);
+        CHECK(edge.position.x == rightMost && edge.position.x + edge.shakeOffset().x <= rightMost + 1e-5f);
+        moved = moved || edge.shakeOffset() != glm::vec2(0.0f);
+    }
+    CHECK(moved);
 }
 
 TEST(effect_actions_shake_flash_hitstop) {
@@ -4060,15 +4076,30 @@ TEST(effect_actions_shake_flash_hitstop) {
     cam.updateShake(0.0f);
     CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.1f) < 1e-4f);
 
-    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [0.2, 0.4, 1], "duration": 0.1}})"), 1.0f, {0.0f, 0.0f}, 1);
-    CHECK(o.sprite->tint == glm::vec4(0.2f, 0.4f, 1.0f, 1.0f));
+    // Flash: full colour at once, then eases linearly to 0 over the duration; the tint is left alone.
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.1}})"), 1.0f, {0.0f, 0.0f}, 1);
+    CHECK(o.sprite->flash == glm::vec4(1.0f) && o.sprite->tint == glm::vec4(1.0f));
     scene.hitstop(0.5f);
     scene.step(0.5f); // frozen: the flash waits too
-    CHECK(o.sprite->tint == glm::vec4(0.2f, 0.4f, 1.0f, 1.0f));
+    CHECK(o.sprite->flash == glm::vec4(1.0f));
+    scene.step(0.05f);
+    CHECK(std::abs(o.sprite->flash.a - 0.5f) < 1e-4f && glm::vec3(o.sprite->flash) == glm::vec3(1.0f));
     scene.step(0.06f);
-    CHECK(o.sprite->tint == glm::vec4(0.2f, 0.4f, 1.0f, 1.0f));
+    CHECK(o.sprite->flash.a == 0.0f && o.getComponent<Flash>() && !o.getComponent<Flash>()->active());
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [0.2, 0.4, 1], "duration": 0.2}, "scaleByStrength": true})"), 0.5f, {0.0f, 0.0f}, 1);
+    scene.step(0.05f);
+    CHECK(std::abs(o.sprite->flash.a - 0.5f) < 1e-4f && std::abs(o.sprite->flash.b - 1.0f) < 1e-6f); // 0.2 * 0.5 s
     scene.step(0.06f);
-    CHECK(o.sprite->tint == glm::vec4(1.0f));
+    // Zero length (also strength 0 on a scaled flash): no flash at all, nothing left on the sprite.
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0}})"), 1.0f, {0.0f, 0.0f}, 1);
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.1}, "scaleByStrength": true})"), 0.0f, {0.0f, 0.0f}, 1);
+    CHECK(o.sprite->flash.a == 0.0f && !o.getComponent<Flash>()->active());
+    GameObject& fresh = scene.createObject<GameObject>();
+    fresh.sprite = SpriteData{};
+    scene.flush();
+    playEffect(scene, fresh, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0}})"), 1.0f, {0.0f, 0.0f}, 1);
+    scene.step(0.1f);
+    CHECK(fresh.sprite->flash == glm::vec4(0.0f) && fresh.sprite->tint == glm::vec4(1.0f));
 
     // Wrong types: dropped at load (each warned) and skipped at play, never thrown.
     const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_weight";
@@ -4077,6 +4108,7 @@ TEST(effect_actions_shake_flash_hitstop) {
         {"hitstop": "0.05"}, {"hitstop": -1}, {"shake": 0.1}, {"shake": {"amplitude": 0.1}},
         {"shake": {"amplitude": 0.1, "duration": "x"}}, {"flash": {"color": [1, 1], "duration": 0.1}},
         {"flash": {"color": [1, 1, 1]}}, {"flash": [1, 1, 1]},
+        {"shake": {"amplitude": 0.1, "duration": 0.1, "mode": "x"}}, {"flash": {"color": [1, 1, 1], "duration": 0.1, "colour": 1}},
         {"hitstop": 0.05}, {"shake": {"amplitude": 0.1, "duration": 0.1}}, {"flash": {"color": [1, 1, 1], "duration": 0.1}}]})";
     EffectLibrary lib;
     CerrCapture err;
@@ -4086,6 +4118,8 @@ TEST(effect_actions_shake_flash_hitstop) {
     CHECK(countOf(err.str(), "weight.effect.json: hitstop: expected seconds") == 2);
     CHECK(countOf(err.str(), "weight.effect.json: shake: expected") == 3);
     CHECK(countOf(err.str(), "weight.effect.json: flash: expected") == 3);
+    CHECK(countOf(err.str(), "weight.effect.json: shake: unknown key 'mode'") == 1);
+    CHECK(countOf(err.str(), "weight.effect.json: flash: unknown key 'colour'") == 1);
     CHECK(effectItemError(nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.08}})")).empty());
     CHECK(!effectItemError(nlohmann::json::parse(R"({"shake": {"amplitude": -1, "duration": 0.1}})")).empty());
 
@@ -4226,6 +4260,31 @@ TEST(iki_jump_pressed_during_hitstop_is_kept) {
     CHECK(scene.timeScale() == 0.0f && iki.grounded && iki.velocity_.y <= 0.0f);
     stepIki(scene, iki, {}, 3); // the hit stop ends; the kept press jumps
     CHECK(scene.timeScale() == 1.0f && iki.velocity_.y > 0.0f);
+
+    // Press and release inside the freeze: a one-frame tap, so the first running step is a full jump, not cut.
+    Scene2D tap;
+    ikiLevel(tap);
+    IkiObject& t = ikiOnFloor(tap, 3.0f);
+    tap.hitstop(0.06f);
+    InputState release;
+    release.jump.released = true;
+    stepIki(tap, t, zPress());
+    stepIki(tap, t, release);
+    stepIki(tap, t, {}, 2); // still frozen
+    stepIki(tap, t, {});    // first running step
+    CHECK(tap.timeScale() == 1.0f && t.velocity_.y > 9.0f && inState(t, "jump"));
+    stepIki(tap, t, {}); // now the release cuts it, as a normal tap
+    CHECK(t.velocity_.y < 6.0f);
+
+    // Presses are kept only across a frozen step: an inactive Iki does not replay a stale press.
+    Scene2D idle;
+    ikiLevel(idle);
+    IkiObject& i = ikiOnFloor(idle, 3.0f);
+    i.active = false;
+    stepIki(idle, i, zPress());
+    i.active = true;
+    stepIki(idle, i, {}, 3);
+    CHECK(i.grounded && i.velocity_.y <= 0.0f);
 }
 
 TEST(iki_variable_jump_cut) {
