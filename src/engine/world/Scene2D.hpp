@@ -118,6 +118,11 @@ public:
     // Recomputes the cached world transform of every child, parents first. Runs at the end of each flush.
     void updateTransforms();
 
+    // While a hit stop runs, step only counts it down by the real deltaTime: objects, components (physics,
+    // particles, effects, flash) and the frame's lateStep do not advance. Requests keep the longest, they do not add up.
+    void hitstop(float seconds) { if (seconds > hitstop_) hitstop_ = seconds; }
+    float timeScale() const { return hitstop_ > 0.0f ? 0.0f : 1.0f; }
+
     void step(float deltaTime);
     void lateStep(float deltaTime);
 
@@ -208,6 +213,8 @@ private:
     bool liveDirty_ = false;
     bool componentsDirty_ = false; // some component awaits removal
     bool gridFresh_ = false;       // the last flush synced the grid, so step() can skip its own sync
+    float hitstop_ = 0.0f;         // real seconds of hit stop left
+    bool frozenStep_ = false;      // the last step was frozen, so lateStep skips too
     EventBus events_;
     std::unordered_map<std::type_index, void*> services_;
     mutable int iterating_ = 0;

@@ -277,6 +277,7 @@ void Scene2D::clear() {
     componentsDirty_ = false;
     destroyQueue_.clear(); // handlers may have queued destroys for objects just dropped; they must not hit reused slots
     collision = CollisionWorld{};
+    hitstop_ = 0.0f;
 }
 
 std::vector<GameObject*> Scene2D::findObjectsByTag(const std::string& tag) {
@@ -296,6 +297,11 @@ std::vector<const GameObject*> Scene2D::findObjectsByTag(const std::string& tag)
 }
 
 void Scene2D::step(float deltaTime) {
+    frozenStep_ = hitstop_ > 0.0f;
+    if (frozenStep_) { // only the hit stop's own timer runs
+        hitstop_ -= deltaTime;
+        return;
+    }
     flush();
     if (!gridFresh_) syncGrid(); // objects moved or edited since the last step; within a step, boxes may lag one frame
     gridFresh_ = false;
@@ -317,6 +323,7 @@ void Scene2D::step(float deltaTime) {
 }
 
 void Scene2D::lateStep(float deltaTime) {
+    if (frozenStep_) return; // the frame's step was frozen by a hit stop
     // No flush first: objects spawned during step were already flushed by the after-step flush, so they do get onLateStep this frame.
     {
         IterGuard guard(iterating_);

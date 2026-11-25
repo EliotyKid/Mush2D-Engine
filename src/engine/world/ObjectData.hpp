@@ -16,6 +16,7 @@ struct SpriteData {
     int layer = 0;
     int orderInLayer = 0;
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 tint{1.0f};         // multiplies color when drawn; the "flash" effect owns it (game code writes color)
     float depth = 0.0f;           // 0 = gameplay layer, > 0 further back (fog), < 0 foreground
     glm::vec2 parallax{1.0f, 1.0f};
     glm::vec2 offset{0.0f, 0.0f}; // sprite centre relative to transform.position, times the world scale (pivot placement)

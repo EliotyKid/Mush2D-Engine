@@ -1,5 +1,6 @@
 #include "engine/world/Effects.hpp"
 
+#include "engine/graphics/Camera2D.hpp"
 #include "engine/world/Blink.hpp"
 #include "engine/world/Particles.hpp"
 #include "engine/world/Scene2D.hpp"
@@ -39,7 +40,27 @@ struct Play {
 
 void playItem(const Play& p, const json& item, int depth);
 
-// Action name -> what it does with its value. The D3 adds sound, shake, hitstop and flash here.
+// "scaleByStrength": true multiplies by the strength (not limited to 1); otherwise 1.
+float byStrength(const Play& p, const json& action) {
+    return action.contains("scaleByStrength") && action["scaleByStrength"] == true ? std::max(p.strength, 0.0f) : 1.0f;
+}
+
+// Value checks of the actions whose value effectItemError validates (at load and before playing); empty = fine.
+std::string valueError(const std::string& key, const json& v) {
+    auto nonNegative = [](const json& j, const char* field) { return j.contains(field) && j[field].is_number() && j[field].get<float>() >= 0.0f; };
+    if (key == "hitstop" && !(v.is_number() && v.get<float>() >= 0.0f)) return "hitstop: expected seconds (a number >= 0)";
+    if (key == "shake" && !(v.is_object() && v.size() == 2 && nonNegative(v, "amplitude") && nonNegative(v, "duration")))
+        return "shake: expected {\"amplitude\": units, \"duration\": seconds} (numbers >= 0)";
+    if (key == "flash") {
+        const bool color = v.is_object() && v.contains("color") && v["color"].is_array() && v["color"].size() == 3 &&
+                           std::all_of(v["color"].begin(), v["color"].end(), [](const json& c) { return c.is_number(); });
+        if (!color || v.size() != 2 || !nonNegative(v, "duration"))
+            return "flash: expected {\"color\": [r, g, b], \"duration\": seconds}";
+    }
+    return {};
+}
+
+// Action name -> what it does with its value. The D3 adds sound here.
 using Action = std::function<void(const Play&, const json& action, const json& value, int depth)>;
 const std::map<std::string, Action>& actions() {
     static const std::map<std::string, Action> table = {
@@ -58,13 +79,23 @@ const std::map<std::string, Action>& actions() {
         }},
         {"blink", [](const Play& p, const json& a, const json& v, int) {
             if (!v.is_number()) return warnOnce("blink: expected seconds");
-            float seconds = v.get<float>();
-            if (a.contains("scaleByStrength") && a["scaleByStrength"] == true) seconds *= std::max(p.strength, 0.0f);
-            componentOf<Blink>(p.obj).start(seconds);
+            componentOf<Blink>(p.obj).start(v.get<float>() * byStrength(p, a));
         }},
         {"effect", [](const Play& p, const json&, const json& v, int depth) {
             if (!v.is_string()) return warnOnce("effect: expected an effect name");
             playItem(p, v, depth);
+        }},
+        {"hitstop", [](const Play& p, const json& a, const json& v, int) { p.scene.hitstop(v.get<float>() * byStrength(p, a)); }},
+        {"shake", [](const Play& p, const json& a, const json& v, int) {
+            Camera2D* camera = p.scene.service<Camera2D>();
+            if (!camera) return warnOnce("no Camera2D service for a shake");
+            const float k = byStrength(p, a);
+            camera->addShake(v["amplitude"].get<float>() * k, v["duration"].get<float>() * k);
+        }},
+        {"flash", [](const Play& p, const json& a, const json& v, int) {
+            const json& c = v["color"];
+            componentOf<Flash>(p.obj).start({c[0].get<float>(), c[1].get<float>(), c[2].get<float>(), 1.0f},
+                                            v["duration"].get<float>() * byStrength(p, a), p.obj);
         }},
     };
     return table;
@@ -85,6 +116,7 @@ std::string effectItemError(const json& item) {
     for (const auto& [key, value] : item.items()) {
         if (isModifier(key)) continue;
         if (!actions().count(key)) return "unknown action '" + key + "'";
+        if (std::string error = valueError(key, value); !error.empty()) return error;
         hasAction = true;
     }
     return hasAction ? std::string() : "no action in " + item.dump();

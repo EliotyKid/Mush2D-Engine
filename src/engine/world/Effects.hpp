@@ -8,13 +8,17 @@
 //       {"blink": 0.8},                                                           // Blink::start(seconds)
 //       {"blink": 1.0, "scaleByStrength": true},                                  // seconds * strength (no limit)
 //       {"effect": "other_effect"},                                               // includes another effect
+//       {"hitstop": 0.06},                                                        // Scene2D::hitstop(seconds)
+//       {"shake": {"amplitude": 0.15, "duration": 0.15}},                         // Camera2D::addShake (service)
+//       {"flash": {"color": [1, 1, 1], "duration": 0.08}},                        // Flash: tints the sprite
 //       {"squash": [0.8, 1.25], "delay": 0.033}]}                                 // any action, later
+// scaleByStrength multiplies the hitstop seconds, the shake amplitude and duration and the flash duration.
 //
 // A prefab's "effects" section maps triggers to lists of items (an effect name or an inline action):
 //     "effects": { "state:move:wall": ["ice_stake", {"squash": [1.15, 0.9]}], "anim:step": ["run_dust"],
 //                  "move:landed": ["land_dust"] }
 // The EffectTriggers component listens to StateChanged, AnimationEvent and MovementCue for its owner and
-// creates the ParticleEmitter, SquashStretch and Blink it needs. Problems are warnings on stderr, once each.
+// creates the ParticleEmitter, SquashStretch, Blink and Flash it needs. Problems are warnings on stderr, once each.
 
 #include "engine/world/Component.hpp"
 #include "engine/world/EventBus.hpp"
@@ -82,6 +86,28 @@ std::string effectItemError(const nlohmann::json& item);
 
 // Where an effect lands when its trigger has no position: the bottom of the collider, else the position.
 glm::vec2 effectFeet(const GameObject& obj);
+
+// Tints the owner's sprite (SpriteData::tint) for a while, then sets it back to {1, 1, 1, 1}. Scene time:
+// a hit stop holds it.
+class Flash : public Component {
+    MUSH2D_COMPONENT(Flash)
+public:
+    void start(glm::vec4 color, float seconds, GameObject& owner) {
+        remaining_ = seconds;
+        if (owner.sprite) owner.sprite->tint = color;
+    }
+    bool active() const { return remaining_ > 0.0f; }
+
+    void onStep(GameObject& owner, Scene2D&, float dt) override {
+        if (active() && (remaining_ -= dt) <= 0.0f && owner.sprite) owner.sprite->tint = glm::vec4(1.0f);
+    }
+    void onDetach(GameObject& owner, Scene2D&) override {
+        if (active() && owner.sprite) owner.sprite->tint = glm::vec4(1.0f);
+    }
+
+private:
+    float remaining_ = 0.0f;
+};
 
 // Prefab "effects": trigger key -> items, played when the owner's trigger fires.
 class EffectTriggers : public Component {

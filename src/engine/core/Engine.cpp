@@ -90,6 +90,7 @@ void Engine::run(IGame& game) {
     GlfwInput input;
     Camera2D camera{};
     Scene2D scene{};
+    scene.setService(&camera); // the "shake" effect action reaches it
     Bindless bindless;
     MaterialLibrary materials;
     SceneRenderer renderer;
@@ -197,6 +198,7 @@ void Engine::run(IGame& game) {
             prevMode = mode;
             camera.updateFollow(scene, deltaTime);
             camera.clampToBounds(gpu.swapchain().extent());
+            camera.updateShake(deltaTime); // real time: a hit stop freezes the scene, not the shake
 
             if (showPanel) {
                 game.onImGui(services);

@@ -3969,6 +3969,142 @@ TEST(squash_scale_by_strength) {
     CHECK(std::abs(s->current().x - 1.4f) < 1e-5f && std::abs(s->current().y - 0.6f) < 1e-5f);
 }
 
+// --- Hit stop, shake, flash (D3 Task 1) -------------------------------------------------------------------
+
+namespace {
+struct StepCounter : GameObject {
+    int steps = 0, lateSteps = 0;
+    void onStep(Scene2D&, float) override { ++steps; }
+    void onLateStep(Scene2D&, float) override { ++lateSteps; }
+};
+}
+
+TEST(hitstop_freezes_scene_step_keeps_realtime) {
+    Scene2D scene;
+    auto& o = scene.createObject<StepCounter>();
+    scene.flush();
+    auto& blink = o.addComponent<Blink>();
+    blink.start(0.05f);
+    playEffect(scene, o, nlohmann::json::parse(R"({"particles": {"count": 1, "speed": [2, 2], "angle": [0, 0]}})"), 1.0f, {0.0f, 0.0f}, 1);
+    playEffect(scene, o, nlohmann::json::parse(R"({"squash": [1.2, 0.8], "delay": 0.03})"), 1.0f, {0.0f, 0.0f}, 1);
+    auto* e = o.getComponent<ParticleEmitter>();
+    CHECK(scene.timeScale() == 1.0f && e && e->alive() == 1);
+    if (!e || !e->alive()) return;
+
+    scene.hitstop(0.1f);
+    CHECK(scene.timeScale() == 0.0f);
+    for (int i = 0; i < 2; ++i) { scene.step(0.06f); if (i == 0) scene.lateStep(0.06f); }
+    // 0.12 s of real time: the hit stop is over, but nothing in the scene moved.
+    CHECK(scene.timeScale() == 1.0f && o.steps == 0 && o.lateSteps == 0);
+    CHECK(blink.active() && e->particles()[0].position == glm::vec2(0.0f) && !o.getComponent<SquashStretch>());
+    scene.step(0.04f);
+    CHECK(o.steps == 1 && e->particles()[0].position.x > 0.0f && o.getComponent<SquashStretch>());
+    scene.lateStep(0.04f);
+    CHECK(o.lateSteps == 1);
+}
+
+TEST(hitstop_requests_take_max) {
+    Scene2D scene;
+    auto& o = scene.createObject<StepCounter>();
+    scene.hitstop(0.05f);
+    scene.hitstop(0.12f);
+    scene.hitstop(0.03f);
+    scene.hitstop(-1.0f);
+    scene.hitstop(std::numeric_limits<float>::quiet_NaN());
+    scene.step(0.1f);
+    CHECK(scene.timeScale() == 0.0f && o.steps == 0);
+    scene.step(0.03f); // 0.13 s: the longest request, not the 0.2 s sum
+    CHECK(scene.timeScale() == 1.0f);
+    scene.step(0.01f);
+    CHECK(o.steps == 1);
+}
+
+TEST(camera_shake_decays_to_zero) {
+    Camera2D cam;
+    CHECK(cam.shakeOffset() == glm::vec2(0.0f) && cam.maxShake == 0.5f);
+    cam.addShake(0.2f, 0.5f);
+    cam.updateShake(0.1f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.16f) < 1e-4f); // linear: 0.2 * 0.4 / 0.5
+    cam.updateShake(0.1f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.12f) < 1e-4f);
+    cam.addShake(0.1f, 1.0f); // shakes add up
+    cam.updateShake(0.0f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.22f) < 1e-4f);
+    cam.addShake(1.0f, 1.0f); // up to maxShake
+    cam.updateShake(0.0f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.5f) < 1e-4f);
+    cam.updateShake(1.0f);
+    CHECK(cam.shakeOffset() == glm::vec2(0.0f));
+}
+
+TEST(effect_actions_shake_flash_hitstop) {
+    Scene2D scene;
+    Camera2D cam;
+    scene.setService(&cam);
+    GameObject& o = scene.createObject<GameObject>();
+    o.sprite = SpriteData{};
+    scene.flush();
+
+    playEffect(scene, o, nlohmann::json::parse(R"({"hitstop": 0.05, "scaleByStrength": true})"), 2.0f, {0.0f, 0.0f}, 1);
+    CHECK(scene.timeScale() == 0.0f);
+    scene.step(0.09f);
+    CHECK(scene.timeScale() == 0.0f); // 0.05 * 2
+    scene.step(0.02f);
+    CHECK(scene.timeScale() == 1.0f);
+
+    playEffect(scene, o, nlohmann::json::parse(R"({"shake": {"amplitude": 0.1, "duration": 0.2}, "scaleByStrength": true})"), 2.0f, {0.0f, 0.0f}, 1);
+    cam.updateShake(0.2f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.1f) < 1e-4f); // 0.2 u over 0.4 s, half gone
+    cam.updateShake(0.2f);
+    playEffect(scene, o, nlohmann::json::parse(R"({"shake": {"amplitude": 0.1, "duration": 0.2}})"), 2.0f, {0.0f, 0.0f}, 1);
+    cam.updateShake(0.0f);
+    CHECK(std::abs(glm::length(cam.shakeOffset()) - 0.1f) < 1e-4f);
+
+    playEffect(scene, o, nlohmann::json::parse(R"({"flash": {"color": [0.2, 0.4, 1], "duration": 0.1}})"), 1.0f, {0.0f, 0.0f}, 1);
+    CHECK(o.sprite->tint == glm::vec4(0.2f, 0.4f, 1.0f, 1.0f));
+    scene.hitstop(0.5f);
+    scene.step(0.5f); // frozen: the flash waits too
+    CHECK(o.sprite->tint == glm::vec4(0.2f, 0.4f, 1.0f, 1.0f));
+    scene.step(0.06f);
+    CHECK(o.sprite->tint == glm::vec4(0.2f, 0.4f, 1.0f, 1.0f));
+    scene.step(0.06f);
+    CHECK(o.sprite->tint == glm::vec4(1.0f));
+
+    // Wrong types: dropped at load (each warned) and skipped at play, never thrown.
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_effects_weight";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "weight.effect.json", std::ios::trunc) << R"({"version": 1, "actions": [
+        {"hitstop": "0.05"}, {"hitstop": -1}, {"shake": 0.1}, {"shake": {"amplitude": 0.1}},
+        {"shake": {"amplitude": 0.1, "duration": "x"}}, {"flash": {"color": [1, 1], "duration": 0.1}},
+        {"flash": {"color": [1, 1, 1]}}, {"flash": [1, 1, 1]},
+        {"hitstop": 0.05}, {"shake": {"amplitude": 0.1, "duration": 0.1}}, {"flash": {"color": [1, 1, 1], "duration": 0.1}}]})";
+    EffectLibrary lib;
+    CerrCapture err;
+    lib.scan(dir);
+    const Effect* weight = lib.find("weight");
+    CHECK(weight && weight->actions.size() == 3);
+    CHECK(countOf(err.str(), "weight.effect.json: hitstop: expected seconds") == 2);
+    CHECK(countOf(err.str(), "weight.effect.json: shake: expected") == 3);
+    CHECK(countOf(err.str(), "weight.effect.json: flash: expected") == 3);
+    CHECK(effectItemError(nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.08}})")).empty());
+    CHECK(!effectItemError(nlohmann::json::parse(R"({"shake": {"amplitude": -1, "duration": 0.1}})")).empty());
+
+    Scene2D bare; // no Camera2D service: a shake warns, nothing throws
+    GameObject& b = bare.createObject<GameObject>();
+    bare.flush();
+    bool threw = false;
+    try {
+        playEffect(bare, b, nlohmann::json::parse(R"({"hitstop": "x"})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(bare, b, nlohmann::json::parse(R"({"shake": {"amplitude": 0.1, "duration": 0.1}})"), 1.0f, {0.0f, 0.0f}, 1);
+        playEffect(bare, b, nlohmann::json::parse(R"({"flash": {"color": [1, 1, 1], "duration": 0.1}})"), 1.0f, {0.0f, 0.0f}, 1);
+        bare.step(0.2f);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(!threw && bare.timeScale() == 1.0f);
+    CHECK(countOf(err.str(), "no Camera2D service") == 1);
+}
+
 // --- IkiObject (D2 Task 5) -------------------------------------------------------------------------------
 
 namespace {
@@ -4078,6 +4214,18 @@ TEST(iki_jump_coyote_and_buffer) {
     jumped = false;
     drop(land - 10, jumped);
     CHECK(!jumped);
+}
+
+TEST(iki_jump_pressed_during_hitstop_is_kept) {
+    Scene2D scene;
+    ikiLevel(scene);
+    IkiObject& iki = ikiOnFloor(scene, 3.0f);
+    scene.hitstop(0.06f); // 4 frames
+    stepIki(scene, iki, zPress()); // the press lands in a frozen frame
+    stepIki(scene, iki, {}, 2);
+    CHECK(scene.timeScale() == 0.0f && iki.grounded && iki.velocity_.y <= 0.0f);
+    stepIki(scene, iki, {}, 3); // the hit stop ends; the kept press jumps
+    CHECK(scene.timeScale() == 1.0f && iki.velocity_.y > 0.0f);
 }
 
 TEST(iki_variable_jump_cut) {

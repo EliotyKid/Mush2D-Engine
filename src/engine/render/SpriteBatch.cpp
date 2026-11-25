@@ -86,7 +86,7 @@ void appendSceneSprites(const Scene2D& scene, SpriteBatch& batch, const AtlasLoo
         inst.position = world.position + glm::vec2(c * off.x - s * off.y, s * off.x + c * off.y);
         inst.size = sprite.drawSize == glm::vec2(0.0f) ? world.scale : world.scale * sprite.drawSize;
         inst.uvRect = uvRect;
-        inst.color = sprite.color;
+        inst.color = sprite.color * sprite.tint;
         inst.rotation = world.rotation;
         inst.depth = sprite.depth;
         inst.parallax = sprite.parallax;

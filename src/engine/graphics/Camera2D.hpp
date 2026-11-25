@@ -5,6 +5,8 @@
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
 
+#include <vector>
+
 class Scene2D;
 
 class Camera2D {
@@ -37,7 +39,17 @@ public:
     bool boundsEnabled = true;
     WorldBounds bounds{};
 
+    // Limit of the summed shake amplitude, world units (Camera2D is not reflected: a plain field, not F1).
+    float maxShake = 0.5f;
+
 public:
+    // A random offset of `amplitude` world units that decays linearly to 0 over `duration` seconds. Shakes
+    // add up to maxShake. The offset is added to `position` only when the renderer builds the view.
+    void addShake(float amplitude, float duration);
+    // Advances the shakes by real time (the Engine calls it every frame: a hit stop does not freeze them).
+    void updateShake(float deltaTime);
+    glm::vec2 shakeOffset() const { return shakeOffset_; }
+
     void updateFollow(const Scene2D& scene, float deltaTime);
     void clampToBounds(VkExtent2D viewportExtent);
 
@@ -50,4 +62,12 @@ public:
     glm::vec2 halfExtent(VkExtent2D viewportExtent) const;
     // Orthographic, Y up, no camera translation (the sprite shader subtracts position * parallax).
     glm::mat4 buildProjectionMatrix(VkExtent2D viewportExtent) const;
+
+private:
+    struct Shake {
+        float amplitude, duration, left;
+    };
+    std::vector<Shake> shakes_;
+    glm::vec2 shakeOffset_{0.0f};
+    unsigned shakeSeed_ = 1;
 };

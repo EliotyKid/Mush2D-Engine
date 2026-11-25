@@ -115,9 +115,16 @@ Um efeito fica em `assets/effects/<nome>.effect.json`. Ele é definido uma vez e
 | `squash` | `SquashStretch::kick([x, y])`. Com `"scaleByStrength": true`, o desvio de 1 é multiplicado pela força do gatilho, limitada a 1: um pouso a meia velocidade amassa pela metade. |
 | `blink` | `Blink::start(segundos)`. Com `"scaleByStrength": true`, os segundos são multiplicados pela força do gatilho, sem limite: o Iki manda `move:hurt` com força `invulnerableTime`, e `{"blink": 1, "scaleByStrength": true}` pisca esse tempo todo. |
 | `effect` | Toca outro efeito pelo nome. Efeitos dentro de efeitos vão até 8 níveis: mais fundo (um ciclo, por exemplo) é pulado com aviso. |
+| `hitstop` | `{"hitstop": 0.06}`: congela a cena por esse tempo (`Scene2D::hitstop`). Vários pedidos ficam com o maior, sem somar. Com `scaleByStrength`, os segundos são multiplicados pela força. |
+| `shake` | `{"shake": {"amplitude": 0.15, "duration": 0.15}}`: tremor da câmera (`Camera2D::addShake`), um deslocamento aleatório que decai em linha reta até 0. Vários tremores somam até `maxShake` (0,5 u). Com `scaleByStrength`, a amplitude e a duração são multiplicadas pela força. |
+| `flash` | `{"flash": {"color": [1, 1, 1], "duration": 0.08}}`: tinge o sprite do dono (`SpriteData::tint`, multiplicado pela cor) e volta a `{1, 1, 1, 1}`. Usa o componente `Flash` do objeto e cria um se faltar. Com `scaleByStrength`, a duração é multiplicada pela força. |
+
+- **Tempo do hit stop:** durante o hit stop, a cena não avança objetos, componentes, física, partículas, esperas de `delay` nem o `flash`. Só o temporizador do próprio hit stop corre, em tempo real. O tremor da câmera, a interface, o painel F1 e a leitura das teclas continuam. Um aperto de tecla durante o congelamento fica guardado e vale quando o tempo volta (o buffer de pulo do Iki funciona).
+- O `flash` multiplica a cor do sprite: um tom como `[0.4, 0.7, 1]` puxa para o azul, mas `[1, 1, 1]` não muda nada, porque o albedo não passa de 1.
 
 - Qualquer ação aceita `"delay": segundos` e toca depois desse tempo. Exemplo, a antecipação do pulo: `{"squash": [1.2, 0.8]}` agora e `{"squash": [0.8, 1.25], "delay": 0.033}` dois quadros depois.
-- Uma ação desconhecida avisa uma vez no stderr, com o nome do arquivo, e é ignorada. As outras ações do arquivo continuam valendo. O mesmo vale para um modificador de tipo errado (`"delay": "0.03"`, `"scaleByStrength": 1`) e para uma ação só com modificadores (`{"delay": 0.1}`), no arquivo, no prefab ou em código.
+- Uma ação desconhecida avisa uma vez no stderr, com o nome do arquivo, e é ignorada. As outras ações do arquivo continuam valendo. O mesmo vale para um modificador de tipo errado (`"delay": "0.03"`, `"scaleByStrength": 1`), para uma ação só com modificadores (`{"delay": 0.1}`) e para um `hitstop`, `shake` ou `flash` de formato errado (`{"hitstop": "0.05"}`, um `shake` sem `duration`, uma cor com 2 números), no arquivo, no prefab ou em código.
+- O `shake` precisa do serviço `Camera2D` na cena (o `Engine` registra a câmera). Sem ele, avisa uma vez e não treme.
 - No arquivo, um `particles` com chave errada (`"lifetme"`) ou valor errado também avisa ao carregar, com o arquivo e a chave, e a ação é ignorada.
 - Um efeito que se inclui com `delay` também para no limite de 8 níveis: a espera não zera a contagem.
 - Um arquivo inválido (JSON quebrado, sem a lista `actions`) avisa e mantém a versão anterior.
@@ -148,7 +155,7 @@ A seção `"effects"` do prefab liga gatilhos a uma lista. Cada item da lista é
 
 - O efeito toca na posição do gatilho. Sem posição, toca nos pés do objeto: a base do collider ou, sem collider, a posição.
 - A direção é o lado para onde o objeto olha (`flipX` espelha as partículas).
-- A seção vira um componente `EffectTriggers`. Ele cria o `ParticleEmitter`, o `SquashStretch` e o `Blink` só quando um efeito precisa.
+- A seção vira um componente `EffectTriggers`. Ele cria o `ParticleEmitter`, o `SquashStretch`, o `Blink` e o `Flash` só quando um efeito precisa.
 - Na herança, `effects` é mesclado por gatilho: o filho troca a lista inteira de um gatilho.
 
 ### Dar juice a um objeto

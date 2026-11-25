@@ -316,7 +316,7 @@ void SceneRenderer::render(FrameContext& frame, const Camera2D& camera, float ti
 
     FrameUniforms u{};
     u.viewProj = camera.buildProjectionMatrix(extent);
-    u.cameraPos = camera.position;
+    u.cameraPos = camera.position + camera.shakeOffset();
     u.viewport = {static_cast<float>(extent.width), static_cast<float>(extent.height)};
     u.halfSize = camera.halfExtent(extent);
     u.pixelsPerUnit = camera.pixelsPerUnit;

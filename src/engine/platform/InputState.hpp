@@ -1,5 +1,7 @@
 #pragma once
 
+#include <initializer_list>
+
 struct ButtonState {
     bool down = false;
     bool pressed = false;
@@ -36,3 +38,16 @@ struct InputState {
     double scrollDeltaX = 0.0;
     double scrollDeltaY = 0.0;
 };
+
+// Adds earlier's presses and releases to now: input read in frames the scene did not step (hit stop) keeps
+// its edges until a step reads them.
+inline void keepEdges(InputState& now, const InputState& earlier) {
+    for (ButtonState InputState::*b : {&InputState::moveLeft, &InputState::moveRight, &InputState::moveUp, &InputState::moveDown,
+                                       &InputState::cameraLeft, &InputState::cameraRight, &InputState::cameraUp,
+                                       &InputState::cameraDown, &InputState::zoomIn, &InputState::zoomOut, &InputState::jump,
+                                       &InputState::dash, &InputState::hit, &InputState::toggleFollow, &InputState::respawn,
+                                       &InputState::dragCamera}) {
+        (now.*b).pressed |= (earlier.*b).pressed;
+        (now.*b).released |= (earlier.*b).released;
+    }
+}

@@ -28,6 +28,22 @@ void Camera2D::updateFollow(const Scene2D& scene, float deltaTime) {
     }
 }
 
+void Camera2D::addShake(float amplitude, float duration) {
+    if (amplitude > 0.0f && duration > 0.0f) shakes_.push_back({amplitude, duration, duration});
+}
+
+void Camera2D::updateShake(float deltaTime) {
+    float amplitude = 0.0f;
+    for (Shake& s : shakes_) {
+        s.left -= deltaTime;
+        if (s.left > 0.0f) amplitude += s.amplitude * s.left / s.duration;
+    }
+    std::erase_if(shakes_, [](const Shake& s) { return s.left <= 0.0f; });
+    shakeSeed_ = shakeSeed_ * 1664525u + 1013904223u; // a cheap LCG: a new direction every frame
+    const float angle = float(shakeSeed_ >> 8) / float(1u << 24) * 6.2831853f;
+    shakeOffset_ = std::min(amplitude, maxShake) * glm::vec2(std::cos(angle), std::sin(angle));
+}
+
 void Camera2D::clampToBounds(VkExtent2D viewportExtent) {
     if (!boundsEnabled || viewportExtent.height == 0) {
         return;

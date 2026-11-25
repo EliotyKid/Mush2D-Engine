@@ -13,7 +13,7 @@
 
 | Tipo | Papel |
 |---|---|
-| `Camera2D` | `position`, `size` (altura visível no modo HD), `pixelArt`, `pixelSmooth`, `pixelsPerUnit` (32), `followEnabled`, `targetId`, `followOffset`, `followSmoothness`, `boundsEnabled` e limites. `updateFollow`, `clampToBounds`, `halfExtent`. |
+| `Camera2D` | `position`, `size` (altura visível no modo HD), `pixelArt`, `pixelSmooth`, `pixelsPerUnit` (32), `followEnabled`, `targetId`, `followOffset`, `followSmoothness`, `boundsEnabled` e limites. `updateFollow`, `clampToBounds`, `halfExtent`. Tremor: `addShake(amplitude, duração)` soma um deslocamento aleatório que decai em linha reta até 0, com limite `maxShake` (0,5 u, campo público: a câmera não aparece no F1); `updateShake(dt)` avança em tempo real (o `Engine` chama a cada quadro, o hit stop não congela); `shakeOffset()` é somado à `position` só na hora de montar a vista. O `Engine` registra a câmera como serviço da cena, para a ação de efeito `shake`. |
 | `AssetRegistry` | `scan(pasta, primeiros)`, `atlas(nome)`, `atlasIndex(nome)`, `resolve("atlas/frame")`. Serviço da cena. |
 | `TextureAtlas` | Um atlas: `hasFrame`, `getFrame`, `hasAnimation`, `getAnimation`, `getAllFrameNames`, `getAllAnimationNames`. |
 | `AtlasFrame`, `AtlasAnimation`, `AtlasAnimationFrame` | Um frame (retângulo, pivô), uma animação (frames, `looping`) e a duração de cada frame (`durationMs`). |

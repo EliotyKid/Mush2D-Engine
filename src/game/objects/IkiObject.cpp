@@ -57,13 +57,19 @@ void IkiObject::onPrefabApplied(Scene2D&) {
     checkpoint_ = transform.position;
 }
 
-void IkiObject::applyInput(const InputState& input) { input_ = input; }
+void IkiObject::applyInput(const InputState& input) {
+    InputState next = input;
+    if (!inputRead_) keepEdges(next, input_); // no step since the last input (hit stop): its presses still count
+    input_ = next;
+    inputRead_ = false;
+}
 
 void IkiObject::onStep(Scene2D& scene, float dt) {
     // Fixed order (spec decision 2): input (applyInput, before the step), JumpAssist, states. The components
     // then step in the prefab's order: SpriteAnimator, SquashStretch, VelocityLean, Blink. The cues below
     // are events: their effects play at the next flush.
     scene_ = &scene;
+    inputRead_ = true;
     invulnerableLeft_ = std::max(0.0f, invulnerableLeft_ - dt);
     jump.coyoteTime = coyoteTime;
     jump.jumpBuffer = jumpBuffer;
