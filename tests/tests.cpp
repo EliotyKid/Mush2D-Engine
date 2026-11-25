@@ -128,6 +128,37 @@ TEST(sprite_batch_sorts_back_to_front) {
     CHECK(s.size() == 4);
     CHECK(s[0].rotation == 2 && s[1].rotation == 3 && s[2].rotation == 4 && s[3].rotation == 1);
 }
+TEST(particles_nonadditive_go_to_alpha_group) {
+    // Batch level: opaque, then alpha, then additive; each back to front.
+    SpriteBatch b;
+    auto inst = [](uint32_t flags, float depth, float tag) { SpriteInstance s{}; s.flags = flags; s.depth = depth; s.rotation = tag; return s; };
+    b.add(inst(SpriteFlagAdditive, 9, 1));
+    b.add(inst(SpriteFlagAlpha, 0, 2));
+    b.add(inst(0, 0, 3));
+    b.add(inst(SpriteFlagAlpha, 4, 4));
+    const auto& s = b.sorted();
+    CHECK(b.opaqueCount() == 1 && b.alphaCount() == 2);
+    CHECK(s[0].rotation == 3 && s[1].rotation == 4 && s[2].rotation == 2 && s[3].rotation == 1);
+
+    // appendSceneSprites flags non-additive particles as alpha, additive ones stay additive.
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& e = o.addComponent<ParticleEmitter>();
+    scene.flush();
+    ParticleConfig c;
+    c.count = 2;
+    e.burst(c, {0.0f, 0.0f});
+    c.count = 1;
+    c.additive = true;
+    e.burst(c, {0.0f, 0.0f});
+    Material white{7, 8, 9, 10, 1, 1};
+    auto lookup = [](std::uint32_t, const std::string&) { return std::make_pair(Material{}, glm::vec4(0, 0, 0, 0)); };
+    SpriteBatch p;
+    appendSceneSprites(scene, p, lookup, &white);
+    const auto& ps = p.sorted();
+    CHECK(p.opaqueCount() == 0 && p.alphaCount() == 2 && ps.size() == 3);
+    CHECK((ps[0].flags & SpriteFlagAlpha) && (ps[2].flags & SpriteFlagAdditive) && !(ps[2].flags & SpriteFlagAlpha));
+}
 
 TEST(intgrid_merges_rects) {
     // 4x2: row 0 = 1 1 0 1, row 1 = 1 1 0 0
@@ -3431,7 +3462,7 @@ TEST(particles_burst_lifetime_and_pool_limit) {
     auto lookup = [](std::uint32_t, const std::string&) { return std::make_pair(Material{}, glm::vec4(0, 0, 0, 0)); };
     SpriteBatch b;
     appendSceneSprites(scene, b, lookup, &white);
-    CHECK(b.size() == 8 && b.sorted()[0].albedo == 7 && b.sorted()[0].emissive == 9 && b.sorted()[0].flags == SpriteFlagNearest);
+    CHECK(b.size() == 8 && b.sorted()[0].albedo == 7 && b.sorted()[0].emissive == 9 && b.sorted()[0].flags == (SpriteFlagNearest | SpriteFlagAlpha));
     SpriteBatch none;
     appendSceneSprites(scene, none, lookup); // no white material: untextured particles are skipped
     CHECK(none.size() == 0);

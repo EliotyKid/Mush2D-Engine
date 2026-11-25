@@ -6,15 +6,16 @@
 
 O caminho de um frame:
 
-1. **`SpriteBatch`** junta todos os sprites do frame numa lista: opacos primeiro, depois aditivos; cada grupo de trás para a frente (profundidade maior antes).
+1. **`SpriteBatch`** junta todos os sprites do frame numa lista: opacos primeiro, depois as partículas não aditivas (grupo alfa), depois os aditivos; cada grupo de trás para a frente (profundidade maior antes).
 2. **G-buffer** (`gbuffer.frag`): desenha cor, normal map, emissão e profundidade de cada sprite.
 3. **Luz** (`light.frag`): calcula quanta luz chega em cada pixel, usando o normal map. Pode rodar em meia resolução (`lightHalfRes`).
 4. **Resolve** (`resolve.frag`): junta cor × luz + emissão e aplica a névoa por profundidade.
-5. **Aditivo** (`additive.frag`): brilhos, como os halos dos cristais.
-6. **Bloom** (`bloom_down.frag`, `bloom_up.frag`): o "brilho que vaza", em 5 níveis (1/2 a 1/32 da tela).
-7. **Composição** (`composite.frag`): bloom, exposição, temperatura, tonemap AgX, lift/gamma/gain, saturação e sRGB. Depois o painel F1 por cima.
+5. **Partículas alfa** (`alpha.frag`): as partículas não aditivas, com mistura alfa sobre a imagem resolvida. A cor já é a final (sem luz diferida) e recebe a mesma névoa do resolve, então desbotam até alfa 0.
+6. **Aditivo** (`additive.frag`): brilhos, como os halos dos cristais.
+7. **Bloom** (`bloom_down.frag`, `bloom_up.frag`): o "brilho que vaza", em 5 níveis (1/2 a 1/32 da tela).
+8. **Composição** (`composite.frag`): bloom, exposição, temperatura, tonemap AgX, lift/gamma/gain, saturação e sRGB. Depois o painel F1 por cima.
 
-Cada passada tem um nome nos números de [Desempenho](../desempenho.md): `gbuffer`, `light`, `resolve`, `additive`, `bloom`, `composite`.
+Cada passada tem um nome nos números de [Desempenho](../desempenho.md): `gbuffer`, `light`, `resolve`, `alpha`, `additive`, `bloom`, `composite`.
 
 ## Tipos principais
 
@@ -25,7 +26,7 @@ Cada passada tem um nome nos números de [Desempenho](../desempenho.md): `gbuffe
 | `GpuLight` | Uma luz: `posHeightRadius` (x, y, altura, raio), `colorIntensity` (r, g, b, intensidade), `depthFlicker` (profundidade, amplitude da tremulação, velocidade, 0). |
 | `LightList` | As luzes do frame. |
 | `LightComponent` | Uma luz presa a um objeto (`light` é um `GpuLight`, com x, y relativos ao dono). Ainda não exportada para prefabs. |
-| `SpriteBatch`, `SpriteInstance` | A lista de sprites do frame. A cor de cada sprite é `color * tint`. O campo `flash` (cor e quantidade num `uint`, `packUnorm4x8`) mistura o sprite para essa cor sem luz: o `gbuffer.frag` tira a cor iluminada e põe o flash na emissão, e o `additive.frag` mistura direto. |
+| `SpriteBatch`, `SpriteInstance` | A lista de sprites do frame. A cor de cada sprite é `color * tint`. O campo `flash` (cor e quantidade num `uint`, `packUnorm4x8`) mistura o sprite para essa cor sem luz: o `gbuffer.frag` tira a cor iluminada e põe o flash na emissão, e o `additive.frag` e o `alpha.frag` misturam direto. A flag `SpriteFlagAlpha` põe o sprite no grupo alfa (o `appendSceneSprites` liga nas partículas não aditivas); `SpriteFlagAdditive` tem prioridade. |
 | `Bindless`, `MaterialLibrary` | Carregam as texturas: `.png` mais `_n` (normal), `_e` (emissão), `_m` (máscara). |
 | `RenderTargets` | As imagens intermediárias (G-buffer, HDR, luz, bloom). |
 | `PixelScale` | Pixel art: maior escala inteira que ainda mostra pelo menos 400 pixels de arte na largura. |
@@ -58,4 +59,4 @@ Ligue "luz em meia resolucao" no painel F1 e salve a região.
 
 ## Arquivos
 
-`src/engine/render/`: `SceneRenderer.*`, `SpriteBatch.*`, `Materials.*`, `Bindless.*`, `RenderTargets.*`, `LightComponent.*`, `PixelScale.hpp`, `GpuTimers.*`. `shaders/`: `sprite.vert`, `fullscreen.vert`, `gbuffer.frag`, `light.frag`, `resolve.frag`, `additive.frag`, `bloom_down.frag`, `bloom_up.frag`, `composite.frag`, `common.glsl`, `sprite_sample.glsl`.
+`src/engine/render/`: `SceneRenderer.*`, `SpriteBatch.*`, `Materials.*`, `Bindless.*`, `RenderTargets.*`, `LightComponent.*`, `PixelScale.hpp`, `GpuTimers.*`. `shaders/`: `sprite.vert`, `fullscreen.vert`, `gbuffer.frag`, `light.frag`, `resolve.frag`, `alpha.frag`, `additive.frag`, `bloom_down.frag`, `bloom_up.frag`, `composite.frag`, `common.glsl`, `sprite_sample.glsl`.

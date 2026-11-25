@@ -1,3 +1,3 @@
 {"version": 1, "actions": [
-  {"particles": {"count": 2, "speed": [0.8, 1.6], "angle": [110, 160], "lifetime": [0.25, 0.4], "gravity": -1, "drag": 3, "size": [0.14, 0.03], "color": [[0.95, 0.92, 0.85, 1.0], [0.9, 0.86, 0.78, 0.55]], "layer": 3}}
+  {"particles": {"count": 2, "speed": [0.8, 1.6], "angle": [110, 160], "lifetime": [0.25, 0.4], "gravity": -1, "drag": 3, "size": [0.14, 0.03], "color": [[0.95, 0.92, 0.85, 1.0], [0.9, 0.86, 0.78, 0.0]], "layer": 3}}
 ]}

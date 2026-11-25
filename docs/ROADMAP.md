@@ -309,4 +309,3 @@ Cada uma será decidida no design da fase indicada.
 - Salvar o look grava valores que ninguém editou.
 - Itens permanentes reaparecem ao morrer, o que permite duplicar itens quando houver inventário. Resolver em D10.
 - Não há aviso quando o chão de salas vizinhas fica em alturas diferentes.
-- Partículas com alfa abaixo de 0,5 não são desenhadas (vão no passe opaco), então elas somem de uma vez em vez de desbotar até o fim. Resolver com um caminho de partículas com blend em D3.
