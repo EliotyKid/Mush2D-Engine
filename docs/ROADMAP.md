@@ -1,311 +1,219 @@
-# Mush2D: Roadmap do Ikigai
+# Mush2D: Roadmap da engine
 
-Revisão de 2026-11-23. A engine deixa de ser genérica e passa a servir a um jogo: **Ikigai**.
+Revisão de 2026-11-25. A Mush2D é a engine **feita para o Ikigai**. Ela oferece os sistemas, e o autor cria o jogo.
 
-## O jogo
-
-Ikigai é um metroidvania em pixel art com render no estilo Ori (luz, névoa, bloom), com cenas cinematográficas e grandiosas.
-
-- **Mundo.** Pessoas controlam poderes elementais. Este jogo mostra as civilizações do **fogo** e do **gelo**, em guerra. Os outros elementos aparecem só como referência, para jogos futuros.
-- **Protagonista.** Iki é filho de um romance proibido entre gelo e fogo. Os pais lideraram uma revolução que unia quem tinha poderes e quem não tinha. Morreram protegendo os seus ideais e o filho, quando ele tinha cerca de 4 anos. Iki cresce com um senhor num antigo campo de batalha: um campo desolado, com partes verdes, ruínas e uma história esquecida.
-- **Tema.** Iki descobre que domina **os dois** elementos, o único a conseguir isso. A história é a busca pelo seu propósito (ikigai): amizades, inimizades e decisões que mudam o mundo.
-
-## Gameplay (decisões do autor)
-
-- **Poderes.** Fogo, gelo e os dois combinados servem para **combate, movimento e puzzles**.
-  - Gelo: estacas para escalar certas paredes e tetos, projéteis, ataque e defesa.
-  - Fogo: pulo duplo, projéteis, ataque e defesa.
-  - Combinados: ataques e defesas próprios.
-  - Poderes específicos para atravessar certas áreas.
-  - **Desbloquear poderes abre áreas novas.**
-- **Mundo elemental.** O gelo criado pelo jogador derrete. O fogo queima certas áreas. Se o jogador agir de forma "otimizada", **a natureza recupera a área**.
-- **Equipamento.** Roupas e itens que melhoram atributos, no estilo dos amuletos de Hollow Knight.
-- **NPCs complexos.** Têm personalidade e reações. A forma como Iki os trata muda como eles falam e lidam com ele. As decisões importantes influenciam o mundo.
+- **O jogo e os sistemas que ele pede:** [VISAO.md](VISAO.md). Este ROADMAP diz em que ordem os sistemas são feitos.
+- **Papéis:**
+  - a engine (`src/engine/`) oferece os sistemas genéricos, o manual (`manual/`) e exemplos (`examples/`);
+  - o jogo (`games/ikigai/`) é criado pelo autor;
+  - o Claude constrói a engine e ajuda no jogo, mas não escreve o conteúdo do Ikigai.
 
 ## Fluxo de trabalho (decisões do autor)
 
 - A facilidade do **GameMaker** com a organização visual da **Godot**.
 - O destino final é uma IDE própria, com um fork do LDtk adaptado e um editor visual de objetos, animações e atributos. **Não é prioridade agora.** O caminho até lá é gradual:
-  1. objetos descritos em arquivo (prefabs);
-  2. inspetor em árvore no painel F1;
+  1. objetos descritos em arquivo (prefabs) — feito;
+  2. inspetor em árvore no painel F1 — feito;
   3. editor de animações no painel;
   4. só depois a IDE.
 
-## Princípios: crescer sem refatorar
+## Princípios
 
-O roadmap é guiado pela demo: cada fase entrega algo jogável e constrói a **versão mínima** do que a demo precisa. Para que cada sistema cresça até o jogo final sem reescrita, vale o seguinte em todas as fases.
-
-1. **Interface no tamanho do jogo final, implementação no tamanho da demo.**
-   - Exemplo: o dano carrega um `Element` (Fogo, Gelo, Combinado, Nenhum) desde o primeiro dia, mesmo que a demo só use Gelo.
-   - Cada sistema começa com os tipos e os pontos de extensão que o jogo final vai usar, e só implementa o que a demo exige.
-2. **Conteúdo em dados, não em código.** Inimigos, NPCs, itens, diálogos, reações elementais e cutscenes ficam em arquivos (prefabs, tabelas e roteiros). Conteúdo novo não exige C++. O C++ entra só para um **comportamento** realmente novo.
-3. **Uma fonte de verdade para o estado.**
-   - Tudo o que persiste (poderes, equipamento, relações com NPCs, flags de decisão, áreas queimadas ou recuperadas, inimigos mortos) vive no `WorldState`, indexado por ids estáveis.
-   - O save serializa só isso, então nenhum sistema novo precisa de "código de save" próprio.
-4. **Sistemas conversam por eventos e tags, não por referências diretas.** Exemplos: "o fogo tocou vegetação" e "NPC viu Iki queimar a vila". Assim, um sistema novo assina eventos já existentes sem mexer nos antigos.
-5. **Máquinas de estado reutilizáveis.** Uma só implementação serve ao player, aos inimigos, aos chefes e aos NPCs.
-6. **Cada fase começa com um design** em `docs/superpowers/specs/`, com uma seção obrigatória: **"Como cresce até o jogo final"**. Ela lista o que fica de fora e por onde isso vai entrar sem mudar a interface.
-7. **Testes por sistema** e **zero erros de validação** como critério de pronto. Fica de fora tudo o que não tiver uso na demo.
-
-`src/engine/` continua sendo a tecnologia (render, mundo, física, dados). `src/game/` são as regras do Ikigai (elementos, poderes, NPCs).
+1. **Engine diz como, jogo diz o quê.**
+   - Nada em `src/engine/` cita o Iki, Gelo, Fogo, personagens ou qualquer conteúdo do Ikigai.
+   - Elementos, barras de recurso, tipos de superfície e ações de entrada são definidos pelo projeto, em dados.
+2. **Feita para o Ikigai.** A engine só ganha sistemas que o Ikigai precisa (metroidvania 2D com render no estilo Ori, mundo vivo e com memória). Não é uma engine para qualquer gênero.
+3. **Conteúdo em dados, não em código.** Inimigos, NPCs, itens, diálogos, reações de materiais e cutscenes ficam em arquivos (prefabs, tabelas e roteiros). O C++ do jogo entra só para um **comportamento** realmente novo.
+4. **Uma fonte de verdade para o estado.** Tudo o que persiste vive no `WorldState`, por ids estáveis. O save serializa só isso.
+5. **Sistemas conversam por eventos e tags, não por referências diretas.** Um sistema novo assina eventos que já existem sem mexer nos antigos.
+6. **Interface no tamanho do jogo final, implementação no tamanho do que se usa agora.**
+7. **Cada fase começa com um design** em `docs/superpowers/specs/`, com a seção obrigatória "Como cresce até o jogo final".
+8. **Cada fase entrega três coisas:** o sistema, a página do manual e um exemplo pequeno em `examples/`. O exemplo do Iki é atualizado quando a engine muda.
+9. **Testes por sistema** e **zero erros de validação** como critério de pronto.
 
 Marque `[x]` ao concluir.
 
 ---
 
-## Já feito: a base técnica
+## Já feito
+
+### Base técnica
 
 - [x] Render no estilo Ori: G-buffer, luz com normal map, névoa por profundidade, aditivo, bloom, grading e pixel art suave com zoom livre. [design](superpowers/specs/2026-11-18-sala-vitrine-design.md)
 - [x] Painel F1 de look por região, salvo em `.region.json`.
 - [x] Modelo de entidades: ids seguros, criação e destruição seguras, pai/filho, componentes, eventos e grade espacial. [design](superpowers/specs/2026-11-19-modelo-entidades-design.md)
 - [x] Mundo contínuo: salas do LDtk com streaming, regiões, `WorldState`, respawn por distância e morte que restaura a sala. [design](superpowers/specs/2026-11-19-mundo-continuo-design.md)
-- [x] Terreno livre, rampas e plataformas atravessáveis, com um controlador de personagem por segmentos e hot reload do LDtk. [design](superpowers/specs/2026-11-19-terreno-rampas-design.md)
-- [x] Reorganização: regiões, observador de arquivos e helpers do LDtk movidos para a engine.
-- [x] Guia para iniciantes: [GUIA.md](GUIA.md)
+- [x] Terreno livre, rampas e plataformas atravessáveis, com controlador de personagem por segmentos e hot reload do LDtk. [design](superpowers/specs/2026-11-19-terreno-rampas-design.md)
+- [x] Guia para iniciantes ([GUIA.md](GUIA.md)) e manual em MkDocs (`manual/`).
 
-**Pendente, no PC Arch:**
-- [ ] build e testes no Linux;
+### Fases D1 a D3 (antes da separação entre engine e jogo)
+
+- [x] **D1, prefabs e inspetor:** reflexão (`MUSH2D_EXPORT`), prefabs com herança, entidades do LDtk por prefab, atlas lidos da pasta, inspetor em árvore no F1, salvar no prefab, hot reload. [design](superpowers/specs/2026-11-23-d1-prefabs-inspetor-design.md)
+- [x] **D2, movimento:** máquinas de estado (várias por objeto, estados compartilhados), tempos de pulo, superfícies escaláveis, recursos, efeitos reaproveitáveis (biblioteca e gatilhos no prefab), partículas, squash, piscar, inclinação, eventos de animação. [design](superpowers/specs/2026-11-24-d2-iki-move-design.md)
+- [x] **D3, combate e peso:** hitbox, hurtbox, dano com multiplicadores por elemento, atordoamento, projéteis com pool, hit stop, tremor de câmera, flash, partículas com transparência iluminadas, áudio (miniaudio) com música por região. [design](superpowers/specs/2026-11-25-d3-combate-design.md)
+
+O Iki, o combate de gelo, os bonecos de treino e a sala `IceTest` foram feitos nessas fases. Na E0 eles viram o exemplo `examples/iki_demo/`.
+
+### Pendente, no PC Arch
+
+- [ ] build e testes no Linux (incluindo o áudio);
 - [ ] redimensionar a janela sem nenhum erro de validação;
 - [ ] medir a RTX 2060 Super (`MUSH2D_PERF_LOG=10`).
 
 ---
 
-## Rumo à demo
+## Fases da engine
 
-**Demo:** 10 a 20 minutos no **campo de batalha esquecido**. Iki pega o primeiro poder (**gelo**), enfrenta alguns inimigos, conversa com o **senhor que o cria**, vê uma **cutscene** e luta contra um **chefe**.
-
-Para cada fase abaixo:
-- **Entra** é a versão mínima da demo.
-- **Cresce para** é o que vem depois, pelos mesmos pontos de extensão.
+Para cada fase:
+- **Entra** é o que a engine passa a oferecer.
+- **Exemplo** é o que vai para `examples/`.
 - **Pronto quando** é o critério de conclusão.
 
-### D1: Fluxo de criação (prefabs e inspetor)
-
-Vem primeiro porque tudo o que vier depois será criado com ele.
+### E0: Base — engine e jogo separados
 
 **Entra:**
-- [x] **Prefabs** (`.prefab.json`): tipo C++ base, atributos (números, textos, cores e referências), nós filhos (luz, hitbox, partícula, sprite extra), componentes e animações por estado.
-- [x] **Herança de prefab** (`base: "enemy_base"`), o equivalente a um objeto pai.
-- [x] **Registro automático dos tipos C++**: uma linha por classe, sem editar o `IkigaiGame`.
-- [x] **Entidade do LDtk apontando para um prefab.** Os campos do LDtk sobrescrevem os atributos do prefab.
-- [x] **Atlas e animações lidos da pasta pelo nome**, sem registro à mão em `GameAssets.cpp`.
-- [x] **Inspetor em árvore no F1**: a cena ao vivo (objeto → filhos → componentes) com os atributos editáveis e um botão Salvar no prefab.
-- [x] **Projeto Ikigai separado da vitrine**: `IkigaiGame` passa a ser o jogo padrão, e a vitrine vira uma sala de testes.
+- [ ] Projeto em dados (`project.json` do jogo):
+  - elementos (no lugar do `Element` fixo);
+  - barras de recurso com nome (no lugar de `maxIce`/`maxFire`);
+  - tipos de superfície pelo nome do valor da IntGrid (no lugar de `Surface::IceClimb`);
+  - mapa de ações de entrada com teclas e gamepad configuráveis (no lugar dos botões fixos do `InputState`).
+- [ ] Remover da engine os comentários e nomes que citam o Iki, o kaa ou o Ikigai.
+- [ ] Pastas `examples/iki_demo/` (o código, os prefabs, os efeitos, os sons e a sala atuais) e `games/ikigai/`.
+- [ ] O executável escolhe qual jogo abrir.
+- [ ] Modelo inicial de `games/ikigai/`:
+  - uma sala vazia no LDtk;
+  - um personagem que anda e pula, feito só com componentes da engine;
+  - o `project.json` com os elementos e as ações do Ikigai.
+- [ ] Manual: "Criando o seu jogo", "Projeto em dados" e a regra de divisão entre engine e jogo.
 
-**Cresce para:**
-- editor de animações no painel;
-- validação de prefabs com um esquema versionado;
-- IDE e fork do LDtk.
+**Exemplo:** o `iki_demo` inteiro, adaptado aos dados do projeto.
 
-**Pronto quando:** um inimigo novo nasce copiando um prefab e mudando números, sem recompilar, e o inspetor mostra e salva os atributos dele.
+**Pronto quando:** o `iki_demo` funciona igual a antes; `games/ikigai/` abre com o personagem andando e pulando; `src/engine/` não cita conteúdo do Ikigai (verificado por um teste ou script).
 
-### D2: Iki se move (estados e poderes de movimento)
-
-**Entra:**
-- [x] **Máquina de estados** reutilizável, usada pelo Iki: parado, correndo, pulando, caindo, preso na parede, escalando (parede e teto), ferido, morto. O ataque entrou no D3 como uma segunda máquina, `"action"` (corte, tiro, escudo), ao lado da de movimento.
-- [x] **Sistema de habilidades**: cada poder é um componente, e o desbloqueio fica no `WorldState` (`ability.ice.stakes`).
-- [x] **Gelo: estacas.** Cria pontos de apoio para escalar **certas** paredes e tetos, marcados como superfície escalável no LDtk.
-- [x] **Recursos**: vida e energia elemental. Decidido no D2: uma barra para cada elemento (gelo, fogo), e a travessia não gasta energia (veja "Decisões resolvidas").
-- [x] **Ajustes finos do pulo**: coyote time, buffer de pulo e altura variável.
-- [x] **Animação por estado** com eventos por frame (passo, golpe), usando as tags do Aseprite.
-
-**Cresce para:**
-- fogo: pulo duplo;
-- dash;
-- poderes de travessia;
-- combinações.
-
-Tudo isso entra como novos componentes de habilidade e novos estados, sem mudar a máquina.
-
-**Pronto quando:** o Iki escala uma parede de gelo para chegar a uma área antes inacessível. Feito na sala `IceTest` do `showcase.ldtk`.
-
-### D3: Combate e "peso" (feedback)
+### E1: Tempo e memória
 
 **Entra:**
-- [x] **Hitbox e hurtbox** como nós filhos do prefab.
-- [x] **`DamageInfo`** com quantidade, `Element`, knockback e origem. **Resistências e fraquezas por elemento** ficam no prefab.
-- [x] **Ataque corpo a corpo de gelo**, **projétil de gelo** (com pool de projéteis) e **defesa de gelo**.
-- [x] **Invencibilidade breve ao ser atingido**, **hit stop** (congelar o frame no impacto) e **tremor de câmera** simples.
-- [x] **Partículas básicas**, na CPU, para o essencial: estilhaços de gelo, poeira e impacto.
-- [x] **Áudio básico** com miniaudio: efeitos e música por região.
+- [ ] Relógio do mundo com dia e noite (velocidade configurável, pausa em cutscenes).
+- [ ] Capítulos da história como marcos que o jogo avança.
+- [ ] Fatos do mundo: registro de acontecimentos com causa e contexto, consultável por qualquer sistema e salvo.
+- [ ] Estado das áreas (queimada, cortada, esvaziada, restaurada) com tempo de recuperação.
+- [ ] Simulação fora da tela: ao carregar uma sala, ela calcula o que mudou pelo tempo que passou.
+- [ ] Save completo do mundo (fatos, relógio, capítulo, áreas, entidades persistentes), em totens ou por chamada do jogo.
+- [ ] Resolve a pendência "itens permanentes reaparecem ao morrer".
 
-**Cresce para:**
-- **efeitos de status** como componentes (congelado, queimando);
-- combos;
-- partículas na GPU;
-- áudio posicional;
-- música adaptativa.
+**Exemplo:** uma grama que, cortada, volta depois de N horas do relógio, mesmo com a sala descarregada.
 
-**Pronto quando:** um combate contra um alvo de teste tem impacto, som e partículas, e o dano respeita as fraquezas. Feito com os bonecos de treino da sala `IceTest` do `showcase.ldtk`.
+**Pronto quando:** fatos e estados sobrevivem a salvar e carregar; uma sala revisitada mostra a passagem do tempo.
 
-### D4: Inimigos
+### E2: Natureza
 
 **Entra:**
-- [ ] **IA por máquina de estados** com dados no prefab: patrulha, percepção (alcance e linha de visão), perseguição, ataque, recuo.
-- [ ] **2 ou 3 inimigos** do campo de batalha (proposta: uma criatura terrestre, uma voadora e uma que reage ao gelo).
-- [ ] Respawn pelas regras que já existem.
+- [ ] Materiais com reações em dados (inflamável, congelável, derrete, cresce, boia, afunda) e uma tabela de reações entre elementos e materiais.
+- [ ] Fogo que se espalha para vizinhos com limite e se apaga com água ou gelo.
+- [ ] Água: volumes do LDtk, superfície com ondas e respingos, nado na superfície e mergulho, empuxo e arrasto, congelar e derreter, nível animado e salvo, cachoeiras que reagem à passagem.
+- [ ] Neve: pegadas, acúmulo, queda dos galhos, derreter em água ou poça, neve funda que deixa lento.
+- [ ] Plantas: curvar com a passagem, cortar, queimar e voltar a crescer (E1), reagir a elementos, servir de plataforma.
+- [ ] Cordas, cipós e correntes: física de corda, balanço com vento e contato; o personagem se agarra, balança e pega impulso.
+- [ ] Eventos de natureza para os outros sistemas (por exemplo, "fogo começou", com causa).
 
-**Cresce para:**
-- inimigos das duas civilizações;
-- comportamentos novos como estados novos;
-- grupos.
+**Exemplo:** uma sala com rio, cachoeira, ponte de cordas, neve e plantas inflamáveis; o exemplo do Iki congela a água e queima a vegetação.
 
-**Pronto quando:** dá para lutar contra 3 tipos de inimigo na sala de teste.
+**Pronto quando:** cada material reage como descrito na visão; o estado da natureza persiste pela E1; o desempenho se mantém (medido).
 
-### D5: Mundo elemental mínimo
-
-**Entra:**
-- [ ] **Materiais** nas superfícies e objetos (vegetação, madeira, água, gelo e pedra), definidos no LDtk e nos prefabs.
-- [ ] **Tabela de reações elemento × material em dados**. Na demo: o gelo do jogador derrete com o tempo, e o projétil de gelo congela água, que vira plataforma.
-- [ ] **Estado das reações no `WorldState`**, para que persistam.
-
-**Cresce para:**
-- fogo queimando vegetação e madeira;
-- **recuperação da natureza** quando o jogador age de forma "otimizada", como um estado de recuperação por área;
-- novos pares na tabela, sem código novo.
-
-**Pronto quando:** um puzzle da demo exige congelar água para passar.
-
-### D6: Câmera dinâmica
+### E3: Câmera e cenas
 
 **Entra:**
-- [ ] **Zonas de câmera** como entidades retangulares no LDtk, com limites, foco, zoom e travamento de eixo.
-- [ ] **Antecipação** na direção do movimento, suavização e tremor.
-- [ ] **Várias câmeras com transição suave** entre elas.
+- [ ] Câmera dinâmica: zonas de câmera do LDtk, enquadramento, zoom suave, afastar para mostrar a escala, várias câmeras e transições. Mantém o tremor do D3.
+- [ ] Cutscenes e visões em roteiro (dados): câmera, personagens, falas, música, efeitos e filtro de memória; disparadas por objetos do mapa; com trechos jogáveis e troca temporária do personagem controlado.
+- [ ] Desbloqueio de habilidade como passo de uma cena.
 
-**Cresce para:**
-- câmeras em trilhos;
-- enquadramento de dois alvos.
+**Exemplo:** uma estátua que mostra uma visão cinematográfica com um trecho jogável e libera uma habilidade do exemplo.
 
-**Pronto quando:** a câmera enquadra bem as salas da demo e uma arena trava a câmera.
+**Pronto quando:** uma cena roda do começo ao fim, pode ser pulada, e o jogo volta ao estado certo.
 
-### D7: Texto, diálogo e NPCs
+### E4: Personagens
 
 **Entra:**
-- [ ] **Renderização de texto em pixel art** (fonte bitmap) e caixas de diálogo.
-- [ ] **Diálogos em arquivo** com falas condicionais (o formato está em aberto, no fim deste documento) e escolhas.
-- [ ] **NPC**: personalidade, **relação com o Iki** (confiança, afinidade) e **memória de eventos**, tudo no `WorldState`. As falas mudam conforme esse estado.
-- [ ] **Flags de decisão do mundo**, que qualquer sistema pode ler.
-- [ ] **O senhor que cria o Iki**, como o primeiro NPC.
+- [ ] Diálogo com escolhas e condições (fatos, opinião, capítulo, humor), com voz, legendas e expressões.
+- [ ] Agenda e tarefas dos NPCs com começo e duração, simuladas fora da tela (E1).
+- [ ] Rede social: relações entre NPCs e com o jogador, que mudam por fatos e pela história.
+- [ ] Memória e opinião: o NPC lembra do que viu ou soube e julga o contexto.
+- [ ] Variantes por capítulo e vivência: aparência, humor e tom das falas.
 
-**Cresce para:**
-- NPCs que reagem ao que viram, por eventos;
-- consequências de decisões no mundo;
-- localização para PT e EN.
+**Exemplo:** o lenhador da visão, reagindo à queimada (com e sem combate, apagada ou não) e plantando a árvore que cresce por capítulo.
 
-**Pronto quando:** a conversa com o senhor muda conforme uma escolha anterior.
+**Pronto quando:** o exemplo do lenhador funciona do começo ao fim, com a vida dele continuando fora da tela.
 
-### D8: Cutscenes
+### E5: Vida
 
 **Entra:**
-- [ ] **Linha do tempo em arquivo** com trilhas: câmera, mover e animar atores, diálogo, luz e look, fade, áudio e esperar input.
-- [ ] **Letterbox.**
-- [ ] **Disparo por gatilho do LDtk.**
-- [ ] **A cutscene da demo**: a lembrança dos pais ou o despertar do gelo.
+- [ ] Percepção: visão, audição e calor, com alcance e linha de visão.
+- [ ] IA por necessidades e rotinas (fome, sede, sono, medo, caça), usando as máquinas de estado.
+- [ ] Relações entre espécies e facções em dados (quem caça, quem foge, quem briga com quem).
+- [ ] Territórios.
+- [ ] População por área, capítulo e estado do mundo, com retorno ao longo do tempo (no lugar do respawn simples).
 
-**Cresce para:**
-- trilhas novas, como partículas e música;
-- cutscenes que dependem de flags;
-- pular cutscene.
+**Exemplo:** cervos que bebem água e fogem do fogo, um predador que os caça e dois tipos de inimigo que brigam entre si.
 
-**Pronto quando:** a cutscene da demo roda, do início ao fim, a partir de um gatilho no mapa.
+**Pronto quando:** as criaturas do exemplo vivem, caçam e fogem sem script; a população muda com o capítulo.
 
-### D9: Interface e controles
+### E6: Progressão
 
 **Entra:**
-- [ ] **HUD**: vida e energia.
-- [ ] **Pausa** e **menu de equipamento** mínimo, com 2 ou 3 itens no estilo dos amuletos.
-- [ ] **Gamepad** e remapeamento.
+- [ ] Inventário e itens.
+- [ ] Talismãs e equipamentos que mudam os números do personagem, com espaços para equipar.
+- [ ] Loja e moeda.
+- [ ] Favores e missões com estado (aceito, feito, recompensado), ligados à amizade (E4) e aos fatos (E1).
 
-**Cresce para:**
-- mapa-múndi;
-- inventário completo;
-- opções;
-- acessibilidade.
+**Exemplo:** um talismã ganho por amizade e outro comprado, mudando o exemplo do Iki.
 
-**Pronto quando:** a demo é jogável do início ao fim só com o gamepad.
+**Pronto quando:** itens, talismãs e favores sobrevivem a salvar e carregar.
 
-### D10: Save e progressão
+### E7: Atmosfera
 
 **Entra:**
-- [ ] **Save do `WorldState` inteiro em slots**: posição, poderes, equipamento, relações, flags e mapa.
-- [ ] **Pontos de save**, no estilo dos bancos.
-- [ ] **Gating por habilidade** validado no mapa.
+- [ ] Clima: chuva, tempestade de neve, neblina e vento que move partículas, plantas, cordas e água.
+- [ ] Luz pelo relógio do dia e pelas estações.
+- [ ] Fundos vivos: camadas com coisas acontecendo ao longe.
+- [ ] Música por momento (exploração, combate, cena), com transições.
 
-**Cresce para:**
-- versões de save, para que os saves antigos continuem abrindo;
-- autosave.
+**Exemplo:** um dia completo no exemplo, com uma tempestade de neve passando.
 
-**Pronto quando:** sair do jogo e continuar mantém tudo.
+**Pronto quando:** clima e luz mudam com o tempo sem custo visível de desempenho.
 
-### D11: Chefe
-
-**Entra:**
-- [ ] **Chefe como prefab com fases** (máquina de estados).
-- [ ] **Arena**: a câmera trava e as portas fecham.
-- [ ] **Barra de vida** do chefe.
-- [ ] **Uma cutscene** curta de entrada.
-
-**Pronto quando:** o chefe tem pelo menos 2 fases e a luta é vencível, justa e legível.
-
-### D12: A demo
+### E8: Interface
 
 **Entra:**
-- [ ] **O mapa do campo de batalha esquecido**: salas, regiões e look.
-- [ ] Os momentos da história na ordem certa.
-- [ ] Polimento visual: vagalumes, folhas e poeira.
-- [ ] **Teste de jogo** com outras pessoas.
-- [ ] **Desempenho**: 60 fps na Intel UHD e no Steam Deck.
-- [ ] **Build de release** para Windows e Linux.
+- [ ] HUD e menus no estilo do Ori.
+- [ ] Mapa que se revela ao explorar, com marcadores.
+- [ ] Totens de save.
+- [ ] Remapear teclas e gamepad (sobre as ações da E0).
 
-**Pronto quando:** uma pessoa de fora termina a demo sem ajuda.
+**Exemplo:** o HUD, o mapa e um totem de save no exemplo do Iki.
 
----
-
-## Depois da demo (em linhas gerais)
-
-- **Fogo e combinações:** pulo duplo, projéteis, defesa, ataques combinados e travessias.
-- **Fogo no mundo e recuperação da natureza.**
-- **Equipamento e atributos completos.**
-- **NPCs e decisões em escala:** várias facções, consequências no mundo e finais.
-- **As duas civilizações**: novas regiões e chefes.
-- **Mapa-múndi.**
-- **Visual avançado:**
-  - sombras 2D;
-  - luz volumétrica e god rays;
-  - partículas na GPU;
-  - vento na vegetação;
-  - água com reflexo;
-  - LUT de cor por região.
-- **Áudio avançado**: posicional por profundidade, reverberação por região e música adaptativa.
-- **Ferramentas**: editor de animações, visualização de colliders e IA, profiler e, por fim, **IDE com fork do LDtk e editor visual de objetos**.
-- **Scripts** (Lua), só se os dados e o C++ virarem gargalo.
-- **Distribuição**: empacotamento e Steam.
+**Pronto quando:** o jogo do exemplo pode ser jogado só com menus, mapa e save, sem o painel F1.
 
 ---
 
 ## Decisões em aberto
 
-Cada uma será decidida no design da fase indicada.
+Cada uma é decidida no design da fase indicada.
 
 | Decisão | Fase | Opções |
 |---|---|---|
-| Formato dos diálogos | D7 | JSON próprio, Yarn Spinner ou ink |
-| Formato das cutscenes | D8 | JSON próprio editado no painel, ou o mesmo formato dos diálogos |
-| Origem da arte da demo | D12 | Arte nova do Ikigai, ou o kaa como placeholder |
-| Controle principal | D9 | Gamepad primeiro, ou teclado primeiro |
+| Controle principal | E0 | Gamepad primeiro, ou teclado primeiro |
+| Formato das cutscenes | E3 | JSON próprio editado no painel, ou o mesmo formato dos diálogos |
+| Formato dos diálogos | E4 | JSON próprio, Yarn Spinner ou ink |
 
-## Decisões resolvidas
-
-| Decisão | Fase | Resolução |
-|---|---|---|
-| Energia elemental | D2 | Uma barra para cada elemento (`Element::Ice`, `Element::Fire`), com recarga própria. A travessia (escalar, pendurar no teto) nunca gasta energia; a energia fica para o combate e as combinações. |
+As decisões de jogo (por exemplo, o modelo de energia do Iki ou a origem da arte) são do autor, no `games/ikigai/`, e não deste ROADMAP.
 
 ## Pendências técnicas registradas
 
 - O `TeleportObject` zera a velocidade.
-- ↓ é ao mesmo tempo "interagir" e "descer de plataforma".
+- ↓ é ao mesmo tempo "interagir" e "descer de plataforma". Resolver com o mapa de ações da E0.
 - A sala atual pode alternar de um lado para o outro quando o player fica em cima da borda.
 - Salvar o look grava valores que ninguém editou.
-- Itens permanentes reaparecem ao morrer, o que permite duplicar itens quando houver inventário. Resolver em D10.
+- Itens permanentes reaparecem ao morrer. Resolver na E1.
 - Não há aviso quando o chão de salas vizinhas fica em alturas diferentes.
+- Áudio: mudar o volume só afeta sons que começam depois; uma terceira música no meio de uma transição corta a mais antiga; não há limite de vozes.
+- Partículas: a comparação de profundidade com o G-buffer é imprecisa a partir da profundidade 2 (R16F); ajustar se surgirem camadas distantes.
