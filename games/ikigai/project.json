@@ -1,0 +1,23 @@
+{
+    "id": "ikigai",
+    "name": "Ikigai",
+    "elements": ["Fire", "Ice"],
+    "surfaces": [],
+    "resources": [
+        { "name": "fire", "element": "Fire", "max": 100, "regenPerSecond": 10, "regenDelay": 1 },
+        { "name": "ice", "element": "Ice", "max": 100, "regenPerSecond": 10, "regenDelay": 1 }
+    ],
+    "input": { "triggerThreshold": 0.5, "stickDeadzone": 0.25 },
+    "actions": {
+        "moveLeft":    { "keys": ["Left"],  "gamepad": ["DpadLeft", "LeftStickLeft"] },
+        "moveRight":   { "keys": ["Right"], "gamepad": ["DpadRight", "LeftStickRight"] },
+        "moveUp":      { "keys": ["Up"],    "gamepad": ["DpadUp", "LeftStickUp"] },
+        "moveDown":    { "keys": ["Down"],  "gamepad": ["DpadDown", "LeftStickDown"] },
+        "jump":        { "keys": ["Z"],     "gamepad": ["A"], "buffer": 0.12 },
+        "attack":      { "keys": ["X"],     "gamepad": ["X"] },
+        "fire":        { "keys": ["A"],     "gamepad": ["L1"] },
+        "ice":         { "keys": ["S"],     "gamepad": ["L2"] },
+        "interact":    { "keys": ["Up"],    "gamepad": ["Y"] },
+        "dropThrough": { "keys": ["Down"],  "gamepad": ["DpadDown", "LeftStickDown"] }
+    }
+}

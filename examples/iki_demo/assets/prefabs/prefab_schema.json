@@ -596,6 +596,67 @@
         }
       ]
     },
+    "PlatformerMover": {
+      "base": "Component",
+      "component": true,
+      "props": [
+        {
+          "default": "moveLeft",
+          "name": "actionLeft",
+          "type": "String"
+        },
+        {
+          "default": "moveRight",
+          "name": "actionRight",
+          "type": "String"
+        },
+        {
+          "default": "jump",
+          "name": "actionJump",
+          "type": "String"
+        },
+        {
+          "default": "dropThrough",
+          "name": "actionDrop",
+          "type": "String"
+        },
+        {
+          "default": 5.0,
+          "name": "runSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 60.0,
+          "name": "acceleration",
+          "type": "Float"
+        },
+        {
+          "default": -32.0,
+          "name": "gravity",
+          "type": "Float"
+        },
+        {
+          "default": 11.0,
+          "name": "jumpSpeed",
+          "type": "Float"
+        },
+        {
+          "default": 0.5,
+          "name": "jumpCut",
+          "type": "Float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "name": "coyoteTime",
+          "type": "Float"
+        },
+        {
+          "default": -18.0,
+          "name": "maxFallSpeed",
+          "type": "Float"
+        }
+      ]
+    },
     "PlayerObject": {
       "base": "GameObject",
       "component": false,

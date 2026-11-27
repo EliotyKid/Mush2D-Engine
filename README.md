@@ -65,6 +65,6 @@ ctest --test-dir build/debug
 
 Use `release` instead of `debug` for an optimized build. The executable is `build/<preset>/Mush2D` (`Mush2D.exe` on Windows).
 
-Run a game by id: `build/debug/Mush2D --game iki_demo`. Without `--game` it shows a launcher screen (one button per game, the last one marked, `Enter` opens it; the choice is saved in `mush2d_last_game.json` next to the exe). An unknown id prints the valid ids and shows the launcher.
+Run a game by id: `build/debug/Mush2D --game iki_demo` (the demo) or `--game ikigai` (the starter template in `games/ikigai/`: an empty room with a floor and a player that walks and jumps with the engine's `PlatformerMover`). Without `--game` it shows a launcher screen (one button per game, the last one marked, `Enter` opens it; the choice is saved in `mush2d_last_game.json` next to the exe). An unknown id prints the valid ids and shows the launcher.
 
 Se o configure do Release travar baixando o imgui, passe `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<caminho de um checkout do imgui>`; `build/debug/_deps/imgui-src` serve depois de um configure Debug.

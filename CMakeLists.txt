@@ -24,6 +24,7 @@ target_link_libraries(mush2d_engine PUBLIC glfw glm::glm Vulkan::Vulkan nlohmann
 
 # The games built into this program (cmake/Games.cmake). Each one is a static library <id>_game.
 mush2d_add_game(iki_demo examples/iki_demo IkiDemoGame iki_demo/IkiDemoGame.hpp)
+mush2d_add_game(ikigai games/ikigai IkigaiGame ikigai/IkigaiGame.hpp)
 mush2d_write_games_list() # games_list.cpp: the table of the games above (sets MUSH2D_GAMES_LIST, MUSH2D_GAME_LIBS)
 
 # Mush2D: the development program, which opens any compiled game (--game <id>).

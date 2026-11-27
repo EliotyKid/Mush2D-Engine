@@ -9,6 +9,7 @@
 #include "engine/world/SpriteAnimator.hpp"
 // Included so their MUSH2D_COMPONENT registration is linked in: prefabs name them in "components".
 #include "engine/world/Blink.hpp"
+#include "engine/world/PlatformerMover.hpp"
 #include "engine/world/Particles.hpp"
 #include "engine/world/Projectile.hpp"
 #include "engine/world/SquashStretch.hpp"

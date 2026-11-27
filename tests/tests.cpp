@@ -23,6 +23,7 @@
 #include "engine/render/SceneRenderer.hpp"
 #include "engine/tools/LookFile.hpp"
 #include "engine/world/CharacterController.hpp"
+#include "engine/world/PlatformerMover.hpp"
 #include "engine/world/Collision.hpp"
 #include "engine/world/CollisionWorld.hpp"
 #include "engine/world/Ldtk.hpp"
@@ -6919,4 +6920,76 @@ int main() {
     }
     std::printf(failures ? "FAILED (%d)\n" : "OK\n", failures);
     return failures ? 1 : 0;
+}
+
+// ---- PlatformerMover and the games/ikigai template (E0 task 8) ----
+
+namespace {
+// An ActionMap with the actions the mover reads, fed by a RawInput the test edits.
+struct MoverRig {
+    Scene2D scene;
+    ActionMap actions;
+    RawInput raw;
+    GameObject* obj = nullptr;
+    PlatformerMover* mover = nullptr;
+    explicit MoverRig(bool withService = true) {
+        std::map<std::string, ActionBinding, std::less<>> a;
+        a["moveRight"] = {{GLFW_KEY_RIGHT}, {}, {}, 0.0f};
+        a["moveLeft"] = {{GLFW_KEY_LEFT}, {}, {}, 0.0f};
+        a["jump"] = {{GLFW_KEY_Z}, {}, {}, 0.12f};
+        a["dropThrough"] = {{GLFW_KEY_DOWN}, {}, {}, 0.0f};
+        actions.configure(a, InputSettings{});
+        if (withService) scene.setService(&actions);
+        ikiLevel(scene); // the same room: a solid floor
+        obj = &scene.createObject<GameObject>();
+        obj->transform.position = {3.0f, -3.4f};
+        obj->collider = ColliderData{.size = {0.6f, 1.6f}}; // a collider is all the mover needs
+        mover = &obj->addComponent<PlatformerMover>();
+    }
+    // One scene step with the current raw input.
+    void step(int n = 1) {
+        for (int i = 0; i < n; ++i) {
+            actions.update(raw);
+            scene.step(kDt);
+        }
+    }
+};
+}
+
+TEST(platformer_mover_walks_and_jumps) {
+    MoverRig r;
+    r.step(30); // settle on the floor
+    CHECK(r.mover->grounded());
+    const float x0 = r.obj->transform.position.x, y0 = r.obj->transform.position.y;
+    r.step(30); // standing still: no drift
+    CHECK(r.obj->transform.position.x == x0);
+
+    r.raw.keys[GLFW_KEY_RIGHT] = true; // hold right for 0.5 s
+    r.step(30);
+    CHECK(r.obj->transform.position.x > x0 + 1.5f);
+    r.raw.keys[GLFW_KEY_RIGHT] = false;
+    r.step(30);
+    CHECK(r.mover->velocity().x == 0.0f); // it stops
+
+    r.raw.keys[GLFW_KEY_Z] = true; // press jump
+    r.step(5);
+    CHECK(r.obj->transform.position.y > y0 + 0.3f && !r.mover->grounded());
+}
+
+TEST(platformer_mover_without_action_map_does_nothing) {
+    MoverRig r(false); // no ActionMap service in the scene
+    r.raw.keys[GLFW_KEY_RIGHT] = true;
+    const glm::vec2 before = r.obj->transform.position;
+    r.step(10); // does not crash and does not move (not even gravity: it never ran)
+    CHECK(r.obj->transform.position == before);
+}
+
+TEST(ikigai_project_loads) {
+    CerrCapture err;
+    const std::filesystem::path file = std::filesystem::path(MUSH2D_TEST_DATA) / ".." / ".." / "games" / "ikigai" / "project.json";
+    std::optional<Project> p = loadProject(file);
+    CHECK(p && p->id == "ikigai" && p->hasElement("Fire") && p->hasElement("Ice"));
+    CHECK(p && p->resources.size() == 2 && p->surfaces.empty());
+    CHECK(p && p->actions.count("jump") && p->actions.count("dropThrough") && p->actions.size() == 10);
+    CHECK(err.str().empty()); // no warning
 }
