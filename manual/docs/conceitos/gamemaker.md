@@ -2,7 +2,7 @@
 
 | GameMaker | Mush2D | Onde fica |
 |---|---|---|
-| **Object** (obj_player) | uma **classe** que herda de `GameObject` | `src/game/objects/*.hpp` |
+| **Object** (obj_player) | uma **classe** que herda de `GameObject` | `examples/iki_demo/src/iki_demo/objects/*.hpp` |
 | **Instance** | um objeto criado na cena com `scene.createObject<T>()` | — |
 | **Create Event** | `onCreate(Scene2D& scene)` | dentro da classe |
 | **Step Event** | `onStep(Scene2D& scene, float dt)` | dentro da classe |
@@ -20,14 +20,14 @@
 | `depth` | `sprite->layer` e `sprite->orderInLayer` | campo do objeto |
 | Máscara de colisão | `collider` (tamanho, `isTrigger`) | campo do objeto |
 | `event_inherited()` | `ClassePai::onCreate(scene)` | dentro da classe |
-| `keyboard_check` / `_pressed` / `_released` | `down` / `pressed` / `released` de um botão do `InputState` | `src/engine/platform/InputState.hpp` |
+| `keyboard_check` / `_pressed` / `_released` | `down("jump")` / `pressed("jump")` / `released("jump")` de uma ação do `ActionFrame` (declarada no `project.json`) | `src/engine/platform/Actions.hpp` |
 | **Room** | **sala do LDtk** (nível) | `assets/levels/showcase.ldtk` |
 | Room Editor | **LDtk** (editor externo) | — |
 | Tile layer / Instance layer | camadas de tiles / de entidades do LDtk | — |
 | Variáveis de criação da instância | **campos** da entidade no LDtk | — |
 | `persistent` | `persistent = true` | campo do objeto |
 | Sprite editor | Aseprite/GameMaker → atlas `.png` + `.json` | `assets/kaa/` |
-| Variável global | membro do jogo (`IkigaiGame`) ou `WorldState` | — |
+| Variável global | membro do jogo (`IkiDemoGame`) ou `WorldState` | — |
 | User event | evento do `EventBus` (`scene.events()`) | veja [Comunicação](../fazendo-o-jogo/comunicacao.md) |
 | Objeto com valores editáveis | **prefab** (`assets/prefabs/<nome>.prefab.json`) | `MUSH2D_EXPORT` |
 | Debugger de instâncias | janela "Cena (F1)" | veja [Painel F1](../fazendo-o-jogo/inspetor.md) |

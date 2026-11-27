@@ -62,7 +62,7 @@ void check(VkResult r, const char* what) {
 }
 
 VkShaderModule loadShader(VkDevice device, const char* name) {
-    auto path = assetPath(std::string("shaders/") + name + ".spv");
+    auto path = enginePath(std::string("shaders/") + name + ".spv"); // shaders belong to the engine, not to the game
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) throw std::runtime_error("SceneRenderer: shader nao encontrado: " + path.string());
     std::vector<char> code(static_cast<size_t>(file.tellg()));

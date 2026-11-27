@@ -2,11 +2,13 @@
 
 O guia agora faz parte do manual em `manual/`. Para abrir: `py -m mkdocs serve -f manual/mkdocs.yml` e depois `http://127.0.0.1:8000`. As páginas estão em `manual/docs/`.
 
+Os jogos são pastas (`examples/iki_demo/`, `games/ikigai/`), cada uma com `project.json`, `assets/` e `src/<id>/`. As teclas e os botões ficam no `project.json`, em `"actions"`. Veja `manual/docs/fazendo-o-jogo/criando-o-seu-jogo.md` e `projeto-em-dados.md`.
+
 ## O Iki e a máquina de estados (para quem está começando)
 
-O Iki é o personagem jogável (`src/game/objects/IkiObject.hpp/.cpp`). Ele nasce do arquivo `assets/prefabs/iki.prefab.json`, que guarda os números dele (velocidade, pulo, vida) e o visual (animações, poeira, piscar).
+O Iki é o personagem jogável (`examples/iki_demo/src/iki_demo/objects/IkiObject.hpp/.cpp`). Ele nasce do arquivo `assets/prefabs/iki.prefab.json`, que guarda os números dele (velocidade, pulo, vida) e o visual (animações, poeira, piscar).
 
-Uma **máquina de estados** é um jeito de organizar o comportamento: em cada momento o Iki está em um só estado (`idle` parado, `run` correndo, `jump` subindo, `fall` caindo, `hurt` machucado, `dead` morto, `wall` agarrado numa parede de gelo, `ceiling` pendurado num teto de gelo). Cada estado é uma classe pequena em `src/game/iki/states/`. A cada quadro, o jogo chama o `update` do estado atual. O `update` move o Iki e devolve o nome do próximo estado, ou `nullptr` para continuar no mesmo. No GameMaker, seria um `switch (state)` no Step Event, com um script por estado.
+Uma **máquina de estados** é um jeito de organizar o comportamento: em cada momento o Iki está em um só estado (`idle` parado, `run` correndo, `jump` subindo, `fall` caindo, `hurt` machucado, `dead` morto, `wall` agarrado numa parede de gelo, `ceiling` pendurado num teto de gelo). Cada estado é uma classe pequena em `examples/iki_demo/src/iki_demo/iki/states/`. A cada quadro, o jogo chama o `update` do estado atual. O `update` move o Iki e devolve o nome do próximo estado, ou `nullptr` para continuar no mesmo. No GameMaker, seria um `switch (state)` no Step Event, com um script por estado.
 
 Por que assim: para acrescentar uma habilidade, cria-se um estado novo sem mexer nos outros. O nome do estado também escolhe a animação no prefab e pode disparar efeitos (`"state:move:wall"` amassa o Iki quando ele agarra a parede).
 

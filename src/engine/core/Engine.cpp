@@ -1,10 +1,15 @@
 #include "engine/core/Engine.hpp"
+#include "engine/core/Launcher.hpp"
+#include "engine/core/FileWatcher.hpp"
 #include "engine/core/Paths.hpp"
+#include "engine/core/Project.hpp"
 #include "engine/gpu/Buffer.hpp"
 #include "engine/gpu/Image.hpp"
+#include "engine/tools/InputPanel.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <cmath>
+#include <cstdint>
 #include <stb_image_write.h>
 
 #include <imgui.h>
@@ -70,7 +75,10 @@ void saveScreenshot(GpuContext& gpu, GpuBuffer& buf, VkExtent2D e, const std::st
 }
 }
 
-void Engine::run(IGame& game) {
+void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) {
+    // The chosen game. Made after the launcher, destroyed when run returns (after the teardown).
+    std::unique_ptr<IGame> ownedGame;
+
     if (!glfwInit()) {
         throw std::runtime_error("Erro: falha ao inicializar GLFW.");
     }
@@ -81,7 +89,7 @@ void Engine::run(IGame& game) {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Mush2D Engine - Vulkan", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Mush2D", nullptr, nullptr); // the title gets the game name later
     if (!window) {
         glfwTerminate();
         throw std::runtime_error("Erro: falha ao criar a janela.");
@@ -94,12 +102,13 @@ void Engine::run(IGame& game) {
     Scene2D scene{};
     scene.setService(&camera); // the "shake" effect action reaches it
     scene.setService(&audio);  // the "sound" effect action
-    audio.init();              // no device: silent
-    audio.scan(sourceAssetPath("assets/audio"));
+    scene.setService(&input.actions()); // the named input actions: objects read buffer windows from it
+    audio.init();              // no device: silent (the game's sounds are scanned once the game is chosen)
     Bindless bindless;
     MaterialLibrary materials;
     SceneRenderer renderer;
-    EngineServices services{gpu, renderer, materials, input, camera, scene, audio};
+    SceneInspector inspector; // the F1 "Cena" window, drawn for every game
+    EngineServices services{gpu, renderer, materials, input, camera, scene, audio, inspector};
     VkDescriptorPool imguiPool = VK_NULL_HANDLE;
     bool imguiReady = false;
     auto teardown = [&] {
@@ -137,8 +146,6 @@ void Engine::run(IGame& game) {
         materials.init(gpu, bindless);
         renderer.init(gpu, bindless);
         gpu.onResize = [&](VkExtent2D extent) { renderer.resize(extent); };
-        game.init(services);
-
         // Dear ImGui (after attachWindow: it chains our scroll callback). Own descriptor pool, dynamic rendering.
         VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16};
         VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -169,11 +176,51 @@ void Engine::run(IGame& game) {
         ImGui_ImplVulkan_Init(&vkInit);
         imguiReady = true;
 
+        // The launcher runs before any game exists, in this same window. One call = one frame.
+        ImGuiIO& io = ImGui::GetIO();
+        FrameRunner runLauncherFrame = [&](const std::function<void()>& drawUi) {
+            glfwPollEvents();
+            if (glfwWindowShouldClose(window)) return false;
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+            drawUi();
+            ImGui::Render();
+            FrameContext* f = gpu.beginFrame();
+            if (!f) return true; // minimized: try again next frame
+            renderer.overlay = [](VkCommandBuffer cmd) { ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd); };
+            renderer.render(*f, camera, 0.0f); // an empty scene: just the background and the ImGui overlay
+            gpu.endFrame();
+            return true;
+        };
+        const GameEntry* entry = pickGame(games, enginePath("mush2d_last_game.json"), cliGame, runLauncherFrame);
+        if (!entry) { // the window was closed in the launcher
+            teardown();
+            return;
+        }
+        // The game's folder first: every assetPath / sourceAssetPath after this line (also in the game's
+        // constructor) reads that game's files.
+        setGameRoot(entry->dir);
+        glfwSetWindowTitle(window, ("Mush2D - " + entry->name).c_str());
+        ownedGame = entry->create();
+        IGame& game = *ownedGame;
+        // The game's project.json: a bad file only warns; the game then runs with an empty project.
+        const std::filesystem::path projectFile = sourceAssetPath("project.json");
+        // The same file the Debug hot reload watches (the source copy in Debug; in Release, the copy next to the exe).
+        if (std::optional<Project> project = loadProject(projectFile)) setActiveProject(std::move(*project));
+        input.actions().configure(activeProject().actions, activeProject().input); // the project's input actions
+#ifndef NDEBUG
+        FileWatcher projectWatcher; // Debug: edits to project.json apply while the game runs
+        projectWatcher.watch(projectFile, projectFile.parent_path(), ".no-such-suffix");
+#endif
+        audio.scan(sourceAssetPath("assets/audio")); // the game's own sounds
+        game.init(services);
+
         bool showPanel = std::getenv("MUSH2D_SHOW_PANEL") != nullptr; // F1 toggles
         bool f1Held = false;
-        ImGuiIO& io = ImGui::GetIO();
 
         int prevMode = -1;
+        std::uint64_t stepsAtLastPoll = 0; // scene.stepCount() at the previous input poll
         double lastTime = glfwGetTime();
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
@@ -187,12 +234,21 @@ void Engine::run(IGame& game) {
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
             input.beginFrame();
-            input.poll();
+            // A step ran since the last poll and it froze (hit stop), so it read no input: the actions' step frame
+            // keeps its presses. No step at all (a pause) keeps nothing.
+            const bool frozenUnread = scene.lastStepFrozen() && scene.stepCount() != stepsAtLastPoll;
+            stepsAtLastPoll = scene.stepCount();
+            input.poll(frozenUnread);
 
             double currentTime = glfwGetTime();
             float deltaTime = std::min(static_cast<float>(currentTime - lastTime), MAX_DELTA_TIME);
             lastTime = currentTime;
 
+#ifndef NDEBUG
+            if (projectWatcher.poll(deltaTime).file && reloadActiveProject(projectFile)) // keeps the old one on error
+                input.actions().configure(activeProject().actions, activeProject().input);
+#endif
+            inspector.setOpen(showPanel); // its "pausar o jogo" box only holds while the panel is open
             game.update(services, deltaTime);
 
             const int mode = renderer.settings().pixelMode;
@@ -207,6 +263,9 @@ void Engine::run(IGame& game) {
             audio.update(deltaTime);                                 // real time too
 
             if (showPanel) {
+                // Every game gets the scene inspector and the input controls; the game adds its own panels after.
+                inspector.draw(scene, scene.service<PrefabLibrary>());
+                drawInputPanel(input.actions());
                 game.onImGui(services);
             } else {
                 game.onHud(services); // the HUD would cover the panel's windows

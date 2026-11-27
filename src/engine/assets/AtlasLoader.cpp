@@ -89,7 +89,7 @@ TextureAtlas AtlasLoader::loadFromAsepriteJsonHash(
             frame.spriteSourceY = spriteSourceSize.value("y", 0);
         }
 
-        // GameMaker origin exported by tools/import_kaa.py; default = frame centre.
+        // The GameMaker origin, when the art import script in tools/ exported one; otherwise the frame centre.
         frame.pivotX = frame.w / 2;
         frame.pivotY = frame.h / 2;
         if (frameJson.contains("pivot")) {
@@ -138,4 +138,4 @@ TextureAtlas AtlasLoader::loadFromAsepriteJsonHash(
     }
 
     return atlas;
-}
+}

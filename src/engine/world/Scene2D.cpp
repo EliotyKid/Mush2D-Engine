@@ -297,6 +297,7 @@ std::vector<const GameObject*> Scene2D::findObjectsByTag(const std::string& tag)
 }
 
 void Scene2D::step(float deltaTime) {
+    ++stepCount_;
     frozenStep_ = hitstop_ > 0.0f;
     if (frozenStep_) { // only the hit stop's own timer runs
         hitstop_ -= deltaTime;

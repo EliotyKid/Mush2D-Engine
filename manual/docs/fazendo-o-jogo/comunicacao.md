@@ -32,7 +32,7 @@ for (GameObject* g : scene.findObjectsByTag("enemy")) { /* ... */ }
 Dê tags no `onCreate` com `addTag("enemy")`.
 
 !!! note "O player é achado pela tag `player`"
-    Não pergunte pelo tipo (`PlayerObject`): o player pode ser de outro tipo (o Iki). Para saber se `other` é o player, use `other.hasTag("player")`. Para chamar um método dele, use a interface `IPlayer` (`respawnAt`, `downPressedThisFrame`, ...): `dynamic_cast<IPlayer*>(&other)`, ou `scene.findObjectAs<IPlayer>(id)`. Veja [World](../sistemas/world.md).
+    Não pergunte pelo tipo (`PlayerObject`): o player pode ser de outro tipo (o Iki). Para saber se `other` é o player, use `other.hasTag("player")`. Para chamar um método dele, use a interface `IPlayer` (`respawnAt`, `interactPressed`, ...): `dynamic_cast<IPlayer*>(&other)`, ou `scene.findObjectAs<IPlayer>(id)`. Veja [World](../sistemas/world.md).
 
 ## Por evento
 

@@ -1,6 +1,6 @@
 # Painel F1 e inspetor
 
-`F1` abre duas janelas ImGui: o **painel de visual e desempenho** e a janela **"Cena (F1)"**. `MUSH2D_SHOW_PANEL=1` já abre o jogo com elas visíveis.
+`F1` abre as janelas ImGui. A engine desenha duas em **todo jogo**: **"Cena (F1)"** (o inspetor) e **"Projeto (F1)"** (os números de entrada do `project.json`, veja [Projeto em dados](projeto-em-dados.md)). Um jogo pode somar as suas no `onImGui`: o `iki_demo` soma o **painel de visual e desempenho** ("Look (F1)"). `MUSH2D_SHOW_PANEL=1` já abre o jogo com elas visíveis.
 
 ## Painel de visual e desempenho
 
@@ -27,6 +27,8 @@ Edita o **look** da região atual. Seções:
 ## Janela "Cena (F1)"
 
 A árvore de objetos ao vivo: objeto, filhos e componentes. Tem um filtro por nome ou tag e uma caixa "pausar o jogo".
+
+A pausa vale só com o painel aberto, e quem pausa é o jogo: no `update`, ele pula o passo da cena quando `s.inspector.pausing()` é verdadeiro (veja `games/ikigai/src/ikigai/IkigaiGame.cpp`). Os botões de salvar prefab só aparecem quando a cena tem o serviço `PrefabLibrary`.
 
 - Os atributos editados valem na hora.
 - Alguns (atlas, frame, variante, vida máxima, política de persistência) só aparecem depois de salvar e recarregar.

@@ -1,6 +1,6 @@
 # Objeto novo
 
-Um objeto é uma classe C++ em `src/game/objects/` mais um prefab em `assets/prefabs/`. A alavanca (`LeverObject.hpp`) é o modelo para quase todo objeto.
+Um objeto é uma classe C++ em `examples/iki_demo/src/iki_demo/objects/` mais um prefab em `assets/prefabs/`. A alavanca (`LeverObject.hpp`) é o modelo para quase todo objeto.
 
 ## A alavanca, linha por linha
 
@@ -82,7 +82,7 @@ Pinta a alavanca de vermelho ou verde. `onPrefabApplied` roda depois que o prefa
 ```cpp
     void onStep(Scene2D& scene, float) override {
         auto* player = scene.findObjectAs<IPlayer>(playerId);
-        if (player && player->downPressedThisFrame()) toggle();
+        if (player && player->interactPressed()) toggle();
         refresh();
     }
 ```
@@ -97,7 +97,7 @@ Step Event, a cada frame:
         if (other.hasTag("player")) playerId = other.id;
     }
 ```
-"Algo entrou na minha máscara." `hasTag("player")` pergunta "esse `other` é o player?", seja qual for o tipo dele. Se for, guarda o id dele. No `onStep`, `findObjectAs<IPlayer>` chega na interface `IPlayer`, que tem o `downPressedThisFrame()`.
+"Algo entrou na minha máscara." `hasTag("player")` pergunta "esse `other` é o player?", seja qual for o tipo dele. Se for, guarda o id dele. No `onStep`, `findObjectAs<IPlayer>` chega na interface `IPlayer`, que tem o `interactPressed()`.
 
 ```cpp
     void onTriggerExit(Scene2D&, GameObject& other) override {
@@ -139,7 +139,7 @@ As variáveis da instância, que só a classe enxerga. `state` fica `nullptr` nu
 
 ### Uma moeda que gira e some ao ser tocada
 
-1. Crie `src/game/objects/CoinObject.hpp`:
+1. Crie `examples/iki_demo/src/iki_demo/objects/CoinObject.hpp`:
 
     ```cpp
     #pragma once
@@ -180,12 +180,12 @@ As variáveis da instância, que só a classe enxerga. `state` fica `nullptr` nu
 4. Compile e rode. Nenhuma fábrica: a entidade `Coin` cria o prefab `coin` sozinha.
 
 !!! note "Registro automático"
-    Toda classe de `src/game/objects/*.hpp` é registrada só por existir: o CMake gera um `all_objects.cpp` que inclui cada um desses headers (`CONFIGURE_DEPENDS`, então o próximo `cmake --build` já acha o arquivo novo). Um objeto fora dessa pasta não é registrado assim.
+    Toda classe de `examples/iki_demo/src/iki_demo/objects/*.hpp` é registrada só por existir: o CMake gera um `iki_demo_objects.cpp` que inclui cada um desses headers (`CONFIGURE_DEPENDS`, então o próximo `cmake --build` já acha o arquivo novo). Um objeto fora dessa pasta não é registrado assim.
 
 Para a moeda não voltar depois de pega, dê a ela uma política de persistência (veja [Mundo e salas](mundo-e-salas.md#estado-do-mundo)). Isso só funciona porque ela sai por `removeTracked`: um `scene.destroy(id)` sozinho não grava nada no `WorldState`, e a moeda voltaria toda vez que a sala recarregasse.
 
 !!! warning "Triggers só com o player"
-    `onTriggerEnter` / `onTriggerExit` só disparam entre o **player** e um objeto com `isTrigger`. Quem verifica é o jogo (`IkigaiGame::processTriggerOverlaps`), não a cena. Dois objetos que não são o player não recebem esses eventos.
+    `onTriggerEnter` / `onTriggerExit` só disparam entre o **player** e um objeto com `isTrigger`. Quem verifica é o jogo (`IkiDemoGame::processTriggerOverlaps`), não a cena. Dois objetos que não são o player não recebem esses eventos.
 
 ### Herdar de outro objeto em C++
 

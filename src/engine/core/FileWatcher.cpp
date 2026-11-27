@@ -23,7 +23,8 @@ FileWatcher::Change FileWatcher::poll(float dt) {
 FileWatcher::Stamp FileWatcher::scan(const Stamp& previous) const {
     namespace fs = std::filesystem;
     std::error_code ec; // a file mid-save may vanish for a moment: skip it this round
-    Stamp now{fs::last_write_time(file_, ec), {}};
+    // min(), not {}: libstdc++'s file clock epoch is in 2174, so real times are negative.
+    Stamp now{fs::last_write_time(file_, ec), fs::file_time_type::min()};
     if (ec) return previous;
     try {
         for (const fs::directory_entry& f : fs::directory_iterator(dir_, ec)) {

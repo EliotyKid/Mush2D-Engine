@@ -1,6 +1,6 @@
 # Objetos do jogo
 
-Os objetos ficam em `src/game/objects/`. Cada entidade do LDtk cria o prefab de mesmo nome em `snake_case` (veja [Prefabs](fazendo-o-jogo/prefabs.md)). Um campo da entidade com o nome de um atributo muda o valor só naquela instância.
+Os objetos ficam em `examples/iki_demo/src/iki_demo/objects/`. Cada entidade do LDtk cria o prefab de mesmo nome em `snake_case` (veja [Prefabs](fazendo-o-jogo/prefabs.md)). Um campo da entidade com o nome de um atributo muda o valor só naquela instância.
 
 A lista completa de classes e atributos, com tipos e padrões, é gerada no Debug em `assets/prefabs/prefab_schema.json`.
 
@@ -38,7 +38,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 
 **Atributos:** os números de movimento e de dano estão na página [Iki: estados e habilidades](fazendo-o-jogo/iki.md#parametros).
 
-**Como nasce:** pela entidade `PlayerStart` (fábrica em código em `IkigaiGame.cpp`), que instancia `assets/prefabs/iki.prefab.json` uma vez só, com os pés na base da entidade. O Iki é `persistent` e não pertence a nenhuma sala.
+**Como nasce:** pela entidade `PlayerStart` (fábrica em código em `IkiDemoGame.cpp`), que instancia `assets/prefabs/iki.prefab.json` uma vez só, com os pés na base da entidade. O Iki é `persistent` e não pertence a nenhuma sala.
 
 **Casos de uso:**
 
@@ -46,7 +46,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 - Causar dano em código: emita `HitEvent{atacante, iki->id, DamageInfo{1, {-1.0f, 0.0f}}}` (quantidade, sentido do empurrão); o `Damageable` do Iki tira a vida e chama `hurt`, que é só a reação. No Debug, `J` faz isso.
 - Mudar a poeira, o squash ou o piscar: edite os arquivos em `assets/effects/` ou a seção `effects` do prefab.
 
-**Arquivos:** `src/game/objects/IkiObject.hpp/.cpp`, `src/game/iki/states/`, `assets/prefabs/iki.prefab.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/IkiObject.hpp/.cpp`, `examples/iki_demo/src/iki_demo/iki/states/`, `assets/prefabs/iki.prefab.json`.
 
 ## Player
 
@@ -72,10 +72,10 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 
 - Ajustar a altura do pulo ao vivo: `F1` → "Cena (F1)" → player → `jumpSpeed`. O ápice é `jumpSpeed² / (2 × |gravity|)` unidades.
 - Mandar o player para outro lugar em código: `player->teleport(posicao)`, ou `respawnAt(posicao)` pela interface `IPlayer`.
-- Saber se o player apertou ↓ neste frame (para interagir): `downPressedThisFrame()` (`IPlayer`), o mesmo que `interactPressed()`.
+- Saber se o player apertou a ação de interagir neste frame: `interactPressed()` (`IPlayer`).
 - Os outros objetos acham o player pela tag `player` e falam com ele pela interface `IPlayer`, nunca pelo tipo `PlayerObject`. Veja [Comunicação](fazendo-o-jogo/comunicacao.md).
 
-**Arquivos:** `src/game/objects/PlayerObject.hpp`, `src/game/spawners/Spawn.cpp`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/PlayerObject.hpp`, `examples/iki_demo/src/iki_demo/spawners/Spawn.cpp`.
 
 ## Slime
 
@@ -99,7 +99,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 - Um slime que volta depois de morto: campo `respawn` ligado.
 - Um slime mais lento num corredor curto: campos `moveSpeed` = `0.5` e `patrolDistance` = `1`.
 
-**Arquivos:** `src/game/objects/SlimeEnemy.hpp`, `assets/prefabs/slime.prefab.json`, `assets/prefabs/slime_fast.prefab.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/SlimeEnemy.hpp`, `assets/prefabs/slime.prefab.json`, `assets/prefabs/slime_fast.prefab.json`.
 
 ## Door
 
@@ -112,7 +112,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 - Uma porta de 1 × 3: estique a caixa da entidade `Door` no LDtk.
 - Abrir por código: `state->set(porta.entityIid, "open", 1.0)` no `WorldState`.
 
-**Arquivos:** `src/game/objects/DoorObject.hpp`, `assets/prefabs/door.prefab.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/DoorObject.hpp`, `assets/prefabs/door.prefab.json`.
 
 ## Lever
 
@@ -129,7 +129,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 - Ligar alavanca e porta: na entidade `Lever`, campo `door` (Entity ref) apontando para a entidade `Door`.
 - Duas alavancas para a mesma porta: as duas com `door` na mesma porta; cada uma inverte o estado.
 
-**Arquivos:** `src/game/objects/LeverObject.hpp`, `assets/prefabs/lever.prefab.json`. Explicada linha por linha em [Objeto novo](fazendo-o-jogo/objeto-novo.md).
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/LeverObject.hpp`, `assets/prefabs/lever.prefab.json`. Explicada linha por linha em [Objeto novo](fazendo-o-jogo/objeto-novo.md).
 
 ## Item
 
@@ -147,7 +147,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 - Uma vida que volta depois de um tempo: campo `respawn` ligado.
 - Um item de habilidade: `kind` = `ability.ice.stakes`. A flag não volta atrás na morte; o componente da habilidade lê `flag(kind)`.
 
-**Arquivos:** `src/game/objects/ItemObject.hpp`, `assets/prefabs/item.prefab.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/ItemObject.hpp`, `assets/prefabs/item.prefab.json`.
 
 ## Checkpoint
 
@@ -164,7 +164,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 - Um checkpoint antes de um trecho difícil: ponha a entidade `Checkpoint` no começo do trecho.
 - Um checkpoint que não pode ser reativado depois de passar por outro: `oneShot` ligado.
 
-**Arquivos:** `src/game/objects/CheckpointObject.hpp`, `assets/prefabs/checkpoint.prefab.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/CheckpointObject.hpp`, `assets/prefabs/checkpoint.prefab.json`.
 
 ## Critter
 
@@ -180,7 +180,7 @@ Use `flipX` para virar o animal.
 
 **Casos de uso:** uma raposa olhando para a esquerda: entidade `Critter` com `flipX` ligado.
 
-**Arquivos:** `src/game/objects/CritterObject.hpp`, `assets/prefabs/critter.prefab.json` (atlas `kaa_animals`).
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/CritterObject.hpp`, `assets/prefabs/critter.prefab.json` (atlas `kaa_animals`).
 
 ## Prop
 
@@ -198,7 +198,7 @@ Use `flipX` para virar o animal.
 - Uma árvore no fundo: `frame` = o frame da árvore, `depth` positivo (fica atrás e recebe névoa).
 - Uma silhueta na frente da câmera: `depth` negativo.
 
-**Arquivos:** `src/game/objects/PropObject.hpp`, `assets/prefabs/prop.prefab.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/PropObject.hpp`, `assets/prefabs/prop.prefab.json`.
 
 ## Crystal
 
@@ -212,7 +212,7 @@ Use `flipX` para virar o animal.
 
 **Casos de uso:** iluminar uma caverna: espalhe entidades `Crystal` com variantes diferentes. Cada uma traz a própria luz.
 
-**Arquivos:** `src/game/objects/CrystalObject.hpp`, `assets/prefabs/crystal.prefab.json`, `assets/prefabs/crystal_halo.prefab.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/CrystalObject.hpp`, `assets/prefabs/crystal.prefab.json`, `assets/prefabs/crystal_halo.prefab.json`.
 
 ## Bonecos de treino
 
@@ -275,7 +275,7 @@ As entidades têm 40 × 40 px.
 - Treinar o aparo com calma: no `F1`, aumente o `shootInterval` do atirador.
 - Um atirador de outro projétil: um prefab com `Projectile` e o nome dele em `projectile`.
 
-**Arquivos:** `src/game/objects/TrainingDummy.hpp`, `src/game/objects/DummyShooter.hpp`, `assets/prefabs/training_dummy*.prefab.json`, `assets/prefabs/dummy_bolt.prefab.json`, `assets/effects/dummy_hit.effect.json`, `assets/effects/dummy_break.effect.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/TrainingDummy.hpp`, `examples/iki_demo/src/iki_demo/objects/DummyShooter.hpp`, `assets/prefabs/training_dummy*.prefab.json`, `assets/prefabs/dummy_bolt.prefab.json`, `assets/effects/dummy_hit.effect.json`, `assets/effects/dummy_break.effect.json`.
 
 ## Teleport e Wall
 
@@ -284,7 +284,7 @@ Usados só nas cenas antigas montadas em código (Sandbox, Test), sem prefab. S�
 - **Teleport:** trigger que leva o player para `targetPosition` (opção `oneShot`). Tags: `trigger`, `teleport`.
 - **Wall:** caixa sólida de tamanho `size`. Tag: `wall`.
 
-**Arquivos:** `src/game/objects/TeleportObject.hpp`, `src/game/objects/WallObject.hpp`, `src/game/scenes/`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/TeleportObject.hpp`, `examples/iki_demo/src/iki_demo/objects/WallObject.hpp`, `examples/iki_demo/src/iki_demo/scenes/`.
 
 ---
 

@@ -3,6 +3,7 @@
 #include "engine/world/GameObject.hpp"
 
 #include <set>
+#include <stdexcept>
 
 namespace {
 
@@ -71,9 +72,18 @@ const char* propTypeName(PropType type) {
     return "?";
 }
 
-TypeInfo& TypeRegistry::add(const std::string& name) {
+TypeInfo& TypeRegistry::add(const std::string& name, const std::type_info* cppType) {
+    if (cppType) {
+        auto it = types_.find(name);
+        // Same name, different C++ class (for example two games with a "Player"): refuse before touching it.
+        if (it != types_.end() && it->second.cppType && *it->second.cppType != *cppType)
+            throw std::runtime_error("TypeRegistry: type name \"" + name + "\" is registered twice, by C++ classes " +
+                                     it->second.cppType->name() + " and " + cppType->name() +
+                                     ". Type names must be unique across the compiled games.");
+    }
     TypeInfo& t = types_[name];
     t.name = name;
+    if (cppType) t.cppType = cppType; // remembers the owner, for the check above
     return t;
 }
 

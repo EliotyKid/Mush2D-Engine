@@ -1,6 +1,7 @@
 #include "engine/tools/SceneInspector.hpp"
 
 #include "engine/world/PrefabSave.hpp"
+#include "engine/world/Resources.hpp"
 #include "engine/world/StateMachine.hpp"
 
 #include <imgui.h>
@@ -77,7 +78,7 @@ bool propWidget(void* obj, const PropertyInfo& p) {
 
 } // namespace
 
-void SceneInspector::draw(Scene2D& scene, PrefabLibrary& prefabs, bool& pause) {
+void SceneInspector::draw(Scene2D& scene, PrefabLibrary* prefabs) {
     ImGui::SetNextWindowPos({400, 10}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({380, 620}, ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Cena (F1)")) {
@@ -85,7 +86,7 @@ void SceneInspector::draw(Scene2D& scene, PrefabLibrary& prefabs, bool& pause) {
         return;
     }
     std::erase_if(edited_, [&](const auto& e) { return !scene.findObject(e.first); }); // objects gone (hot reload)
-    ImGui::Checkbox("pausar o jogo", &pause);
+    ImGui::Checkbox("pausar o jogo", &pause_); // the game reads it through pausing()
     ImGui::InputText("filtro (nome ou tag)", filter_, sizeof filter_);
 
     ImGui::BeginChild("arvore", {0, ImGui::GetContentRegionAvail().y * 0.4f}, ImGuiChildFlags_Borders);
@@ -130,7 +131,7 @@ void SceneInspector::drawNode(Scene2D& scene, GameObject& o) {
     ImGui::PopID();
 }
 
-void SceneInspector::drawSelected(GameObject& o, PrefabLibrary& prefabs) {
+void SceneInspector::drawSelected(GameObject& o, PrefabLibrary* prefabs) {
     ImGui::SeparatorText(labelOf(o).c_str());
     ImGui::Text("prefab: %s", o.prefab.empty() ? "(nenhum: criado em codigo ou filho inline)" : o.prefab.c_str());
     ImGui::Text("entityIid: %s", o.entityIid.empty() ? "-" : o.entityIid.c_str());
@@ -160,6 +161,17 @@ void SceneInspector::drawSelected(GameObject& o, PrefabLibrary& prefabs) {
         ImGui::PushID(c.get());
         if (ImGui::TreeNode("comp", "%s (ao vivo, nao salvo)", typeOf(*c).name.c_str())) {
             for (const PropertyInfo* p : typeRegistry().allProps(typeOf(*c).name)) propWidget(static_cast<Component*>(c.get()), *p);
+            // Resources keeps its bars in a list (not exported attributes): one set of controls per bar.
+            if (auto* resources = dynamic_cast<Resources*>(c.get())) {
+                for (ResourceBarDef& bar : resources->bars()) {
+                    ImGui::PushID(bar.name.c_str());
+                    ImGui::SeparatorText(bar.name.c_str());
+                    ImGui::DragFloat("max", &bar.max, 0.5f, 1.0f, 100000.0f);
+                    ImGui::DragFloat("regenPerSecond", &bar.regenPerSecond, 0.1f, 0.0f, 100000.0f);
+                    ImGui::DragFloat("regenDelay", &bar.regenDelay, 0.05f, 0.0f, 100.0f);
+                    ImGui::PopID();
+                }
+            }
             ImGui::TreePop();
         }
         ImGui::PopID();
@@ -169,12 +181,13 @@ void SceneInspector::drawSelected(GameObject& o, PrefabLibrary& prefabs) {
         ImGui::TreePop();
     }
 
+    if (!prefabs) return; // a game without a PrefabLibrary service: nothing to save into
     ImGui::Separator();
     std::string error;
     const bool canSave = canSaveToPrefab(o);
     ImGui::BeginDisabled(!canSave);
     if (ImGui::Button("Salvar no prefab"))
-        status_ = saveToSourcePrefab(prefabs, o, edited, error) ? "Salvo em " + o.prefab + ".prefab.json" : error;
+        status_ = saveToSourcePrefab(*prefabs, o, edited, error) ? "Salvo em " + o.prefab + ".prefab.json" : error;
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("%s%s", canSave ? "Grava no prefab de origem so os atributos editados que diferem da base.\n"
@@ -185,6 +198,6 @@ void SceneInspector::drawSelected(GameObject& o, PrefabLibrary& prefabs) {
                           canSave && o.parent() ? "\nFilho: campos definidos na entrada do pai vencem o prefab." : "");
     ImGui::InputText("nome do novo prefab", newPrefab_, sizeof newPrefab_);
     if (ImGui::Button("Salvar como novo prefab"))
-        status_ = saveAsNewPrefab(prefabs, o, newPrefab_, edited, error) ? std::string("Criado ") + newPrefab_ + ".prefab.json" : error;
+        status_ = saveAsNewPrefab(*prefabs, o, newPrefab_, edited, error) ? std::string("Criado ") + newPrefab_ + ".prefab.json" : error;
     ImGui::SetItemTooltip("Cria <nome>.prefab.json com base = o prefab atual e so os atributos editados que diferem dele.");
 }

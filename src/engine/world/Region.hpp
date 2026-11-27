@@ -18,7 +18,7 @@ class SpriteBatch;
 // One background image. offset = world position of copy 0's top-left corner (Y up), anchored at the world
 // origin: with the camera at 0 it shows exactly there. repeatX tiles copies every image width.
 struct RegionLayer {
-    std::string image; // relative to the executable dir (assetPath), e.g. "assets/kaa/parallax/bg1.png"
+    std::string image; // relative to the executable dir (assetPath), e.g. "assets/art/parallax/bg1.png"
     float depth;
     glm::vec2 parallax;
     glm::vec2 offset;

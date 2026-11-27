@@ -77,9 +77,9 @@ void Hurtbox::onDetach(GameObject&, Scene2D&) {
 namespace {
 
 // Effect trigger on `o` at its position; direction mirrors the particles.
-void fireHit(Scene2D& scene, GameObject& o, const char* key, float strength, int direction) {
+void triggerHit(Scene2D& scene, GameObject& o, const char* key, float strength, int direction) {
     if (EffectTriggers* fx = o.getComponent<EffectTriggers>(); fx && fx->enabled && !fx->removing())
-        fx->fire(o, scene, key, strength, o.world().position, direction);
+        fx->trigger(o, scene, key, strength, o.world().position, direction);
 }
 
 } // namespace
@@ -133,7 +133,7 @@ void Damageable::take(GameObject& owner, Scene2D& scene, const HitEvent& hit) {
 
     HitResult result = guard ? guard(info) : HitResult::Hit;
     if (result == HitResult::Parried && !info.parryable) result = HitResult::Blocked; // spec D3 decision 3
-    if (result == HitResult::Blocked) return fireHit(scene, owner, "hit:blocked", 1.0f, dir);
+    if (result == HitResult::Blocked) return triggerHit(scene, owner, "hit:blocked", 1.0f, dir);
     if (result == HitResult::Parried) {
         if (GameObject* src = scene.findObject(info.source))
             if (Stunned* stun = src->getComponent<Stunned>()) stun->start(parryStun);
@@ -142,16 +142,16 @@ void Damageable::take(GameObject& owner, Scene2D& scene, const HitEvent& hit) {
                 const Hurtbox* mine = owner.getComponent<Hurtbox>();
                 p->reflect(owner.id, mine ? mine->team : p->team);
             }
-        return fireHit(scene, owner, "hit:parried", 1.0f, dir);
+        return triggerHit(scene, owner, "hit:parried", 1.0f, dir);
     }
 
     const int amount = finalAmount(info);
-    if (amount == 0) return fireHit(scene, owner, "hit:immune", 1.0f, dir);
+    if (amount == 0) return triggerHit(scene, owner, "hit:immune", 1.0f, dir);
     if (resources) resources->damage(amount);
     invulnerable_ = invulnerableTime;
     scene.events().emit(DamageTaken{owner.id, info, amount});
-    fireHit(scene, owner, "hit:taken", float(amount), dir);
+    triggerHit(scene, owner, "hit:taken", float(amount), dir);
     GameObject* dealer = scene.findObject(info.source);
     if (!dealer) dealer = scene.findObject(hit.attacker);
-    if (dealer) fireHit(scene, *dealer, "hit:dealt", float(amount), dealer->flipX ? -1 : 1);
+    if (dealer) triggerHit(scene, *dealer, "hit:dealt", float(amount), dealer->flipX ? -1 : 1);
 }

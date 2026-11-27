@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-// Every Aseprite atlas (JSON hash) found under a folder, by file name: assets/kaa/characters/kaa_animals.json
-// -> "kaa_animals". Animations are its frameTags, frames its frame names. Registered as a Scene2D service, so
+// Every Aseprite atlas (JSON hash) found under a folder, by file name: assets/art/characters/hero_animals.json
+// -> "hero_animals". Animations are its frameTags, frames its frame names. Registered as a Scene2D service, so
 // prefabs and SpriteAnimator resolve atlas names and "atlas/frame" / "atlas/animation" refs.
 class AssetRegistry {
 public:

@@ -24,7 +24,7 @@ from pathlib import Path
 from gen_showcase import field_def, ground_tile
 from ldtk_json import dumps
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "examples" / "iki_demo"  # the demo game's folder (assets/ lives there)
 LDTK = ROOT / "assets" / "levels" / "showcase.ldtk"
 GRID, TGRID = 16, 4
 LAYER = "Terrain_d0"

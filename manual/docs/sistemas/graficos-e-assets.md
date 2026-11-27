@@ -48,4 +48,4 @@ Diminua `followSmoothness` (segue mais devagar) ou mude `followOffset` para most
 
 ## Arquivos
 
-`src/engine/graphics/Camera2D.*`, `SpriteCatalog.hpp`, `AnimationCatalog.hpp`; `src/engine/assets/AssetRegistry.*`, `AtlasLoader.*`, `TextureAtlas.*`, `AtlasTypes.hpp`; `src/game/assets/` (ids e registro do jogo).
+`src/engine/graphics/Camera2D.*`, `SpriteCatalog.hpp`, `AnimationCatalog.hpp`; `src/engine/assets/AssetRegistry.*`, `AtlasLoader.*`, `TextureAtlas.*`, `AtlasTypes.hpp`; `examples/iki_demo/src/iki_demo/assets/` (ids e registro do jogo).

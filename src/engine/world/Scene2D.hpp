@@ -124,6 +124,8 @@ public:
     float timeScale() const { return hitstop_ > 0.0f ? 0.0f : 1.0f; }
     // The last step was frozen (it ran nothing): input read for it must wait for the next step.
     bool lastStepFrozen() const { return frozenStep_; }
+    // How many times step() has run (frozen steps too). Tells whether any step ran since you last looked.
+    std::uint64_t stepCount() const { return stepCount_; }
 
     void step(float deltaTime);
     void lateStep(float deltaTime);
@@ -187,7 +189,8 @@ private:
     };
 
     template<typename TScene>
-    static auto findLive(TScene& scene, GameObjectId id) {
+    // Explicit return type: GCC rejects deducing `auto` here when findObject uses it before this point.
+    static auto findLive(TScene& scene, GameObjectId id) -> decltype(scene.find(id)) {
         auto* object = scene.find(id);
         return object && !object->pendingDestroy_ ? object : nullptr;
     }
@@ -216,6 +219,7 @@ private:
     bool componentsDirty_ = false; // some component awaits removal
     bool gridFresh_ = false;       // the last flush synced the grid, so step() can skip its own sync
     float hitstop_ = 0.0f;         // real seconds of hit stop left
+    std::uint64_t stepCount_ = 0;  // step() calls so far
     bool frozenStep_ = false;      // the last step was frozen, so lateStep skips too
     EventBus events_;
     std::unordered_map<std::type_index, void*> services_;

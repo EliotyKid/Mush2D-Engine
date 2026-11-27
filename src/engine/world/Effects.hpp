@@ -16,11 +16,11 @@
 // scaleByStrength multiplies the hitstop seconds, the shake amplitude and duration and the flash duration.
 //
 // A prefab's "effects" section maps triggers to lists of items (an effect name or an inline action):
-//     "effects": { "state:move:wall": ["ice_stake", {"squash": [1.15, 0.9]}], "anim:step": ["run_dust"],
+//     "effects": { "state:move:wall": ["dust_burst", {"squash": [1.15, 0.9]}], "anim:step": ["run_dust"],
 //                  "move:landed": ["land_dust"] }
 // The EffectTriggers component listens to StateChanged, AnimationEvent and MovementCue for its owner and
 // creates the ParticleEmitter, SquashStretch, Blink and Flash it needs. Problems are warnings on stderr, once each.
-// Combat (Damageable, Combat.hpp) fires "hit:taken" and "hit:dealt" (strength = final damage), "hit:immune",
+// Combat (Damageable, Combat.hpp) triggers "hit:taken" and "hit:dealt" (strength = final damage), "hit:immune",
 // "hit:blocked" and "hit:parried" (strength 1) at the object's position.
 
 #include "engine/world/Component.hpp"
@@ -121,14 +121,14 @@ private:
     float duration_ = 1.0f, remaining_ = 0.0f;
 };
 
-// Prefab "effects": trigger key -> items, played when the owner's trigger fires.
+// Prefab "effects": trigger key -> items, played when the owner's trigger goes off.
 class EffectTriggers : public Component {
     MUSH2D_COMPONENT(EffectTriggers)
 public:
     std::map<std::string, std::vector<nlohmann::json>> triggers;
 
-    // Fires a trigger by key (also what the events do).
-    void fire(GameObject& owner, Scene2D& scene, const std::string& key, float strength,
+    // Runs a trigger by key (also what the events do).
+    void trigger(GameObject& owner, Scene2D& scene, const std::string& key, float strength,
               std::optional<glm::vec2> pos, int direction);
     // An action with "delay": played by onStep once `delay` seconds have passed.
     void queue(nlohmann::json action, float delay, float strength, glm::vec2 pos, int direction, int depth = 0);

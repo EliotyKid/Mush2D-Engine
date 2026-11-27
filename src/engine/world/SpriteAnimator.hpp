@@ -40,7 +40,7 @@ public:
     MUSH2D_EXPORT(std::string, action, "")
     std::map<std::string, std::string> animations;
     // animation -> {frame index within the animation (first frame = 0) -> event name}; prefab "animationEvents".
-    // Fires every time the frame is entered: each loop, and for frames a long step skips past.
+    // Runs every time the frame is entered: each loop, and for frames a long step skips past.
     std::map<std::string, std::map<int, std::string>> animationEvents;
 
     // Restarts the animation when the state changes.

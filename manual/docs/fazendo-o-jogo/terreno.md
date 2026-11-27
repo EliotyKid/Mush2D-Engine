@@ -11,7 +11,7 @@ A entidade `Terrain` faz chão livre em qualquer ângulo. Ela fica na camada `Te
 | `closed` | polígono fechado. Desligado: superfície preenchida para baixo até `thickness` |
 | `thickness` | espessura em unidades (padrão 3; 32 px = 1 u) |
 | `oneWay` | atravessável: só os trechos virados para cima colidem, como um galho |
-| `iceClimb` | gelo escalável: todos os segmentos recebem a superfície `IceClimb` (as estacas de gelo do Iki agarram) |
+| `iceClimb` | flag de superfície: o nome vem do `terrainFlag` de uma superfície do `project.json` (no `iki_demo`, `iceClimb`); todos os segmentos recebem essa superfície |
 | `style` | `forest` ou `cave` (texturas em `assets/terrain/<style>/`). Um estilo sem texturas usa `forest` e avisa uma vez |
 
 A engine gera a colisão (`CollisionWorld`) e o visual (borda, lados e preenchimento, por `TerrainMesh`) a partir da linha.

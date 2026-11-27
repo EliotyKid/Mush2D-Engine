@@ -1,35 +1,45 @@
 #pragma once
 
+#include "engine/core/Project.hpp"
 #include "engine/world/Component.hpp"
-#include "engine/world/Damage.hpp"
 #include "engine/world/GameObject.hpp"
+
+#include <initializer_list>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 // Events on scene.events(), delivered at the next flush.
 struct HealthChanged { GameObjectId id; int health; int max; };
-struct EnergyChanged { GameObjectId id; Element element; float value; float max; };
+struct EnergyChanged { GameObjectId id; std::string bar; float value; float max; }; // `bar` is the bar's name
 struct Died { GameObjectId id; }; // health reached 0
 
-// Health and the ice / fire energies. Starts full. Each energy regenerates regenPerSecond once regenDelay has
-// passed since that element's last spend. onStep calls update(); the owner does not call it.
+// Health and the named resource bars the game declares in project.json. Starts full. Each bar regenerates its
+// regenPerSecond once its regenDelay has passed since its last spend. onStep calls update(); the owner does not.
+// onAttach copies the bars from the active project; a prefab "resources" section can change them per bar.
 class Resources : public Component {
     MUSH2D_COMPONENT(Resources)
 public:
     MUSH2D_EXPORT(int, maxHealth, 5)
-    MUSH2D_EXPORT(float, maxIce, 100.0f)
-    MUSH2D_EXPORT(float, maxFire, 100.0f)
-    MUSH2D_EXPORT(float, regenPerSecond, 10.0f)
-    MUSH2D_EXPORT(float, regenDelay, 1.0f)
 
     int health() const;
-    float energy(Element element) const; // 0 for Element::None
+    float energy(std::string_view bar) const; // what is left in the bar; 0 for an unknown bar
+    float maxOf(std::string_view bar) const;  // the bar's max; 0 for an unknown bar
 
     void damage(int amount); // ignored once dead
     void heal(int amount);
-    void refill(); // health and both energies back to the max (respawn)
+    void refill(); // health and every bar back to the max (respawn)
 
-    // False, spending nothing, when there is not enough energy or the amount is negative. 0 is true, no effect.
-    bool spend(Element element, float amount);
-    bool spendBoth(float ice, float fire); // both or neither; a 0 side is left alone
+    // False, spending nothing, when the bar is unknown, the amount is negative or there is not enough energy.
+    // An amount of 0 on a known bar is true and does nothing.
+    bool spend(std::string_view bar, float amount);
+    // Spends every cost, or nothing when any one of them would fail (a 0 cost is left alone).
+    bool spendAll(std::initializer_list<std::pair<std::string_view, float>> costs);
+
+    // The bars (name, element, max, regen). The non-const one lets the F1 panel edit them live.
+    const std::vector<ResourceBarDef>& bars() const { return bars_; }
+    std::vector<ResourceBarDef>& bars() { return bars_; }
 
     void update(Scene2D& scene, float dt);
 
@@ -37,14 +47,15 @@ public:
     void onStep(GameObject&, Scene2D& scene, float dt) override { update(scene, dt); }
 
 private:
-    float max(Element element) const;
+    int indexOf(std::string_view bar) const; // -1 when there is no such bar
     void emitHealth();
-    void emitEnergy(Element element);
+    void emitEnergy(int index);
 
     // Stored as what is missing, so a max set after attaching (prefab, inspector) still starts full.
     int lost_ = 0;
-    float used_[2] = {0.0f, 0.0f};                    // Ice, Fire
-    float sinceSpend_[2] = {1e9f, 1e9f};
+    std::vector<ResourceBarDef> bars_; // copied from the project in onAttach
+    std::vector<float> used_;          // per bar: how much is missing
+    std::vector<float> sinceSpend_;    // per bar: seconds since its last spend
     Scene2D* scene_ = nullptr;
     GameObjectId owner_ = InvalidGameObjectId;
 };

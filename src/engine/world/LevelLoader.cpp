@@ -1,11 +1,13 @@
 #include "engine/world/LevelLoader.hpp"
 
+#include "engine/core/Project.hpp"
 #include "engine/world/PersistentComponent.hpp"
 #include "engine/world/Prefab.hpp"
 #include "engine/world/TerrainMesh.hpp"
 #include "engine/world/World.hpp"
 
 #include <cstdio>
+#include <map>
 #include <set>
 
 namespace {
@@ -99,7 +101,12 @@ void LevelLoader::loadRoom(const LdtkLevel& level, EngineServices& services, Mat
         }
 
         if (L.identifier == "Collision" && L.type == "IntGrid") {
-            std::vector<Segment> s = segmentsFromIntGrid(L, level.worldPx, level.pxSize, level.iid);
+            // IntGrid values named like a project surface (SurfaceDef::intGrid) get that surface.
+            std::map<int, SurfaceId> valueSurface;
+            for (const auto& [value, name] : L.intGridNames)
+                for (size_t i = 0; i < activeProject().surfaces.size(); ++i)
+                    if (!name.empty() && activeProject().surfaces[i].intGrid == name) valueSurface[value] = SurfaceId(i + 1);
+            std::vector<Segment> s = segmentsFromIntGrid(L, level.worldPx, level.pxSize, level.iid, valueSurface);
             segments.insert(segments.end(), s.begin(), s.end());
         }
         for (const LdtkEntity& e : L.entities) {

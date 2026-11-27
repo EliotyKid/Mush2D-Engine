@@ -58,9 +58,9 @@ void emitMovementCues(Scene2D& scene, const GameObject& obj, const MoveResult& p
 // most maxPush away (straight up first); a free body stays. False (body unchanged) when there is none.
 bool depenetrate(Body& body, const CollisionQuery& query, float maxPush = 2.0f);
 
-struct SurfaceHit { bool hit = false; Surface surface = Surface::Default; };
+struct SurfaceHit { bool hit = false; SurfaceId surface = DefaultSurface; };
 // A wall (not ground, not ceiling) facing the body within `reach` of its side (-1 left, +1 right), or a
-// ceiling (normal.y < -0.5) within `reach` above it. Works while the body stands still beside it. IceClimb
-// wins when both surfaces touch; dynamic solids count as Default.
+// ceiling (normal.y < -0.5) within `reach` above it. Works while the body stands still beside it. A
+// non-default surface wins when it touches; dynamic solids count as the default surface.
 SurfaceHit probeWall(const Body& body, int side, const CollisionQuery& query, float reach = 0.05f);
 SurfaceHit probeCeiling(const Body& body, const CollisionQuery& query, float reach = 0.05f);

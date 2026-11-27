@@ -34,7 +34,7 @@ Leia primeiro: [docs/VISAO.md](docs/VISAO.md) (o jogo e os sistemas) e [docs/ROA
 
 ## Cautelas
 
-- Não alterar o conteúdo do `assets/levels/showcase.ldtk` sem o autor pedir. Mudanças que forem pedidas são feitas por scripts idempotentes em `tools/`, só com acréscimos.
+- Não alterar o conteúdo do `examples/iki_demo/assets/levels/showcase.ldtk` sem o autor pedir. Mudanças que forem pedidas são feitas por scripts idempotentes em `tools/`, só com acréscimos.
 - O player não emite luz.
 - Não usar `git stash`: o OneDrive trava os arquivos no Windows.
 - Não fazer push sem pedido.
@@ -52,15 +52,10 @@ Para conferir o jogo rodando, use uma captura com a variável `MUSH2D_SCREENSHOT
 
 ## Estado atual
 
-- **Feito:** base técnica, D1 (prefabs e inspetor), D2 (movimento, estados, efeitos), D3 (combate, peso, áudio). Tudo está no `main`.
-- **Próximo:** **E0**. Separar engine e jogo, e mover os vazamentos para dados:
-  - o `Element` fixo;
-  - `maxIce`/`maxFire` no `Resources`;
-  - `Surface::IceClimb`;
-  - os botões fixos do `InputState`.
-
-  Criar `examples/iki_demo/` e o modelo `games/ikigai/`, com um personagem que anda e pula. Começar pela conversa de design.
-- **Pendente no Arch:**
-  - build e testes no Linux (o áudio nunca foi compilado no Linux);
+- **Feito:** base técnica, D1 (prefabs e inspetor), D2 (movimento, estados, efeitos), D3 (combate, peso, áudio) no `main`. **E0** (engine e jogo separados) feita no branch `feat/e0-base`, ainda sem merge: precisa da aprovação do autor.
+- **Pastas:** `src/engine/` (engine), `src/app/` (o programa `Mush2D`), `examples/iki_demo/` (exemplo), `games/ikigai/` (o jogo do autor). Cada jogo tem `project.json`, `assets/` e `src/<id>/`.
+- **Próximo:** **E1**, conforme o `docs/ROADMAP.md`. Começar pela conversa de design.
+- **Pendente:**
+  - build e testes no Windows (MSVC);
   - redimensionar a janela sem erros de validação;
   - medir a RTX 2060 Super.

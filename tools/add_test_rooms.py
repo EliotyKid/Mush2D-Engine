@@ -23,7 +23,7 @@ from pathlib import Path
 from gen_showcase import field_def, ground_tile
 from migrate_showcase_parallax import dump_like
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "examples" / "iki_demo"  # the demo game's folder (assets/ lives there)
 LDTK = ROOT / "assets" / "levels" / "showcase.ldtk"
 GRID = 16
 CW, CH = 64, 30  # cells per test room (1024 x 480 px)

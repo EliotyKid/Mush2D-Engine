@@ -52,6 +52,8 @@ nav:
       - Ciclo do jogo: conceitos/ciclo-do-jogo.md
       - C++ mínimo: conceitos/cpp-minimo.md
   - Fazendo o jogo:
+      - Criando o seu jogo: fazendo-o-jogo/criando-o-seu-jogo.md
+      - Projeto em dados: fazendo-o-jogo/projeto-em-dados.md
       - Mundo e salas: fazendo-o-jogo/mundo-e-salas.md
       - Colisão e rampas: fazendo-o-jogo/colisao-e-rampas.md
       - Terreno: fazendo-o-jogo/terreno.md

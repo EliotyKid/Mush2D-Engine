@@ -40,7 +40,7 @@ O jogo registra dois serviços da cena: `CombatWorld` (as hurtboxes) e `Projecti
 |---|---|---|
 | `size`, `offset` | 1 × 1, 0 | a caixa do golpe |
 | `damage` | 1 | dano antes das fraquezas |
-| `element` | `Ice` | elemento do golpe |
+| `element` | vazio (sem elemento) | nome de elemento do `project.json` |
 | `knockback` | 0 | força do empurrão, para quem reage ao dano |
 | `team` | `"player"` | o time de quem ataca |
 | `parryable` | verdadeiro | falso: o aparo vira só bloqueio |
@@ -96,6 +96,7 @@ Os efeitos tocam na posição do objeto, espelhados pela direção do golpe. `hi
 "multipliers": { "Ice": 2.0, "Fire": 0.5 }
 ```
 
+- Os elementos são nomes escritos no `project.json` do jogo (`"elements": ["Ice", "Fire"]`). Nomes repetidos ou vazios dão erro e o arquivo não é carregado. No Debug, salvar o `project.json` recarrega a lista; se tiver erro, o jogo avisa e continua com a lista anterior.
 - Multiplica o dano do elemento. Elemento ausente = 1.
 - Arredonda para o inteiro mais próximo, com mínimo 1 se o multiplicador for maior que 0: 1 × 2 = 2, 1 × 0,5 = 1, 2 × 0,5 = 1.
 - 0 = imune: sem dano, com o gatilho `hit:immune`.
@@ -121,7 +122,7 @@ Os efeitos tocam na posição do objeto, espelhados pela direção do golpe. `hi
 | `speed` | 10 u/s | velocidade |
 | `range` | 8 u | distância máxima; depois some, sem quebrar |
 | `team` | `"enemy"` | trocado pelo `spawn` |
-| `damage`, `element`, `parryable` | 1, `Ice`, verdadeiro | o golpe |
+| `damage`, `element`, `parryable` | 1, vazio, verdadeiro | o golpe |
 | `size` | 0,25 × 0,25 | a caixa que acerta as hurtboxes |
 
 - Anda em linha reta e bate nos segmentos do terreno (`CollisionWorld`). Os de mão única deixam passar.

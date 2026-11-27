@@ -17,7 +17,7 @@ from PIL import Image
 
 from import_kaa import make_normal_map
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "examples" / "iki_demo"  # the demo game's folder (assets/ lives there)
 TILESETS = ROOT / "assets" / "kaa" / "tilesets"
 OUT = ROOT / "assets" / "terrain"
 W, H, CAP, SOLID = 32, 16, 6, 12

@@ -8,48 +8,12 @@ void GlfwInput::attachWindow(GLFWwindow* newWindow) {
     glfwGetCursorPos(window, &state.mouseX, &state.mouseY);
 }
 
+// Clears the per-frame deltas (mouse motion, wheel). The button edges are recomputed by poll().
 void GlfwInput::beginFrame() {
     state.scrollDeltaX = 0.0;
     state.scrollDeltaY = 0.0;
     state.mouseDeltaX = 0.0;
     state.mouseDeltaY = 0.0;
-
-    state.moveLeft.pressed = false;
-    state.moveLeft.released = false;
-    state.moveRight.pressed = false;
-    state.moveRight.released = false;
-    state.moveUp.pressed = false;
-    state.moveUp.released = false;
-    state.moveDown.pressed = false;
-    state.moveDown.released = false;
-
-    state.cameraLeft.pressed = false;
-    state.cameraLeft.released = false;
-    state.cameraRight.pressed = false;
-    state.cameraRight.released = false;
-    state.cameraUp.pressed = false;
-    state.cameraUp.released = false;
-    state.cameraDown.pressed = false;
-    state.cameraDown.released = false;
-
-    state.zoomIn.pressed = false;
-    state.zoomIn.released = false;
-    state.zoomOut.pressed = false;
-    state.zoomOut.released = false;
-
-    state.jump.pressed = false;
-    state.jump.released = false;
-    state.dash.pressed = false;
-    state.dash.released = false;
-    state.hit.pressed = false;
-    state.hit.released = false;
-    state.toggleFollow.pressed = false;
-    state.toggleFollow.released = false;
-    state.respawn.pressed = false;
-    state.respawn.released = false;
-
-    state.dragCamera.pressed = false;
-    state.dragCamera.released = false;
 }
 
 void GlfwInput::updateButton(ButtonState& button, bool currentDown, bool& previousDown) {
@@ -59,15 +23,10 @@ void GlfwInput::updateButton(ButtonState& button, bool currentDown, bool& previo
     previousDown = currentDown;
 }
 
-void GlfwInput::poll() {
+void GlfwInput::poll(bool keepStepEdges) {
     if (!window) {
         return;
     }
-
-    updateButton(state.moveLeft, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS, previousMoveLeft);
-    updateButton(state.moveRight, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS, previousMoveRight);
-    updateButton(state.moveUp, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS, previousMoveUp);
-    updateButton(state.moveDown, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS, previousMoveDown);
 
     updateButton(state.cameraLeft, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS, previousCameraLeft);
     updateButton(state.cameraRight, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS, previousCameraRight);
@@ -77,14 +36,9 @@ void GlfwInput::poll() {
     updateButton(state.zoomIn, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS, previousZoomIn);
     updateButton(state.zoomOut, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS, previousZoomOut);
 
-    updateButton(state.jump, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS, previousJump);
-    updateButton(state.dash, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS, previousDash);
-    updateButton(state.hit, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS, previousHit);
     updateButton(state.toggleFollow, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS, previousToggleFollow);
-    updateButton(state.respawn, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS, previousRespawn);
-    updateButton(state.attack, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS, previousAttack);
-    updateButton(state.shoot, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS, previousShoot);
-    updateButton(state.guard, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS, previousGuard);
+
+    actions_.update(readRaw(), keepStepEdges); // the named actions see the same frame
 
     updateButton(
         state.dragCamera,
@@ -101,6 +55,24 @@ void GlfwInput::poll() {
 
     state.mouseX = newMouseX;
     state.mouseY = newMouseY;
+}
+
+RawInput GlfwInput::readRaw() const {
+    RawInput raw;
+    if (!window) return raw;
+    if (!keyboardBlocked) // the UI has the keyboard: every key stays released
+        for (int k = GLFW_KEY_SPACE; k <= GLFW_KEY_LAST; ++k) raw.keys[k] = glfwGetKey(window, k) == GLFW_PRESS;
+    // The gamepad is the first joystick that has a standard mapping; none plugged in leaves padConnected false.
+    for (int jid = GLFW_JOYSTICK_1; jid <= GLFW_JOYSTICK_LAST; ++jid) {
+        GLFWgamepadstate pad;
+        if (glfwJoystickIsGamepad(jid) && glfwGetGamepadState(jid, &pad)) {
+            raw.padConnected = true;
+            for (int b = 0; b <= GLFW_GAMEPAD_BUTTON_LAST; ++b) raw.padButtons[b] = pad.buttons[b] == GLFW_PRESS;
+            for (int a = 0; a <= GLFW_GAMEPAD_AXIS_LAST; ++a) raw.padAxes[a] = pad.axes[a];
+            break;
+        }
+    }
+    return raw;
 }
 
 const InputState& GlfwInput::getState() const {

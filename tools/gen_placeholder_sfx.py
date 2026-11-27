@@ -11,7 +11,7 @@ import wave
 from pathlib import Path
 
 RATE = 22050
-ROOT = Path(__file__).resolve().parent.parent / "assets" / "audio"
+ROOT = Path(__file__).resolve().parent.parent / "examples" / "iki_demo" / "assets" / "audio"
 
 
 def silence(seconds):
