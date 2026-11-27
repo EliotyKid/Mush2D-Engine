@@ -3053,9 +3053,11 @@ TEST(actions_unknown_name_warns_once) {
     CHECK(!m.frame().released("ghost") && !m.frame().down("other"));
     CHECK(countOf(cap.str(), "unknown action 'ghost'") == 1 && countOf(cap.str(), "unknown action 'other'") == 1);
     CHECK(!m.frame().down("jump") && countOf(cap.str(), "unknown action") == 2); // known names never warn
+    ActionFrame copy = m.frame(); // a copy shares the "already warned" set: no second warning
+    CHECK(!copy.down("ghost") && countOf(cap.str(), "unknown action") == 2);
 }
 
-TEST(project_actions_parse_and_bad_key_name_warns) {
+TEST(project_bad_key_name_warns) {
     namespace fs = std::filesystem;
     const fs::path dir = fs::temp_directory_path() / "mush2d_actions_test";
     fs::create_directories(dir);
@@ -3070,18 +3072,21 @@ TEST(project_actions_parse_and_bad_key_name_warns) {
     CHECK(p && p->actions.count("jump") && p->actions.at("jump").keys == std::vector<int>({GLFW_KEY_Z, GLFW_KEY_SPACE}));
     CHECK(p && p->actions.at("jump").buttons == std::vector<int>({GLFW_GAMEPAD_BUTTON_A}) && p->actions.at("jump").axes.size() == 2);
     CHECK(p && p->actions.at("jump").buffer == 0.12f);
-    {
+    { // a bad name warns (action + name) and is skipped; the action keeps its valid bindings
         CerrCapture cap;
-        CHECK(!load(R"("actions":{"jump":{"keys":["Zed"]}})"));
-        CHECK(cap.str().find("jump") != std::string::npos && cap.str().find("Zed") != std::string::npos);
+        auto q = load(R"("actions":{"jump":{"keys":["Zed","Z"],"gamepad":["Q9","A"]}})");
+        CHECK(q && q->actions.at("jump").keys == std::vector<int>({GLFW_KEY_Z}) && q->actions.at("jump").buttons.size() == 1);
+        CHECK(cap.str().find("jump") != std::string::npos && cap.str().find("Zed") != std::string::npos && cap.str().find("Q9") != std::string::npos);
     }
-    for (const char* bad : {R"("actions":{"jump":{"gamepad":["Q9"]}})", R"("actions":[])", R"("actions":{"jump":{"buffer":-1}})",
+    for (const char* bad : {R"("actions":[])", R"("actions":{"jump":{"buffer":-1}})",
                             R"("input":{"stickDeadzone":2})", R"("actions":{"jump":{"keys":[1]}})"}) {
         CerrCapture cap;
         CHECK(!load(bad));
         CHECK(cap.str().find("Project:") != std::string::npos);
     }
     CHECK(keyByName("Z") == GLFW_KEY_Z && keyByName("F5") == GLFW_KEY_F5 && keyByName("LeftShift") == GLFW_KEY_LEFT_SHIFT && keyByName("z") == -1);
+    CHECK(keyByName("Minus") == GLFW_KEY_MINUS && keyByName("GraveAccent") == GLFW_KEY_GRAVE_ACCENT && keyByName("Kp5") == GLFW_KEY_KP_5);
+    CHECK(keyByName("F25") == GLFW_KEY_F25 && keyByName("F26") == -1 && keyByName("CapsLock") == GLFW_KEY_CAPS_LOCK && keyByName("RightSuper") == GLFW_KEY_RIGHT_SUPER);
     CHECK(gamepadButtonByName("R1") == GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER && gamepadButtonByName("L2") == -1);
     fs::remove_all(dir);
 }

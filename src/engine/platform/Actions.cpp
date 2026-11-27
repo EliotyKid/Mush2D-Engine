@@ -6,17 +6,55 @@
 #include <iostream>
 
 namespace {
-// Names (GLFW names without the GLFW_KEY_ prefix) that are not a single letter, digit or F-key.
+// Names (GLFW names in CamelCase, without GLFW_KEY_) of every key that is not a letter, digit, F-key or Kp digit.
 const std::pair<const char*, int> namedKeys[] = {
-    {"Space", GLFW_KEY_SPACE}, {"Left", GLFW_KEY_LEFT}, {"Right", GLFW_KEY_RIGHT}, {"Up", GLFW_KEY_UP},
-    {"Down", GLFW_KEY_DOWN}, {"Enter", GLFW_KEY_ENTER}, {"Escape", GLFW_KEY_ESCAPE}, {"Tab", GLFW_KEY_TAB},
-    {"Backspace", GLFW_KEY_BACKSPACE}, {"LeftShift", GLFW_KEY_LEFT_SHIFT}, {"RightShift", GLFW_KEY_RIGHT_SHIFT},
-    {"LeftControl", GLFW_KEY_LEFT_CONTROL}, {"RightControl", GLFW_KEY_RIGHT_CONTROL},
-    {"LeftAlt", GLFW_KEY_LEFT_ALT}, {"RightAlt", GLFW_KEY_RIGHT_ALT},
-    {"Comma", GLFW_KEY_COMMA}, {"Period", GLFW_KEY_PERIOD}, {"Slash", GLFW_KEY_SLASH},
-    {"Semicolon", GLFW_KEY_SEMICOLON}, {"Apostrophe", GLFW_KEY_APOSTROPHE},
-    {"PageUp", GLFW_KEY_PAGE_UP}, {"PageDown", GLFW_KEY_PAGE_DOWN}, {"Home", GLFW_KEY_HOME}, {"End", GLFW_KEY_END},
-    {"Insert", GLFW_KEY_INSERT}, {"Delete", GLFW_KEY_DELETE},
+    {"Space", GLFW_KEY_SPACE},
+    {"Apostrophe", GLFW_KEY_APOSTROPHE},
+    {"Comma", GLFW_KEY_COMMA},
+    {"Minus", GLFW_KEY_MINUS},
+    {"Period", GLFW_KEY_PERIOD},
+    {"Slash", GLFW_KEY_SLASH},
+    {"Semicolon", GLFW_KEY_SEMICOLON},
+    {"Equal", GLFW_KEY_EQUAL},
+    {"LeftBracket", GLFW_KEY_LEFT_BRACKET},
+    {"Backslash", GLFW_KEY_BACKSLASH},
+    {"RightBracket", GLFW_KEY_RIGHT_BRACKET},
+    {"GraveAccent", GLFW_KEY_GRAVE_ACCENT},
+    {"Escape", GLFW_KEY_ESCAPE},
+    {"Enter", GLFW_KEY_ENTER},
+    {"Tab", GLFW_KEY_TAB},
+    {"Backspace", GLFW_KEY_BACKSPACE},
+    {"Insert", GLFW_KEY_INSERT},
+    {"Delete", GLFW_KEY_DELETE},
+    {"Right", GLFW_KEY_RIGHT},
+    {"Left", GLFW_KEY_LEFT},
+    {"Down", GLFW_KEY_DOWN},
+    {"Up", GLFW_KEY_UP},
+    {"PageUp", GLFW_KEY_PAGE_UP},
+    {"PageDown", GLFW_KEY_PAGE_DOWN},
+    {"Home", GLFW_KEY_HOME},
+    {"End", GLFW_KEY_END},
+    {"CapsLock", GLFW_KEY_CAPS_LOCK},
+    {"ScrollLock", GLFW_KEY_SCROLL_LOCK},
+    {"NumLock", GLFW_KEY_NUM_LOCK},
+    {"PrintScreen", GLFW_KEY_PRINT_SCREEN},
+    {"Pause", GLFW_KEY_PAUSE},
+    {"Menu", GLFW_KEY_MENU},
+    {"KpDecimal", GLFW_KEY_KP_DECIMAL},
+    {"KpDivide", GLFW_KEY_KP_DIVIDE},
+    {"KpMultiply", GLFW_KEY_KP_MULTIPLY},
+    {"KpSubtract", GLFW_KEY_KP_SUBTRACT},
+    {"KpAdd", GLFW_KEY_KP_ADD},
+    {"KpEnter", GLFW_KEY_KP_ENTER},
+    {"KpEqual", GLFW_KEY_KP_EQUAL},
+    {"LeftShift", GLFW_KEY_LEFT_SHIFT},
+    {"LeftControl", GLFW_KEY_LEFT_CONTROL},
+    {"LeftAlt", GLFW_KEY_LEFT_ALT},
+    {"LeftSuper", GLFW_KEY_LEFT_SUPER},
+    {"RightShift", GLFW_KEY_RIGHT_SHIFT},
+    {"RightControl", GLFW_KEY_RIGHT_CONTROL},
+    {"RightAlt", GLFW_KEY_RIGHT_ALT},
+    {"RightSuper", GLFW_KEY_RIGHT_SUPER},
 };
 
 const std::pair<const char*, int> padButtons[] = {
@@ -49,10 +87,15 @@ int keyByName(std::string_view name) {
         if (c >= 'A' && c <= 'Z') return GLFW_KEY_A + (c - 'A');
         if (c >= '0' && c <= '9') return GLFW_KEY_0 + (c - '0');
     }
-    if (name.size() >= 2 && name.size() <= 3 && name[0] == 'F') { // F1..F12 (F13+ exist in GLFW but are rare)
-        const int n = std::atoi(std::string(name.substr(1)).c_str());
-        if (n >= 1 && n <= 12 && std::to_string(n) == name.substr(1)) return GLFW_KEY_F1 + (n - 1);
-    }
+    // Numbered families: F1..F25 and Kp0..Kp9 (the number part must be plain digits).
+    auto number = [&](std::string_view prefix, int lo, int hi) {
+        if (name.size() <= prefix.size() || name.substr(0, prefix.size()) != prefix) return -1;
+        const std::string digits(name.substr(prefix.size()));
+        const int n = std::atoi(digits.c_str());
+        return n >= lo && n <= hi && std::to_string(n) == digits ? n : -1;
+    };
+    if (int n = number("F", 1, 25); n >= 0) return GLFW_KEY_F1 + (n - 1);
+    if (int n = number("Kp", 0, 9); n >= 0) return GLFW_KEY_KP_0 + n;
     for (const auto& [n, code] : namedKeys)
         if (name == n) return code;
     return -1;
@@ -74,7 +117,7 @@ const ActionState& ActionFrame::get(std::string_view name) const {
     static const ActionState stopped;
     auto it = states_.find(name);
     if (it != states_.end()) return it->second;
-    if (warned_.insert(std::string(name)).second) // report each unknown name once
+    if (warned_->insert(std::string(name)).second) // report each unknown name once
         std::cerr << "Input: unknown action '" << name << "'\n";
     return stopped;
 }

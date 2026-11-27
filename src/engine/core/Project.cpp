@@ -221,8 +221,8 @@ std::optional<Project> loadProject(const std::filesystem::path& file) {
                     if (std::string_view(key) == "keys") {
                         const int code = keyByName(control);
                         if (code < 0) {
-                            warn(file, where + ".keys", "unknown key '" + control + "'");
-                            return std::nullopt;
+                            warn(file, where + ".keys", "unknown key '" + control + "' (skipped)");
+                            continue; // skip only this name; the rest of the action still loads
                         }
                         binding.keys.push_back(code);
                     } else if (const int button = gamepadButtonByName(control); button >= 0) {
@@ -230,8 +230,7 @@ std::optional<Project> loadProject(const std::filesystem::path& file) {
                     } else if (gamepadAxisByName(control, axis, sign)) {
                         binding.axes.push_back({axis, sign});
                     } else {
-                        warn(file, where + ".gamepad", "unknown gamepad control '" + control + "'");
-                        return std::nullopt;
+                        warn(file, where + ".gamepad", "unknown gamepad control '" + control + "' (skipped)");
                     }
                 }
             }

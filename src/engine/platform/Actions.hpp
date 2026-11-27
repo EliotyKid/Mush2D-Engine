@@ -5,6 +5,7 @@
 
 #include <array>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
@@ -68,7 +69,8 @@ private:
     std::map<std::string, ActionState, std::less<>> states_;
     glm::vec2 stick_{0.0f};
     Device lastDevice_ = Device::Keyboard;
-    mutable std::set<std::string, std::less<>> warned_; // unknown names already reported
+    // Unknown names already reported. Shared by every copy of this frame, so a copy never warns again.
+    std::shared_ptr<std::set<std::string, std::less<>>> warned_ = std::make_shared<std::set<std::string, std::less<>>>();
 };
 
 // Turns raw devices into actions, one update per frame.
