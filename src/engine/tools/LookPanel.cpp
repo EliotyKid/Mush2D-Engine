@@ -5,7 +5,7 @@
 #include <string>
 
 void LookPanel::draw(Region& region, std::vector<EditableLight>& lights, std::vector<EditableLayer>& layers,
-                     const GpuTimers& timers, Camera2D& camera, Audio& audio, bool& saveRequested) {
+                     const GpuTimers& timers, Camera2D& camera, Audio& audio, ActionMap& actions, bool& saveRequested) {
     FrameSettings& s = region.look.settings;
     ImGui::SetNextWindowPos({10, 10}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({380, 620}, ImGuiCond_FirstUseEver);
@@ -91,6 +91,15 @@ void LookPanel::draw(Region& region, std::vector<EditableLight>& lights, std::ve
         ImGui::SliderFloat("volume efeitos", &audio.sfxVolume, 0.0f, 1.0f);
         ImGui::SliderFloat("volume musica", &audio.musicVolume, 0.0f, 1.0f);
         ImGui::SliderFloat("transicao musica (s)", &audio.musicFade, 0.0f, 5.0f);
+    }
+    if (ImGui::CollapsingHeader("Projeto · Entrada")) { // live values, not saved (edit project.json to keep them)
+        ImGui::SliderFloat("triggerThreshold", &actions.settings().triggerThreshold, 0.0f, 1.0f);
+        ImGui::SliderFloat("stickDeadzone", &actions.settings().stickDeadzone, 0.0f, 1.0f);
+        for (auto& [name, binding] : actions.bindings()) {
+            ImGui::PushID(name.c_str());
+            ImGui::SliderFloat((name + " buffer (s)").c_str(), &binding.buffer, 0.0f, 0.5f);
+            ImGui::PopID();
+        }
     }
     if (ImGui::CollapsingHeader("Desempenho", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("%.0f fps (%.2f ms)", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);

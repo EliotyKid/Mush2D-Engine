@@ -86,6 +86,8 @@ void GlfwInput::poll() {
     updateButton(state.shoot, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS, previousShoot);
     updateButton(state.guard, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS, previousGuard);
 
+    actions_.update(readRaw()); // the named actions see the same frame
+
     updateButton(
         state.dragCamera,
         !mouseBlocked && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
@@ -101,6 +103,24 @@ void GlfwInput::poll() {
 
     state.mouseX = newMouseX;
     state.mouseY = newMouseY;
+}
+
+RawInput GlfwInput::readRaw() const {
+    RawInput raw;
+    if (!window) return raw;
+    if (!keyboardBlocked) // the UI has the keyboard: every key stays released
+        for (int k = GLFW_KEY_SPACE; k <= GLFW_KEY_LAST; ++k) raw.keys[k] = glfwGetKey(window, k) == GLFW_PRESS;
+    // The gamepad is the first joystick that has a standard mapping; none plugged in leaves padConnected false.
+    for (int jid = GLFW_JOYSTICK_1; jid <= GLFW_JOYSTICK_LAST; ++jid) {
+        GLFWgamepadstate pad;
+        if (glfwJoystickIsGamepad(jid) && glfwGetGamepadState(jid, &pad)) {
+            raw.padConnected = true;
+            for (int b = 0; b <= GLFW_GAMEPAD_BUTTON_LAST; ++b) raw.padButtons[b] = pad.buttons[b] == GLFW_PRESS;
+            for (int a = 0; a <= GLFW_GAMEPAD_AXIS_LAST; ++a) raw.padAxes[a] = pad.axes[a];
+            break;
+        }
+    }
+    return raw;
 }
 
 const InputState& GlfwInput::getState() const {

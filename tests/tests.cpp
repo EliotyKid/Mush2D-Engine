@@ -16,6 +16,7 @@
 #include "engine/core/Launcher.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/core/Project.hpp"
+#include "engine/platform/Actions.hpp"
 #include "engine/render/LightComponent.hpp"
 #include "engine/render/Materials.hpp"
 #include "engine/render/PixelScale.hpp"
@@ -2942,6 +2943,147 @@ std::size_t countOf(const std::string& text, const std::string& part) {
     for (std::size_t i = text.find(part); i != std::string::npos; i = text.find(part, i + 1)) ++n;
     return n;
 }
+}
+
+// ---- Input actions (fake RawInput: no window, no GLFW device) ----
+namespace {
+// An ActionMap with a few actions, like a project.json would declare them.
+ActionMap makeActions() {
+    std::map<std::string, ActionBinding, std::less<>> a;
+    a["jump"] = {{GLFW_KEY_Z}, {GLFW_GAMEPAD_BUTTON_A}, {}, 0.12f};
+    a["moveLeft"] = {{GLFW_KEY_LEFT}, {GLFW_GAMEPAD_BUTTON_DPAD_LEFT}, {{GLFW_GAMEPAD_AXIS_LEFT_X, -1}}, 0.0f};
+    a["guard"] = {{}, {}, {{GLFW_GAMEPAD_AXIS_LEFT_TRIGGER, 1}}, 0.0f};
+    ActionMap m;
+    m.configure(a, InputSettings{});
+    return m;
+}
+}
+
+TEST(actions_key_press_hold_release) {
+    ActionMap m = makeActions();
+    RawInput raw;
+    raw.keys[GLFW_KEY_Z] = true;
+    m.update(raw);
+    CHECK(m.frame().down("jump") && m.frame().pressed("jump") && !m.frame().released("jump"));
+    m.update(raw); // still held: no new press
+    CHECK(m.frame().down("jump") && !m.frame().pressed("jump"));
+    raw.keys[GLFW_KEY_Z] = false;
+    m.update(raw);
+    CHECK(!m.frame().down("jump") && m.frame().released("jump") && !m.frame().pressed("jump"));
+    CHECK(m.bufferWindow("jump") == 0.12f && m.bufferWindow("nope") == 0.0f);
+}
+
+TEST(actions_two_sources_one_press) {
+    ActionMap m = makeActions();
+    RawInput raw;
+    raw.padConnected = true;
+    raw.keys[GLFW_KEY_Z] = true;
+    m.update(raw);
+    CHECK(m.frame().pressed("jump"));
+    raw.padButtons[GLFW_GAMEPAD_BUTTON_A] = true; // the pad joins while the key is held
+    m.update(raw);
+    CHECK(m.frame().down("jump") && !m.frame().pressed("jump"));
+    raw.keys[GLFW_KEY_Z] = false; // key up, pad still down: no release
+    m.update(raw);
+    CHECK(m.frame().down("jump") && !m.frame().released("jump"));
+    raw.padButtons[GLFW_GAMEPAD_BUTTON_A] = false;
+    m.update(raw);
+    CHECK(!m.frame().down("jump") && m.frame().released("jump"));
+}
+
+TEST(actions_trigger_threshold) {
+    ActionMap m = makeActions();
+    RawInput raw;
+    raw.padConnected = true;
+    raw.padAxes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] = 0.4f;
+    m.update(raw);
+    CHECK(!m.frame().down("guard"));
+    raw.padAxes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] = 0.6f;
+    m.update(raw);
+    CHECK(m.frame().down("guard") && m.frame().pressed("guard"));
+}
+
+TEST(actions_stick_deadzone) {
+    ActionMap m = makeActions();
+    RawInput raw;
+    raw.padConnected = true;
+    raw.padAxes[GLFW_GAMEPAD_AXIS_LEFT_X] = -0.2f;
+    m.update(raw);
+    CHECK(m.frame().stick().x == 0.0f && !m.frame().down("moveLeft"));
+    raw.padAxes[GLFW_GAMEPAD_AXIS_LEFT_X] = -0.9f;
+    m.update(raw);
+    CHECK(m.frame().stick().x == -0.9f && m.frame().down("moveLeft"));
+}
+
+TEST(actions_gamepad_disconnect_releases) {
+    ActionMap m = makeActions();
+    RawInput raw;
+    raw.padConnected = true;
+    raw.padButtons[GLFW_GAMEPAD_BUTTON_A] = true;
+    raw.padAxes[GLFW_GAMEPAD_AXIS_LEFT_X] = -1.0f;
+    m.update(raw);
+    CHECK(m.frame().down("jump") && m.frame().down("moveLeft") && m.frame().lastDevice() == ActionFrame::Device::Gamepad);
+    raw.padConnected = false; // the pad vanishes; the arrays still hold the old values
+    m.update(raw);
+    CHECK(!m.frame().down("jump") && m.frame().released("jump"));
+    CHECK(!m.frame().down("moveLeft") && m.frame().released("moveLeft") && m.frame().stick().x == 0.0f);
+    m.update(raw);
+    CHECK(!m.frame().released("jump")); // released for one frame only
+}
+
+TEST(actions_keep_edges_during_freeze) {
+    ActionMap m = makeActions();
+    RawInput raw;
+    raw.keys[GLFW_KEY_Z] = true;
+    m.update(raw);
+    const ActionFrame frozen = m.frame(); // the frame whose press a hit stop would swallow
+    raw.keys[GLFW_KEY_Z] = false;
+    m.update(raw);
+    ActionFrame now = m.frame();
+    CHECK(!now.pressed("jump") && now.released("jump"));
+    now.keepEdges(frozen);
+    CHECK(now.pressed("jump") && now.released("jump") && !now.down("jump")); // a one-frame tap, like InputState
+}
+
+TEST(actions_unknown_name_warns_once) {
+    ActionMap m = makeActions();
+    m.update(RawInput{});
+    CerrCapture cap;
+    CHECK(!m.frame().down("ghost") && !m.frame().pressed("ghost"));
+    CHECK(!m.frame().released("ghost") && !m.frame().down("other"));
+    CHECK(countOf(cap.str(), "unknown action 'ghost'") == 1 && countOf(cap.str(), "unknown action 'other'") == 1);
+    CHECK(!m.frame().down("jump") && countOf(cap.str(), "unknown action") == 2); // known names never warn
+}
+
+TEST(project_actions_parse_and_bad_key_name_warns) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mush2d_actions_test";
+    fs::create_directories(dir);
+    auto load = [&](const std::string& body) {
+        const fs::path f = dir / "project.json";
+        std::ofstream(f) << R"({"id":"t","name":"T",)" << body << "}";
+        return loadProject(f);
+    };
+    auto p = load(R"("input":{"triggerThreshold":0.6,"stickDeadzone":0.3},
+        "actions":{"jump":{"keys":["Z","Space"],"gamepad":["A","L2","LeftStickDown"],"buffer":0.12}})");
+    CHECK(p && p->input.triggerThreshold == 0.6f && p->input.stickDeadzone == 0.3f);
+    CHECK(p && p->actions.count("jump") && p->actions.at("jump").keys == std::vector<int>({GLFW_KEY_Z, GLFW_KEY_SPACE}));
+    CHECK(p && p->actions.at("jump").buttons == std::vector<int>({GLFW_GAMEPAD_BUTTON_A}) && p->actions.at("jump").axes.size() == 2);
+    CHECK(p && p->actions.at("jump").buffer == 0.12f);
+    {
+        CerrCapture cap;
+        CHECK(!load(R"("actions":{"jump":{"keys":["Zed"]}})"));
+        CHECK(cap.str().find("jump") != std::string::npos && cap.str().find("Zed") != std::string::npos);
+    }
+    for (const char* bad : {R"("actions":{"jump":{"gamepad":["Q9"]}})", R"("actions":[])", R"("actions":{"jump":{"buffer":-1}})",
+                            R"("input":{"stickDeadzone":2})", R"("actions":{"jump":{"keys":[1]}})"}) {
+        CerrCapture cap;
+        CHECK(!load(bad));
+        CHECK(cap.str().find("Project:") != std::string::npos);
+    }
+    CHECK(keyByName("Z") == GLFW_KEY_Z && keyByName("F5") == GLFW_KEY_F5 && keyByName("LeftShift") == GLFW_KEY_LEFT_SHIFT && keyByName("z") == -1);
+    CHECK(gamepadButtonByName("R1") == GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER && gamepadButtonByName("L2") == -1);
+    fs::remove_all(dir);
 }
 
 TEST(game_prefabs_load_without_warnings) {

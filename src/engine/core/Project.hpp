@@ -1,6 +1,9 @@
 #pragma once
 
+#include "engine/platform/Actions.hpp"
+
 #include <cstdint>
+#include <map>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -27,7 +30,7 @@ struct SurfaceDef {
 };
 
 // What a game declares in its project.json. The engine reads it; it never knows the game's own content.
-// Later phases add more fields here (surfaces, input actions).
+// Later phases add more fields here.
 struct Project {
     std::string id, name;
     std::vector<std::string> elements; // the combat element names (for example the ones a hit can carry)
@@ -35,6 +38,9 @@ struct Project {
     std::vector<ResourceBarDef> resources; // the named bars every Resources component starts with
 
     std::vector<SurfaceDef> surfaces;      // the surface kinds; the list index plus 1 is the SurfaceId
+
+    std::map<std::string, ActionBinding, std::less<>> actions; // the named input actions and their keys / gamepad controls
+    InputSettings input;                                       // gamepad limits (trigger threshold, stick dead zone)
 
     bool hasElement(std::string_view name) const;
     // The name of the bar linked to `element`, or "" when no bar is.

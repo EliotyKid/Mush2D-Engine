@@ -613,7 +613,7 @@ void IkiDemoGame::onImGui(EngineServices& s) {
         }
     }
     bool save = false;
-    lookPanel.draw(regions.current(), lightEdits, roomLayers, s.renderer.timers(), s.camera, s.audio, save);
+    lookPanel.draw(regions.current(), lightEdits, roomLayers, s.renderer.timers(), s.camera, s.audio, s.input.actions(), save);
     // Look edits reach the renderer through regions.update next frame (it may be blending).
     for (const EditableLayer& l : roomLayers) levelLoader.setLayer(regions.currentName(), l.identifier, l.value.parallax, l.value.depth);
     if (save) {

@@ -8,5 +8,21 @@
     "resources": [
         { "name": "ice", "element": "Ice", "max": 100, "regenPerSecond": 10, "regenDelay": 1 },
         { "name": "fire", "element": "Fire", "max": 100, "regenPerSecond": 10, "regenDelay": 1 }
-    ]
+    ],
+    "input": { "triggerThreshold": 0.5, "stickDeadzone": 0.25 },
+    "actions": {
+        "moveLeft":    { "keys": ["Left"],  "gamepad": ["DpadLeft", "LeftStickLeft"] },
+        "moveRight":   { "keys": ["Right"], "gamepad": ["DpadRight", "LeftStickRight"] },
+        "moveUp":      { "keys": ["Up"],    "gamepad": ["DpadUp", "LeftStickUp"] },
+        "moveDown":    { "keys": ["Down"],  "gamepad": ["DpadDown", "LeftStickDown"] },
+        "jump":        { "keys": ["Z"],     "gamepad": ["A"], "buffer": 0.12 },
+        "attack":      { "keys": ["X"],     "gamepad": ["X"] },
+        "shoot":       { "keys": ["C"],     "gamepad": ["Y"] },
+        "guard":       { "keys": ["V"],     "gamepad": ["R1"] },
+        "dash":        { "keys": ["Space"], "gamepad": ["B"] },
+        "interact":    { "keys": ["Down"],  "gamepad": ["DpadDown", "LeftStickDown"] },
+        "dropThrough": { "keys": ["Down"],  "gamepad": ["DpadDown", "LeftStickDown"] },
+        "respawn":     { "keys": ["R"] },
+        "hit":         { "keys": ["H"] }
+    }
 }

@@ -203,6 +203,7 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
         // The game's project.json: a bad file only warns; the game then runs with an empty project.
         const std::filesystem::path projectFile = sourceAssetPath("project.json");
         if (std::optional<Project> project = loadProject(assetPath("project.json"))) setActiveProject(std::move(*project));
+        input.actions().configure(activeProject().actions, activeProject().input); // the project's input actions
 #ifndef NDEBUG
         FileWatcher projectWatcher; // Debug: edits to project.json apply while the game runs
         projectWatcher.watch(projectFile, projectFile.parent_path(), ".no-such-suffix");
@@ -234,7 +235,8 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
             lastTime = currentTime;
 
 #ifndef NDEBUG
-            if (projectWatcher.poll(deltaTime).file) reloadActiveProject(projectFile); // keeps the old one on error
+            if (projectWatcher.poll(deltaTime).file && reloadActiveProject(projectFile)) // keeps the old one on error
+                input.actions().configure(activeProject().actions, activeProject().input);
 #endif
             game.update(services, deltaTime);
 

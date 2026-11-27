@@ -20,6 +20,7 @@ Quando o painel F1 (ImGui) está com o foco do teclado ou do mouse, o jogo vê o
 |---|---|
 | `ButtonState` | `down`, `pressed`, `released`. |
 | `InputState` | Os botões: `moveLeft`, `moveRight`, `moveUp`, `moveDown`, `cameraLeft`, `cameraRight`, `cameraUp`, `cameraDown`, `zoomIn`, `zoomOut`, `jump`, `dash`, `hit`, `toggleFollow`, `respawn`, `dragCamera`. |
+| `ActionMap` / `ActionFrame` | Ações com nome (`"jump"`), declaradas no `project.json` com teclas (`keys`) e controles do gamepad (`gamepad`). Teclado e gamepad na mesma ação valem juntos: um só `pressed`, e `released` só quando os dois soltam. `GlfwInput::actions().frame()` tem `down`, `pressed`, `released` e `stick()`. Na Task 6 o jogo passa a ler as ações no lugar do `InputState`. |
 | `GlfwInput` | `getState()` devolve o `InputState`; `isKeyDown(GLFW_KEY_...)` lê uma tecla direto (o jogo usa para `TAB`, `F5` e `K`); `setBlocked(teclado, mouse)`. |
 
 ## Mapa das teclas

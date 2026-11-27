@@ -175,6 +175,77 @@ std::optional<Project> loadProject(const std::filesystem::path& file) {
             project.surfaces.push_back(std::move(def));
         }
     }
+
+    if (doc.contains("input")) { // optional gamepad limits: {triggerThreshold?, stickDeadzone?}, each from 0 to 1
+        if (!doc["input"].is_object()) {
+            warn(file, "input", "expected an object");
+            return std::nullopt;
+        }
+        struct Limit { const char* key; float* target; };
+        for (const Limit& l : {Limit{"triggerThreshold", &project.input.triggerThreshold}, {"stickDeadzone", &project.input.stickDeadzone}}) {
+            if (!doc["input"].contains(l.key)) continue; // missing: the default stays
+            const nlohmann::json& v = doc["input"][l.key];
+            if (!v.is_number() || v.get<float>() < 0.0f || v.get<float>() > 1.0f) {
+                warn(file, std::string("input.") + l.key, "expected a number from 0 to 1");
+                return std::nullopt;
+            }
+            *l.target = v.get<float>();
+        }
+    }
+
+    if (doc.contains("actions")) { // optional object: action name -> {keys?, gamepad?, buffer?}
+        if (!doc["actions"].is_object()) {
+            warn(file, "actions", "expected an object of actions");
+            return std::nullopt;
+        }
+        for (const auto& [name, item] : doc["actions"].items()) {
+            const std::string where = "actions." + name;
+            if (name.empty() || !item.is_object()) {
+                warn(file, where, "every action must be an object with a non-empty name");
+                return std::nullopt;
+            }
+            ActionBinding binding;
+            for (const char* key : {"keys", "gamepad"}) {
+                if (!item.contains(key)) continue;
+                if (!item[key].is_array()) {
+                    warn(file, where + "." + key, "expected a list of names");
+                    return std::nullopt;
+                }
+                for (const nlohmann::json& n : item[key]) {
+                    if (!n.is_string()) {
+                        warn(file, where + "." + key, "every name must be a text");
+                        return std::nullopt;
+                    }
+                    const std::string control = n.get<std::string>();
+                    int axis = 0, sign = 0;
+                    if (std::string_view(key) == "keys") {
+                        const int code = keyByName(control);
+                        if (code < 0) {
+                            warn(file, where + ".keys", "unknown key '" + control + "'");
+                            return std::nullopt;
+                        }
+                        binding.keys.push_back(code);
+                    } else if (const int button = gamepadButtonByName(control); button >= 0) {
+                        binding.buttons.push_back(button);
+                    } else if (gamepadAxisByName(control, axis, sign)) {
+                        binding.axes.push_back({axis, sign});
+                    } else {
+                        warn(file, where + ".gamepad", "unknown gamepad control '" + control + "'");
+                        return std::nullopt;
+                    }
+                }
+            }
+            if (item.contains("buffer")) {
+                if (!item["buffer"].is_number() || item["buffer"].get<float>() < 0.0f) {
+                    warn(file, where + ".buffer", "expected a number of 0 or more");
+                    return std::nullopt;
+                }
+                binding.buffer = item["buffer"].get<float>();
+            }
+            project.actions[name] = std::move(binding);
+        }
+    }
+
     return project;
 }
 

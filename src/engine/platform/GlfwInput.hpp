@@ -1,6 +1,7 @@
 #pragma once
 
 #include "InputState.hpp"
+#include "engine/platform/Actions.hpp"
 
 #include <GLFW/glfw3.h>
 
@@ -10,6 +11,11 @@ public:
     void beginFrame();
     void poll();
     const InputState& getState() const;
+    // The named actions (keyboard and gamepad on the same action). Updated by poll().
+    ActionMap& actions() { return actions_; }
+    const ActionMap& actions() const { return actions_; }
+    // Reads the devices now into a plain snapshot (keys are released while the UI has the keyboard).
+    RawInput readRaw() const;
     bool isKeyDown(int key) const { return !keyboardBlocked && glfwGetKey(window, key) == GLFW_PRESS; }
     // UI (ImGui) captured the keyboard / mouse: the game sees them as idle.
     void setBlocked(bool keyboard, bool mouse) { keyboardBlocked = keyboard; mouseBlocked = mouse; }
@@ -19,6 +25,7 @@ public:
 private:
     GLFWwindow* window = nullptr;
     InputState state{};
+    ActionMap actions_;
     bool keyboardBlocked = false;
     bool mouseBlocked = false;
 
