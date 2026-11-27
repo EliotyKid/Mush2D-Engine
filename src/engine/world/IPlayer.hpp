@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/platform/InputState.hpp"
+#include "engine/platform/Actions.hpp"
 #include "engine/world/GameObject.hpp"
 #include "engine/world/Scene2D.hpp"
 
@@ -10,7 +10,7 @@
 // dynamic_cast<IPlayer*> on it reaches these methods.
 struct IPlayer {
     virtual ~IPlayer() = default;
-    virtual void applyInput(const InputState& input) = 0;
+    virtual void applyInput(const ActionFrame& input) = 0; // this frame's named actions, before the step
     virtual void respawnAt(glm::vec2 position) = 0;        // teleport: no velocity, ground or slide carried over
     virtual bool downPressedThisFrame() const = 0;         // levers read it during the step
     virtual void setCheckpoint(glm::vec2 position) = 0;    // Checkpoint touched (Sandbox and Test respawn there)

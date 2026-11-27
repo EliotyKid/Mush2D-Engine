@@ -1,56 +1,80 @@
 # platform
 
-`src/engine/platform/` liga o teclado e o mouse (GLFW) aos "botões" que o jogo entende.
+`src/engine/platform/` liga o teclado, o mouse e o gamepad (GLFW) ao que o jogo entende.
 
 ## O que faz
 
-A cada frame, o `GlfwInput` lê as teclas físicas e atualiza o `InputState`. Cada botão tem três estados, como no GameMaker:
+Há duas partes:
+
+- **Ações com nome**, do jogo. O `project.json` declara cada ação (`"jump"`, `"attack"`...) com as teclas e os controles do gamepad que a disparam. O jogo lê as ações pelo nome; a engine nunca conhece os nomes.
+- **Controles fixos de ferramenta**, da engine: câmera livre, zoom, seguir o player, arrastar com o mouse e a roda. São iguais em todo jogo e ficam no `InputState`.
+
+A cada frame, o `GlfwInput::poll` lê os aparelhos num `RawInput` e o `ActionMap` calcula o `ActionFrame` do frame. Cada ação tem três estados, como no GameMaker:
 
 | Campo | GameMaker | Significado |
 |---|---|---|
-| `down` | `keyboard_check` | está segurando |
-| `pressed` | `keyboard_check_pressed` | apertou neste frame |
-| `released` | `keyboard_check_released` | soltou neste frame |
+| `down("jump")` | `keyboard_check` | está segurando |
+| `pressed("jump")` | `keyboard_check_pressed` | apertou neste frame |
+| `released("jump")` | `keyboard_check_released` | soltou neste frame |
 
-Quando o painel F1 (ImGui) está com o foco do teclado ou do mouse, o jogo vê os botões como soltos (`setBlocked`).
+Teclado e gamepad na mesma ação valem juntos: um só `pressed`, e o `released` só quando os dois soltam. Um nome que o projeto não declara dá uma ação parada e um aviso (uma vez por nome).
+
+Quando o painel F1 (ImGui) está com o foco do teclado ou do mouse, o jogo vê as teclas como soltas (`setBlocked`).
 
 ## Tipos principais
 
 | Tipo | Papel |
 |---|---|
-| `ButtonState` | `down`, `pressed`, `released`. |
-| `InputState` | Os botões: `moveLeft`, `moveRight`, `moveUp`, `moveDown`, `cameraLeft`, `cameraRight`, `cameraUp`, `cameraDown`, `zoomIn`, `zoomOut`, `jump`, `dash`, `hit`, `toggleFollow`, `respawn`, `dragCamera`. |
-| `ActionMap` / `ActionFrame` | Ações com nome (`"jump"`), declaradas no `project.json` com teclas (`keys`) e controles do gamepad (`gamepad`). Teclado e gamepad na mesma ação valem juntos: um só `pressed`, e `released` só quando os dois soltam. `GlfwInput::actions().frame()` tem `down`, `pressed`, `released` e `stick()`. Na Task 6 o jogo passa a ler as ações no lugar do `InputState`. |
-| `GlfwInput` | `getState()` devolve o `InputState`; `isKeyDown(GLFW_KEY_...)` lê uma tecla direto (o jogo usa para `TAB`, `F5` e `K`); `setBlocked(teclado, mouse)`. |
+| `ActionMap` | As ações do projeto. A engine chama `configure` ao abrir o jogo e depois de um hot reload do `project.json`, e `update` todo frame. Fica registrado na cena: `scene.service<ActionMap>()`. `bufferWindow("jump")` dá o `buffer` da ação, em segundos. |
+| `ActionFrame` | As ações de um frame: `get`, `down`, `pressed`, `released`, `stick()` (o analógico esquerdo depois da zona morta) e `lastDevice()`. `keepEdges(anterior)` guarda os apertos de um frame congelado pelo hit stop. `set(nome, estado)` monta um frame à mão (testes). |
+| `InputBuffer` (`src/engine/world/InputBuffer.hpp`) | Guarda um aperto por `window` segundos: `step(apertou, dt)` a cada passo da cena, `active()`, `consume()`. Conta no tempo do passo, então não anda durante o hit stop. O `JumpAssist` usa um para o buffer de pulo. |
+| `InputState` | Os controles fixos de ferramenta: `cameraLeft/Right/Up/Down`, `zoomIn`, `zoomOut`, `toggleFollow`, `dragCamera`, o mouse e a roda. Cada um é um `ButtonState` (`down`, `pressed`, `released`). |
+| `GlfwInput` | `actions()` devolve o `ActionMap`; `getState()` devolve o `InputState`; `isKeyDown(GLFW_KEY_...)` lê uma tecla direto (o jogo usa para `TAB`, `F5` e as teclas de debug); `setBlocked(teclado, mouse)`. |
 
-## Mapa das teclas
+O player recebe o frame em `IPlayer::applyInput(const ActionFrame&)`, antes do passo da cena.
 
-| Botão | Tecla |
+## Controles fixos da engine
+
+| Controle | Tecla |
 |---|---|
-| `moveLeft` / `moveRight` / `moveUp` / `moveDown` | setas |
-| `jump` | `Z` (no `PlayerObject` em modo plataforma, a seta para cima também pula; no Iki, não) |
-| `dash` | `Espaço` |
-| `hit` | `H` |
 | `cameraLeft` / `Right` / `Up` / `Down` | `A` / `D` / `W` / `S` |
-| `zoomOut` / `zoomIn` | `Q` / `E` |
+| `zoomOut` / `zoomIn` | `Q` / `E` (e a roda do mouse) |
 | `toggleFollow` | `F` |
-| `respawn` | `R` |
 | `dragCamera` | botão do meio do mouse |
 
-O player usa `moveDown.pressed` como "interagir" (alavancas).
+## Ações do iki_demo
+
+Declaradas em `examples/iki_demo/project.json`:
+
+| Ação | Teclado | Gamepad |
+|---|---|---|
+| `moveLeft` / `moveRight` / `moveUp` / `moveDown` | setas | direcional ou analógico esquerdo |
+| `jump` (buffer 0,12 s) | `Z` | `A` |
+| `attack` | `X` | `X` |
+| `shoot` | `C` | `Y` |
+| `guard` | `V` | `R1` |
+| `dash` | `Espaço` | `B` |
+| `interact` (alavancas) | `↓` | direcional ou analógico para baixo |
+| `dropThrough` (descer da plataforma) | `↓` | direcional ou analógico para baixo |
+| `respawn` | `R` | |
+| `hit` (só Debug, Sandbox e Test) | `H` | |
+
+Os nomes do gamepad seguem o mapeamento padrão do GLFW (o layout do Xbox: `A` embaixo, `B` à direita, `X` à esquerda, `Y` em cima).
 
 ## Casos de uso
 
 ### Trocar a tecla de pulo para `X`
 
-Em `GlfwInput.cpp`, na linha do `state.jump`, troque `GLFW_KEY_Z` por `GLFW_KEY_X`.
+No `project.json` do jogo, em `"jump"`, troque `"keys": ["Z"]` por `"keys": ["X"]`. Com o jogo rodando em Debug, salvar o arquivo já vale.
 
-### Um botão novo (por exemplo, `interact` na tecla `C`)
+### Uma ação nova (por exemplo, `"map"` na tecla `M` e no `Select`)
 
-1. Em `InputState.hpp`, adicione `ButtonState interact;`.
-2. Em `GlfwInput.hpp`, adicione `bool previousInteract = false;`.
-3. Em `GlfwInput.cpp`, ao lado dos outros: `updateButton(state.interact, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS, previousInteract);`.
-4. Objetos não recebem o input: só o player, em `applyInput(const InputState&)` (`IkiObject` ou `PlayerObject`). Leia `input.interact.pressed` ali e exponha para os outros objetos como o player já faz com `interactPressed()`.
+1. No `project.json`, em `"actions"`: `"map": { "keys": ["M"], "gamepad": ["Back"] }`.
+2. No código do player, em `applyInput`: `if (input.pressed("map")) { ... }`.
+
+### Um buffer de toque para uma ação
+
+Dê um `"buffer"` à ação no `project.json` e guarde um `InputBuffer` no objeto. A cada passo: `buffer.window = actions->bufferWindow("nome")` (o `actions` vem de `scene.service<ActionMap>()`), depois `buffer.step(input.pressed("nome"), dt)`. Use com `active()` e `consume()`.
 
 ### Uma tecla de depuração só no jogo
 
@@ -58,4 +82,4 @@ No `update` do jogo: `if (s.input.isKeyDown(GLFW_KEY_F6)) { ... }`. Guarde o est
 
 ## Arquivos
 
-`src/engine/platform/InputState.hpp`, `GlfwInput.hpp/.cpp`.
+`src/engine/platform/Actions.hpp/.cpp`, `InputState.hpp`, `GlfwInput.hpp/.cpp`, `src/engine/world/InputBuffer.hpp`.

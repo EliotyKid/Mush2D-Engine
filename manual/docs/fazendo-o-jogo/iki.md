@@ -9,18 +9,23 @@ O Iki é o personagem jogável de Ikigai (`IkiObject`). Ele nasce do prefab `ass
 
 ## Controles
 
-| Tecla | Ação |
-|---|---|
-| `←` `→` | Correr. |
-| `Z` | Pular. Segurar pula mais alto; soltar subindo corta o pulo. |
-| `↓` + `Z` numa plataforma atravessável | Descer por ela. |
-| `↓` | Interagir (alavanca). |
-| `←`/`→` contra uma parede de gelo, no ar | Agarrar a parede (estacas de gelo). |
-| `↑` / `↓` na parede | Subir / descer. |
-| `Z` na parede | Salto da parede. |
-| `↑` sob um teto de gelo, no ar | Pendurar no teto. Pendurado: `←`/`→` anda, `↓` ou `Z` solta. |
-| `J` (só Debug) | 1 de dano, empurrando para trás. |
-| `L` (só Debug) | Gasta 30 de gelo e 30 de fogo. |
+O Iki lê as ações com nome do `examples/iki_demo/project.json` (veja [platform](../sistemas/platform.md)): `moveLeft`, `moveRight`, `moveUp`, `moveDown`, `jump`, `attack`, `shoot`, `guard`, `interact` e `dropThrough`. No gamepad, "direcional" vale também para o analógico esquerdo.
+
+| Teclado | Gamepad | Ação |
+|---|---|---|
+| `←` `→` | direcional `←` `→` | Correr. |
+| `Z` | `A` | Pular. Segurar pula mais alto; soltar subindo corta o pulo. |
+| `↓` + `Z` numa plataforma atravessável | `↓` + `A` | Descer por ela (ação `dropThrough`). |
+| `↓` | `↓` | Interagir com uma alavanca (ação `interact`). |
+| `X` | `X` | Corte (sequência de até 3). |
+| `C` | `Y` | Estilhaço de gelo. |
+| `V` (segurar, no chão) | `R1` (segurar) | Escudo e aparo. |
+| `←`/`→` contra uma parede de gelo, no ar | direcional | Agarrar a parede (estacas de gelo). |
+| `↑` / `↓` na parede | direcional | Subir / descer. |
+| `Z` na parede | `A` | Salto da parede. |
+| `↑` sob um teto de gelo, no ar | direcional `↑` | Pendurar no teto. Pendurado: `←`/`→` anda, `↓` ou pulo solta. |
+| `J` (só Debug) | | 1 de dano, empurrando para trás. |
+| `L` (só Debug) | | Gasta 30 de gelo e 30 de fogo. |
 
 A seta `↑` **não** pula o Iki: ela sobe paredes e agarra tetos de gelo. As estacas só valem com a habilidade desbloqueada (veja [Habilidades](#habilidades)).
 
@@ -52,7 +57,7 @@ O movimento é uma **máquina de estados** chamada `"move"`. Em cada momento o I
 Cada passo do Iki segue a mesma ordem:
 
 1. Entrada: o jogo chamou `applyInput` antes do passo.
-2. `JumpAssist::tick`: conta o coyote time e o buffer de pulo.
+2. `JumpAssist::tick`: conta o coyote time e o buffer de pulo (um `InputBuffer`, contado no tempo do passo: não anda durante o hit stop).
 3. `actions().update`: a máquina `"action"` (golpe, tiro, escudo; veja [Combate do Iki](#combate-do-iki)). Ela roda antes da `"move"`, que lê a ação deste passo (velocidade reduzida, gravidade do golpe no ar).
 4. `states().update`: o estado atual move o Iki com os métodos de física. Depois, se o estado for `wall`, `ceiling`, `hurt` ou `dead`, a ação volta para `none`.
 5. `emitMovementCues`, no fim do `onStep`: avisa `landed`, `left_ground` e `turned`. Os avisos são eventos: os efeitos tocam no fim do passo (no flush), depois dos componentes.
@@ -84,7 +89,6 @@ Todos são atributos exportados: aparecem no inspetor F1, mudam ao vivo e podem 
 | `fallGravityFactor` | `1.6` | Gravidade descendo (queda rápida). |
 | `maxFallSpeed` | `-18` | Velocidade máxima de queda. |
 | `coyoteTime` | `0.1` | Segundos em que o pulo ainda vale depois de sair de uma borda. |
-| `jumpBuffer` | `0.12` | Segundos em que um `Z` apertado antes de tocar o chão ainda vale. |
 | `cornerCorrection` | `0.2` | Subindo, a cabeça que bate na quina de um teto desliza até isto para o lado e continua subindo. |
 | `stompBounceFactor` | `0.6` | Pisar num slime faz o Iki quicar a `jumpSpeed` vezes isto. |
 | `turnThreshold` | `2` | Virar mais rápido que isto (u/s) emite `move:turned` (a poeira da virada). |
@@ -100,6 +104,8 @@ Todos são atributos exportados: aparecem no inspetor F1, mudam ao vivo e podem 
 | `hurtDuration` | `0.35` | Segundos sem controle após o dano. |
 | `hurtKnockback` | `[6, 6]` | Empurrão do dano: x no sentido do golpe, y para cima. |
 | `invulnerableTime` | `0.8` | Segundos sem levar dano novo. O Iki copia este valor para o `invulnerableTime` do seu `Damageable` a cada passo (é o `Damageable` que conta o tempo). O dano emite `move:hurt` com este número como força, e o piscar do prefab (`"scaleByStrength": true`) dura o mesmo tempo. |
+
+O buffer de pulo (0,12 s: um `Z` apertado um pouco antes de tocar o chão ainda pula) não é mais um campo do Iki: é o `"buffer"` da ação `"jump"` no `examples/iki_demo/project.json`, ajustável no F1 em "Projeto · Entrada". O Iki lê esse valor a cada passo (`bufferWindow("jump")`).
 
 Os números de juice (squash, inclinação, piscar, partículas) não ficam no Iki: ficam nos componentes do prefab e nos arquivos de efeito. Veja [Game juice](game-juice.md).
 
@@ -144,7 +150,7 @@ A segunda máquina, `"action"`, cuida do combate de gelo. Ela aparece no F1 ao l
 | `guard_break` | O escudo quebrou: sem escudo nem golpe por `guardBreakStun`. | `none` |
 
 - **Regras com a `"move"`:** `wall`, `ceiling`, `hurt` e `dead` levam a ação para `none` e bloqueiam ações novas (o `guard_break` continua durante o `hurt` do golpe que o quebrou). O escudo só sobe em `idle` ou `run`.
-- **Sequência (`X`):** `X` começa o corte 1. Um `X` até `comboWindow` depois do fim de um corte começa o próximo, até o 3. Um `X` durante o corte (ou durante o hit stop) fica guardado e encadeia assim que o corte acaba. Dano 1, 1 e 2. Cada corte avança `attackStep` no chão; correndo, a velocidade cai para `runSpeed * attackMoveFactor`. A sequência zera com dano, parede, teto, escudo e tiro; pousar não zera. Golpe não gasta energia.
+- **Sequência (`X`):** `X` começa o corte 1. Um `X` até `comboWindow` depois do fim de um corte começa o próximo, até o 3. Um `X` durante o corte (ou durante o hit stop) fica guardado (`attackBuffered`) e encadeia assim que o corte acaba. Essa fila do "próximo corte" vale pelo resto do corte atual, não por um tempo em segundos, então não é um buffer de toque do projeto (`InputBuffer`). Dano 1, 1 e 2. Cada corte avança `attackStep` no chão; correndo, a velocidade cai para `runSpeed * attackMoveFactor`. A sequência zera com dano, parede, teto, escudo e tiro; pousar não zera. Golpe não gasta energia.
 - **No ar:** durante um corte que já está caindo (velocidade vertical 0 ou menos), a gravidade é `gravity * airAttackGravityFactor` e a queda para em `airAttackMaxFall`. Há uma sequência por salto: um corte que começa no ar gasta a do salto, e só tocar o chão, agarrar parede ou teto, ou levar dano a devolve.
 - **Hitboxes:** os filhos `Slash1`, `Slash2` e `Slash3` do prefab têm uma `Hitbox` cada, à frente do Iki (o espelho segue o `flipX` dele). O corte liga a hitbox entre os eventos `hit_on` e `hit_off` da animação, se ela tiver `hit_on` em `animationEvents` (só o primeiro `hit_on` de cada corte conta: uma animação que repete não abre outra janela). Senão, entre `activeStart` e `activeEnd` da hitbox (0,05 a 0,15 s). Cada corte acerta cada alvo uma vez. O `knockback` do `Slash3` é o `finisherKnockback` do Iki (o prefab não põe `knockback` nessa hitbox: o valor fica num lugar só, ajustável no F1).
 - **Estilhaço (`C`):** custa `shardCost` de gelo e lança o prefab `ice_shard` (do `ProjectilePool`) na direção do olhar, saindo do centro do corpo (encostado numa parede, ele quebra nela). A velocidade (14), o alcance (8) e o dano (1, gelo) são do componente `Projectile` do prefab. Entre tiros há `shootCooldown`. Sem gelo, nada sai e o Iki emite `move:no_energy`. Se o pool não consegue criar o estilhaço, o gelo não é gasto.

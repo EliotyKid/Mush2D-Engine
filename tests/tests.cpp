@@ -29,6 +29,7 @@
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/Region.hpp"
 #include "engine/world/RegionSet.hpp"
+#include "engine/world/InputBuffer.hpp"
 #include "engine/world/JumpAssist.hpp"
 #include "engine/world/IPlayer.hpp"
 #include "engine/world/Resources.hpp"
@@ -98,6 +99,32 @@ bool throwsWith(const std::function<void()>& f, const std::string& text) {
     }
     return false; // nothing was thrown
 }
+
+// Test input with one field per action of examples/iki_demo/project.json. Set the fields, then pass it where an
+// ActionFrame is expected: it converts into the frame the game reads (no window, no ActionMap).
+struct FakeInput {
+    ButtonState moveLeft, moveRight, moveUp, moveDown, jump, dash, hit, respawn, attack, shoot, guard;
+
+    operator ActionFrame() const {
+        ActionFrame f;
+        auto put = [&f](const char* name, const ButtonState& b) { f.set(name, ActionState{b.down, b.pressed, b.released}); };
+        put("moveLeft", moveLeft);
+        put("moveRight", moveRight);
+        put("moveUp", moveUp);
+        put("moveDown", moveDown);
+        put("jump", jump);
+        put("dash", dash);
+        put("hit", hit);
+        put("respawn", respawn);
+        put("attack", attack);
+        put("shoot", shoot);
+        put("guard", guard);
+        // The demo binds interact and dropThrough to Down, like moveDown: same here.
+        put("interact", moveDown);
+        put("dropThrough", moveDown);
+        return f;
+    }
+};
 }
 
 TEST(asset_path_is_next_to_executable) {
@@ -558,7 +585,7 @@ TEST(lever_toggles_on_down_and_item_is_collected) {
     LeverObject& lever = scene.createObject<LeverObject>();
     lever.entityIid = "l1";
     lever.door = "d1";
-    InputState down;
+    FakeInput down;
     down.moveDown.pressed = down.moveDown.down = true;
     player.applyInput(down);
     scene.step(0.016f); // not standing on it yet (the game's trigger scan reports overlaps)
@@ -567,7 +594,7 @@ TEST(lever_toggles_on_down_and_item_is_collected) {
     player.applyInput(down);
     scene.step(0.016f);
     CHECK(lever.isOn() && state.get("d1", "open", 0.0) == 1.0);
-    player.applyInput(InputState{}); // not pressed this frame: no toggle
+    player.applyInput(FakeInput{}); // not pressed this frame: no toggle
     scene.step(0.016f);
     CHECK(lever.isOn());
 
@@ -2135,7 +2162,7 @@ PlayerObject& platformerPlayer(Scene2D& scene, glm::vec2 pos) { // the Showcase 
     p.transform.position = pos;
     return p;
 }
-void stepPlayer(Scene2D& scene, PlayerObject& p, const InputState& in, int frames = 1) {
+void stepPlayer(Scene2D& scene, PlayerObject& p, const ActionFrame& in, int frames = 1) {
     for (int i = 0; i < frames; ++i) { p.applyInput(in); scene.step(kDt); }
 }
 }
@@ -2149,8 +2176,8 @@ TEST(player_jump_height_unchanged) {
     stepPlayer(scene, p, {}, 30);
     const float y0 = p.transform.position.y - 0.8f;
     CHECK(p.isGrounded() && std::abs(y0 + 4.5f) < 0.01f);
-    InputState jump; jump.jump.pressed = jump.jump.down = true;
-    InputState hold; hold.jump.down = true;
+    FakeInput jump; jump.jump.pressed = jump.jump.down = true;
+    FakeInput hold; hold.jump.down = true;
     stepPlayer(scene, p, jump);
     float apex = y0;
     for (int i = 0; i < 120; ++i) { stepPlayer(scene, p, hold); apex = std::max(apex, p.transform.position.y - 0.8f); }
@@ -2158,7 +2185,7 @@ TEST(player_jump_height_unchanged) {
     for (float vy = 11.0f - 32.0f * kDt; vy > 0.0f; vy -= 32.0f * kDt) expected += vy * kDt;
     CHECK(std::abs(apex - y0 - expected) < 0.01f && apex - y0 > 1.75f); // ~1.89 u (3.8 cells) at dt -> 0
     CHECK(p.isGrounded() && std::abs(p.transform.position.y - 0.8f - y0) < 1e-3f);
-    InputState right; right.moveRight.down = true;
+    FakeInput right; right.moveRight.down = true;
     const float x0 = p.transform.position.x;
     stepPlayer(scene, p, right, 60);
     CHECK(std::abs(p.transform.position.x - x0 - 4.5f) < 0.05f && p.isGrounded());
@@ -2172,7 +2199,7 @@ TEST(player_down_jump_drops_through_oneway) {
     PlayerObject& p = platformerPlayer(scene, {3.0f, -1.5f});
     stepPlayer(scene, p, {}, 30);
     CHECK(p.isGrounded() && std::abs(p.transform.position.y - 0.8f + 3.0f) < 0.01f);
-    InputState downJump; downJump.moveDown.down = downJump.moveDown.pressed = true; downJump.jump.pressed = downJump.jump.down = true;
+    FakeInput downJump; downJump.moveDown.down = downJump.moveDown.pressed = true; downJump.jump.pressed = downJump.jump.down = true;
     stepPlayer(scene, p, downJump);
     CHECK(p.velocity.y <= 0.0f); // no jump
     stepPlayer(scene, p, {}, 60);
@@ -4530,7 +4557,7 @@ IkiObject& makeIki(Scene2D& scene, glm::vec2 feet) {
     iki.transform.position = feet;
     return iki;
 }
-void stepIki(Scene2D& scene, IkiObject& iki, const InputState& in, int frames = 1) {
+void stepIki(Scene2D& scene, IkiObject& iki, const ActionFrame& in, int frames = 1) {
     for (int i = 0; i < frames; ++i) { iki.applyInput(in); scene.step(kDt); }
 }
 // 20 x 10 cells of 0.5 u: floor top y = -4.5 over x 0..10, plus extra solid cells.
@@ -4545,9 +4572,9 @@ IkiObject& ikiOnFloor(Scene2D& scene, float x) {
     stepIki(scene, iki, {}, 20);
     return iki;
 }
-InputState zPress() { InputState in; in.jump.pressed = in.jump.down = true; return in; }
-InputState zHeld() { InputState in; in.jump.down = true; return in; }
-InputState rightHeld() { InputState in; in.moveRight.down = true; return in; }
+FakeInput zPress() { FakeInput in; in.jump.pressed = in.jump.down = true; return in; }
+FakeInput zHeld() { FakeInput in; in.jump.down = true; return in; }
+FakeInput rightHeld() { FakeInput in; in.moveRight.down = true; return in; }
 bool inState(const IkiObject& iki, const char* name) { return std::string(iki.stateName()) == name; }
 // A hit on the Iki through its Damageable (no attacker), as the game deals damage.
 void damageIki(Scene2D& scene, IkiObject& iki, DamageInfo info) {
@@ -4573,10 +4600,10 @@ TEST(iki_run_accel_decel) {
     CHECK(iki.velocity_.x == 0.0f);
 
     // In the air: airAccel speeding up, airDecel slowing down.
-    InputState jumpRight = rightHeld();
+    FakeInput jumpRight = rightHeld();
     jumpRight.jump.pressed = jumpRight.jump.down = true;
     stepIki(scene, iki, jumpRight);
-    InputState airRight = rightHeld();
+    FakeInput airRight = rightHeld();
     airRight.jump.down = true;
     const float before = iki.velocity_.x;
     stepIki(scene, iki, airRight);
@@ -4590,7 +4617,7 @@ TEST(iki_run_accel_decel) {
     auto sub = scene.events().subscribe<MovementCue>([&](const MovementCue& c) { turned += c.name == "turned"; });
     stepIki(scene, iki, {}, 60);
     stepIki(scene, iki, rightHeld(), 30);
-    InputState left;
+    FakeInput left;
     left.moveLeft.down = true;
     stepIki(scene, iki, left, 5);        // 5 -> about -0.8 u/s
     stepIki(scene, iki, rightHeld(), 1); // below 2 u/s: no turn
@@ -4623,7 +4650,7 @@ TEST(iki_jump_coyote_and_buffer) {
         IkiObject& iki = makeIki(scene, {3.0f, -1.0f});
         int landed = -1;
         for (int f = 0; f < 90; ++f) {
-            stepIki(scene, iki, f == pressAt ? zPress() : InputState{});
+            stepIki(scene, iki, f == pressAt ? zPress() : FakeInput{});
             if (iki.grounded && landed < 0) landed = f;
             if (landed >= 0 && iki.velocity_.y > 0.0f) jumped = true;
         }
@@ -4655,7 +4682,7 @@ TEST(iki_jump_pressed_during_hitstop_is_kept) {
     ikiLevel(tap);
     IkiObject& t = ikiOnFloor(tap, 3.0f);
     tap.hitstop(0.06f);
-    InputState release;
+    FakeInput release;
     release.jump.released = true;
     stepIki(tap, t, zPress());
     stepIki(tap, t, release);
@@ -4676,6 +4703,74 @@ TEST(iki_jump_pressed_during_hitstop_is_kept) {
     CHECK(i.grounded && i.velocity_.y <= 0.0f);
 }
 
+TEST(input_buffer_window_and_consume) {
+    InputBuffer b;
+    b.window = 0.12f;
+    CHECK(!b.active()); // nothing pressed yet
+    b.step(true, kDt);  // the press fills the window
+    b.step(false, 0.11f);
+    CHECK(b.active()); // 0.11 s after the press: still valid
+    b.step(false, 0.02f);
+    CHECK(!b.active()); // 0.13 s: expired
+    b.step(true, kDt);
+    b.consume();
+    CHECK(!b.active()); // consumed: the press is spent
+}
+
+namespace {
+// Drops the Iki onto the floor of ikiLevel from y = -1. Z is pressed at frame pressAt (-1: never) and a hit stop of
+// `freeze` seconds starts right after that frame. `actions` is the scene's ActionMap service (null: none).
+// Returns whether the Iki jumped after landing; `landed` gets the frame it first touched the floor.
+bool dropAndJump(int pressAt, ActionMap* actions, float freeze, int& landed) {
+    Scene2D scene;
+    if (actions) scene.setService(actions);
+    ikiLevel(scene);
+    IkiObject& iki = makeIki(scene, {3.0f, -1.0f});
+    landed = -1;
+    bool jumped = false;
+    for (int f = 0; f < 120; ++f) {
+        stepIki(scene, iki, f == pressAt ? zPress() : FakeInput{});
+        if (f == pressAt && freeze > 0.0f) scene.hitstop(freeze);
+        if (iki.grounded && landed < 0) landed = f;
+        if (landed >= 0 && iki.velocity_.y > 0.0f) jumped = true;
+    }
+    return jumped;
+}
+}
+
+TEST(input_buffer_survives_hit_stop) {
+    // A frozen step counts no time (dt 0): the press stays whole however long the freeze is.
+    InputBuffer b;
+    b.window = 0.12f;
+    b.step(true, 0.0f); // pressed in a frozen step
+    for (int i = 0; i < 30; ++i) b.step(false, 0.0f);
+    CHECK(b.active());
+    b.step(false, 0.11f); // the first running steps
+    CHECK(b.active());
+
+    // The Iki: Z 5 frames before landing, then a 0.3 s hit stop (longer than the 0.12 s buffer). The buffer runs
+    // on scene time, so the Iki still jumps when it lands after the freeze.
+    int land = -1;
+    CHECK(!dropAndJump(-1, nullptr, 0.0f, land) && land > 15);
+    int landFrozen = -1;
+    CHECK(dropAndJump(land - 5, nullptr, 0.3f, landFrozen));
+    CHECK(landFrozen > land + 15); // the freeze delayed the landing
+}
+
+TEST(jump_buffer_from_project_action) {
+    // The project's "jump" action sets the jump buffer: 0.25 s here.
+    std::map<std::string, ActionBinding, std::less<>> a;
+    a["jump"] = {{GLFW_KEY_Z}, {}, {}, 0.25f};
+    ActionMap actions;
+    actions.configure(a, InputSettings{});
+    int land = -1;
+    CHECK(!dropAndJump(-1, &actions, 0.0f, land) && land > 15);
+    int unused = -1;
+    CHECK(dropAndJump(land - 12, &actions, 0.0f, unused));  // 0.2 s before landing: inside 0.25 s
+    CHECK(!dropAndJump(land - 18, &actions, 0.0f, unused)); // 0.3 s: outside
+    CHECK(!dropAndJump(land - 12, nullptr, 0.0f, unused));  // no ActionMap service: the 0.12 s default
+}
+
 TEST(iki_variable_jump_cut) {
     auto height = [](int holdFrames, float* releaseRatio) {
         Scene2D scene;
@@ -4686,7 +4781,7 @@ TEST(iki_variable_jump_cut) {
         float apex = y0;
         for (int f = 0; f < 90; ++f) {
             const float vy = iki.velocity_.y;
-            stepIki(scene, iki, f < holdFrames ? zHeld() : InputState{});
+            stepIki(scene, iki, f < holdFrames ? zHeld() : FakeInput{});
             if (f == holdFrames && releaseRatio) *releaseRatio = (iki.velocity_.y + 32.0f * kDt) / vy;
             apex = std::max(apex, iki.transform.position.y);
         }
@@ -4749,7 +4844,7 @@ TEST(iki_up_arrow_does_not_jump) {
     ikiLevel(scene);
     IkiObject& iki = ikiOnFloor(scene, 3.0f);
     const float y0 = iki.transform.position.y;
-    InputState up;
+    FakeInput up;
     up.moveUp.pressed = up.moveUp.down = true;
     stepIki(scene, iki, up);
     up.moveUp.pressed = false;
@@ -4798,7 +4893,7 @@ TEST(iki_death_emits_died) {
     damageIki(scene, iki, {5, {-1.0f, 0.0f}});
     scene.flush();
     CHECK(died.size() == 1 && died[0] == iki.id && inState(iki, "dead"));
-    InputState all = rightHeld();
+    FakeInput all = rightHeld();
     all.jump.pressed = all.jump.down = true;
     stepIki(scene, iki, all, 30);
     CHECK(inState(iki, "dead") && iki.velocity_.x == 0.0f && iki.grounded); // no control
@@ -4874,8 +4969,8 @@ IkiObject& iceIki(Scene2D& scene, WorldState& state, const LdtkLayer& L, glm::ve
     iki.addComponent<IceStakesAbility>();
     return iki;
 }
-InputState keys(bool left, bool right, bool up, bool down, bool zPressed = false, bool zDown = false) {
-    InputState in;
+FakeInput keys(bool left, bool right, bool up, bool down, bool zPressed = false, bool zDown = false) {
+    FakeInput in;
     in.moveLeft.down = left;
     in.moveRight.down = right;
     in.moveUp.down = up;
@@ -4885,7 +4980,7 @@ InputState keys(bool left, bool right, bool up, bool down, bool zPressed = false
     return in;
 }
 // Steps until the Iki is in `state` (at most `limit` frames); true when it got there.
-bool stepUntil(Scene2D& scene, IkiObject& iki, const InputState& in, const char* state, int limit = 120) {
+bool stepUntil(Scene2D& scene, IkiObject& iki, const ActionFrame& in, const char* state, int limit = 120) {
     for (int f = 0; f < limit && !inState(iki, state); ++f) stepIki(scene, iki, in);
     return inState(iki, state);
 }
@@ -5012,7 +5107,7 @@ TEST(iki_buffered_jump_on_cling_wall_jumps) {
         IkiObject& iki = iceIki(scene, state, iceWallGrid(), {4.5f, -4.0f});
         int touch = -1;
         for (int f = 0; f < 60 && touch < 0; ++f) {
-            InputState in = rightHeld();
+            FakeInput in = rightHeld();
             if (f == pressAt) in.jump.pressed = in.jump.down = true;
             stepIki(scene, iki, in);
             if (inState(iki, "wall")) clung = true;
@@ -5047,7 +5142,7 @@ TEST(iki_ceiling_hang_moves_and_releases) {
     Scene2D scene;
     WorldState state;
     IkiObject& iki = iceIki(scene, state, iceCeilingGrid(), {3.0f, -3.85f}); // head 0.25 below the ice
-    const InputState up = keys(false, false, true, false);
+    const FakeInput up = keys(false, false, true, false);
     CHECK(stepUntil(scene, iki, up, "ceiling", 3));
     stepIki(scene, iki, {}, 30);
     CHECK(inState(iki, "ceiling") && std::abs(iki.transform.position.y + 3.6f) < 1e-3f); // snapped up, no gravity
@@ -5095,7 +5190,7 @@ TEST(iki_wall_to_ceiling_inner_corner) {
     CHECK(stepUntil(scene, iki, keys(false, false, true, false), "ceiling", 120)); // up only: into the ceiling
     stepIki(scene, iki, {}, 5); // snaps up from the grab reach
     CHECK(inState(iki, "ceiling") && std::abs(iki.transform.position.y + 3.1f) < 1e-3f);
-    InputState left;
+    FakeInput left;
     left.moveLeft.down = true;
     stepIki(scene, iki, left, 20);
     CHECK(inState(iki, "ceiling") && iki.transform.position.x < 5.0f);
@@ -5112,7 +5207,7 @@ TEST(iki_wall_ceiling_corner_no_flicker) {
     CHECK(stepUntil(scene, iki, rightHeld(), "wall"));
     int changes = 0;
     auto sub = scene.events().subscribe<StateChanged>([&](const StateChanged&) { ++changes; });
-    const InputState upRight = keys(false, true, true, false);
+    const FakeInput upRight = keys(false, true, true, false);
     stepIki(scene, iki, upRight, 120);
     scene.flush();
     CHECK(changes == 0 && inState(iki, "wall") && std::abs(iki.transform.position.y + 3.1f) < 1e-3f);
@@ -5180,7 +5275,7 @@ TEST(iki_hurt_releases_cling) {
     Scene2D scene2;
     WorldState state2;
     IkiObject& hanging = iceIki(scene2, state2, iceCeilingGrid(), {3.0f, -3.85f});
-    const InputState up = keys(false, false, true, false);
+    const FakeInput up = keys(false, false, true, false);
     CHECK(stepUntil(scene2, hanging, up, "ceiling", 3));
     stepIki(scene2, hanging, up, 5);
     hanging.hurt({1, {1.0f, 0.0f}});
@@ -5971,7 +6066,7 @@ struct IkiCombat {
         step({}, 20);
         actions.clear();
     }
-    void step(const InputState& in, int frames = 1) { for (int i = 0; i < frames; ++i) { iki->applyInput(in); scene.step(kDt); } }
+    void step(const ActionFrame& in, int frames = 1) { for (int i = 0; i < frames; ++i) { iki->applyInput(in); scene.step(kDt); } }
     // A target with a 0.8 x 1.6 hurtbox standing at feet x, no invulnerability, 20 health, stunnable.
     GameObject& target(float x, float y = -4.5f) {
         GameObject& o = scene.createObject<GameObject>();
@@ -5994,10 +6089,10 @@ struct IkiCombat {
     int count(const std::vector<std::string>& v, const char* s) const { return int(std::count(v.begin(), v.end(), s)); }
     float ice() const { return iki->getComponent<Resources>()->energy("ice"); }
 };
-InputState xPress() { InputState in; in.attack.pressed = in.attack.down = true; return in; }
-InputState cPress() { InputState in; in.shoot.pressed = in.shoot.down = true; return in; }
-InputState vPress() { InputState in; in.guard.pressed = in.guard.down = true; return in; }
-InputState vHeld() { InputState in; in.guard.down = true; return in; }
+FakeInput xPress() { FakeInput in; in.attack.pressed = in.attack.down = true; return in; }
+FakeInput cPress() { FakeInput in; in.shoot.pressed = in.shoot.down = true; return in; }
+FakeInput vPress() { FakeInput in; in.guard.pressed = in.guard.down = true; return in; }
+FakeInput vHeld() { FakeInput in; in.guard.down = true; return in; }
 // A hit on the Iki whose push is `dir` (from the front of a right-facing Iki: x < 0).
 void hitIki(IkiCombat& c, glm::vec2 dir, GameObjectId source = InvalidGameObjectId, int amount = 1, bool parryable = true) {
     DamageInfo info{amount, dir};
@@ -6080,7 +6175,7 @@ TEST(iki_combo_buffered_during_hitstop) {
     c.step(xPress());
     for (int i = 0; i < 30 && !c.scene.lastStepFrozen(); ++i) c.step({});
     CHECK(c.scene.lastStepFrozen() && c.action("slash1"));
-    InputState release;
+    FakeInput release;
     release.attack.released = true;
     c.step(xPress()); // pressed and released while frozen
     c.step(release);
@@ -6094,7 +6189,7 @@ TEST(iki_air_attack_reduced_gravity_once_per_jump) {
     c.step(zPress());
     c.step(zHeld(), 2);
     CHECK(!c.iki->grounded && c.iki->velocity_.y > 5.0f);
-    InputState xz = xPress();
+    FakeInput xz = xPress();
     xz.jump.down = true;
     c.step(xz);
     CHECK(c.action("slash1"));
@@ -6175,7 +6270,7 @@ TEST(iki_combo_reset_by_hurt_wall_guard_shoot) {
         Scene2D scene;
         WorldState state;
         IkiObject& iki = iceIki(scene, state, iceWallGrid(), {5.0f, -4.0f});
-        InputState xr = rightHeld();
+        FakeInput xr = rightHeld();
         xr.attack.pressed = xr.attack.down = true;
         stepIki(scene, iki, xr);
         CHECK(std::string(iki.actionName()) == "slash1");
@@ -6302,7 +6397,7 @@ TEST(iki_parry_window_restarts_per_press) {
     if (!c.iki) return;
     c.step(vPress());
     c.step(vHeld(), 30); // the window is long gone
-    InputState up;
+    FakeInput up;
     up.guard.released = true;
     c.step(up);
     CHECK(c.action("none"));
@@ -6350,11 +6445,11 @@ TEST(iki_guard_only_on_ground_and_slow) {
     CHECK(!c.iki->grounded && c.action("none"));
     for (int i = 0; i < 120 && !c.iki->grounded; ++i) c.step({});
     c.step({}, 5);
-    InputState v = vPress();
+    FakeInput v = vPress();
     v.moveRight.down = true;
     c.step(v);
     CHECK(c.action("guard"));
-    InputState vr = vHeld();
+    FakeInput vr = vHeld();
     vr.moveRight.down = true;
     c.step(vr, 30);
     CHECK(std::abs(c.iki->velocity_.x - 5.0f * 0.3f) < 1e-3f); // guardMoveFactor

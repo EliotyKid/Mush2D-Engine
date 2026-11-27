@@ -17,7 +17,7 @@ struct SlashAction : State<IkiObject> {
         if (iki.guardPressed() && iki.canGuard()) return "guard"; // GuardAction resets the sequence
         if (iki.shootPressed())
             if (const char* shot = iki.tryShoot()) return shot;
-        if (iki.attackPressed()) iki.attackBuffered = true;
+        if (iki.attackPressed()) iki.attackBuffered = true; // queued for the end of this slash (not a timed buffer)
         const float t = iki.actions().timeInState();
         iki.slashWindow(n, t);
         if (t < iki.slashDuration) return nullptr;

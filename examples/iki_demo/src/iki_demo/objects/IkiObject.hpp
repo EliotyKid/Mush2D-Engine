@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/platform/InputState.hpp"
+#include "engine/platform/Actions.hpp"
 #include "engine/world/CharacterController.hpp"
 #include "engine/world/Combat.hpp"
 #include "engine/world/Damage.hpp"
@@ -44,7 +44,7 @@ public:
     MUSH2D_EXPORT(float, fallGravityFactor, 1.6f)
     MUSH2D_EXPORT(float, maxFallSpeed, -18.0f)
     MUSH2D_EXPORT(float, coyoteTime, 0.1f)
-    MUSH2D_EXPORT(float, jumpBuffer, 0.12f)
+    // The jump buffer is the project's: the "buffer" of the "jump" action in project.json (F1, Projeto · Entrada).
     MUSH2D_EXPORT(float, cornerCorrection, 0.2f) // rising into a ceiling corner: side shift allowed (units)
     MUSH2D_EXPORT(float, stompBounceFactor, 0.6f) // a slime stomp bounces at jumpSpeed * this
     MUSH2D_EXPORT(float, turnThreshold, 2.0f)     // u/s: a turn faster than this emits "turned" (turn dust)
@@ -99,9 +99,9 @@ public:
     void onStep(Scene2D& scene, float dt) override;
 
     // IPlayer
-    void applyInput(const InputState& input) override;
+    void applyInput(const ActionFrame& input) override;
     void respawnAt(glm::vec2 position) override; // teleport only: no velocity, ground or slide carried over
-    bool downPressedThisFrame() const override { return input_.moveDown.pressed; }
+    bool downPressedThisFrame() const override { return input_.pressed("interact"); } // levers
     void setCheckpoint(glm::vec2 position) override { checkpoint_ = position; }
     void respawnAtCheckpoint() override { respawnAt(checkpoint_); respawn(); }
 
@@ -117,16 +117,17 @@ public:
     const char* actionName() const { return actions_.current(); }
     bool actionIs(const char* name) const;
 
-    // Input as the states see it (Hurt and Dead ignore it).
-    float moveX() const { return float(input_.moveRight.down) - float(input_.moveLeft.down); }
+    // Input as the states see it (Hurt and Dead ignore it): the project's named actions of this step.
+    float moveX() const { return float(input_.down("moveRight")) - float(input_.down("moveLeft")); }
     int moveSide() const { return int(moveX()); } // -1, 0 or +1
-    bool jumpHeld() const { return input_.jump.down; }
-    bool downHeld() const { return input_.moveDown.down; }
-    bool upHeld() const { return input_.moveUp.down; }
-    bool attackPressed() const { return input_.attack.pressed; }
-    bool shootPressed() const { return input_.shoot.pressed; }
-    bool guardPressed() const { return input_.guard.pressed; }
-    bool guardHeld() const { return input_.guard.down; }
+    bool jumpHeld() const { return input_.down("jump"); }
+    bool downHeld() const { return input_.down("moveDown"); }
+    bool dropHeld() const { return input_.down("dropThrough"); } // with a jump on a one-way platform: drop through
+    bool upHeld() const { return input_.down("moveUp"); }
+    bool attackPressed() const { return input_.pressed("attack"); }
+    bool shootPressed() const { return input_.pressed("shoot"); }
+    bool guardPressed() const { return input_.pressed("guard"); }
+    bool guardHeld() const { return input_.down("guard"); }
 
     // Combat, for the action states.
     bool actionsBlocked() const; // move is wall, ceiling, hurt or dead
@@ -143,6 +144,8 @@ public:
     const char* tryShoot();
     int comboNext = 1;
     float comboLeft = 0.0f;
+    // X pressed during a slash: the next slash starts when this one ends. Its window is "the rest of the current
+    // slash", not a time in seconds, so it is not a press buffer (InputBuffer).
     bool attackBuffered = false;
 
     // Physics shared by the states, in this order each step: runHorizontal, tryJump, applyGravity, moveAndCollide.
@@ -187,7 +190,7 @@ private:
     bool airComboUsed_ = false; // a slash started in the air since the last ground, wall, ceiling or damage
     float shootLeft_ = 0.0f;
     Scene2D* scene_ = nullptr; // the scene of the running step (physics helpers need it)
-    InputState input_{};
+    ActionFrame input_; // the actions of the latest applyInput
     bool inputRead_ = true; // a step has read input_ (false through a hit stop: its presses are kept)
     Body body_;
     MoveResult lastMove_;

@@ -4,7 +4,7 @@
   "props": {
     "runSpeed": 5.0, "groundAccel": 60.0, "groundDecel": 70.0, "airAccel": 35.0, "airDecel": 20.0,
     "gravity": -32.0, "jumpSpeed": 11.0, "jumpCutFactor": 0.5, "apexThreshold": 1.5, "apexGravityFactor": 0.5,
-    "fallGravityFactor": 1.6, "maxFallSpeed": -18.0, "coyoteTime": 0.1, "jumpBuffer": 0.12, "cornerCorrection": 0.2,
+    "fallGravityFactor": 1.6, "maxFallSpeed": -18.0, "coyoteTime": 0.1, "cornerCorrection": 0.2,
     "stompBounceFactor": 0.6, "turnThreshold": 2.0,
     "wallClimbSpeed": 3.0, "wallJumpVelocity": [6.0, 10.0], "wallJumpLock": 0.15, "ledgeHop": [2.0, 7.0],
     "ceilingMoveSpeed": 3.0, "climbParticleInterval": 0.1,

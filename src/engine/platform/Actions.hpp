@@ -49,8 +49,11 @@ class ActionFrame {
 public:
     enum class Device { Keyboard, Gamepad };
 
-    // The state of `name`. An unknown name gives a stopped state and warns once per name.
+    // The state of `name`. An unknown name gives a stopped state and warns once per name (only in a frame an
+    // ActionMap filled: a hand-built frame, or the empty one before the first input, stays silent).
     const ActionState& get(std::string_view name) const;
+    // Sets one action's state by hand (tests, or a game that fakes input).
+    void set(std::string_view name, const ActionState& state) { states_[std::string(name)] = state; }
     bool down(std::string_view name) const { return get(name).down; }
     bool pressed(std::string_view name) const { return get(name).pressed; }
     bool released(std::string_view name) const { return get(name).released; }
@@ -61,7 +64,7 @@ public:
     Device lastDevice() const { return lastDevice_; }
 
     // Adds `earlier`'s presses and releases to this frame, so a press made in a frame the scene froze
-    // (hit stop) is still there when a step reads it. Same rule as InputState's keepEdges.
+    // (hit stop) is still there when a step reads it. A press and release inside the freeze plays as a one-frame tap.
     void keepEdges(const ActionFrame& earlier);
 
 private:
@@ -69,6 +72,7 @@ private:
     std::map<std::string, ActionState, std::less<>> states_;
     glm::vec2 stick_{0.0f};
     Device lastDevice_ = Device::Keyboard;
+    bool fromMap_ = false; // filled by an ActionMap: unknown names are a mistake worth a warning
     // Unknown names already reported. Shared by every copy of this frame, so a copy never warns again.
     std::shared_ptr<std::set<std::string, std::less<>>> warned_ = std::make_shared<std::set<std::string, std::less<>>>();
 };
@@ -76,6 +80,7 @@ private:
 // Turns raw devices into actions, one update per frame.
 class ActionMap {
 public:
+    ActionMap() { frame_.fromMap_ = true; } // its frame lists every declared action: other names warn
     // Sets the bindings and limits. Actions that keep their name keep their current state.
     void configure(const std::map<std::string, ActionBinding, std::less<>>& actions, const InputSettings& settings);
     // Reads one raw snapshot and computes the new frame (edges come from the change of the combined "down").

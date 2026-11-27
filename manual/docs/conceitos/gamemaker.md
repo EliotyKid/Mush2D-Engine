@@ -20,7 +20,7 @@
 | `depth` | `sprite->layer` e `sprite->orderInLayer` | campo do objeto |
 | Máscara de colisão | `collider` (tamanho, `isTrigger`) | campo do objeto |
 | `event_inherited()` | `ClassePai::onCreate(scene)` | dentro da classe |
-| `keyboard_check` / `_pressed` / `_released` | `down` / `pressed` / `released` de um botão do `InputState` | `src/engine/platform/InputState.hpp` |
+| `keyboard_check` / `_pressed` / `_released` | `down("jump")` / `pressed("jump")` / `released("jump")` de uma ação do `ActionFrame` (declarada no `project.json`) | `src/engine/platform/Actions.hpp` |
 | **Room** | **sala do LDtk** (nível) | `assets/levels/showcase.ldtk` |
 | Room Editor | **LDtk** (editor externo) | — |
 | Tile layer / Instance layer | camadas de tiles / de entidades do LDtk | — |

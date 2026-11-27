@@ -11,7 +11,7 @@
 #include "engine/world/GameObject.hpp"
 #include "engine/world/IPlayer.hpp"
 #include "engine/world/Scene2D.hpp"
-#include "engine/platform/InputState.hpp"
+#include "engine/platform/Actions.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -123,32 +123,35 @@ public:
         applyCurrentAnimationFrame(scene);
     }
 
-    void applyInput(const InputState& input) override {
+    // Reads the project's named actions (examples/iki_demo/project.json) for this frame.
+    void applyInput(const ActionFrame& input) override {
         inputDir = {0.0f, 0.0f};
 
-        if (input.moveLeft.down) inputDir.x -= 1.0f;
-        if (input.moveRight.down) inputDir.x += 1.0f;
-        if (input.moveUp.down) inputDir.y += 1.0f;
-        if (input.moveDown.down) inputDir.y -= 1.0f;
+        if (input.down("moveLeft")) inputDir.x -= 1.0f;
+        if (input.down("moveRight")) inputDir.x += 1.0f;
+        if (input.down("moveUp")) inputDir.y += 1.0f;
+        if (input.down("moveDown")) inputDir.y -= 1.0f;
 
         if (glm::length(inputDir) > 0.0f) {
             inputDir = glm::normalize(inputDir);
             facingDir = inputDir;
         }
 
-        if (input.dash.pressed) {
+        if (input.pressed("dash")) {
             dashRequested = true;
         }
 
-        if (input.hit.pressed) {
+#ifndef NDEBUG
+        if (input.pressed("hit")) { // H: a test hit, Debug only
             hitRequested = true;
         }
+#endif
 
-        if (input.jump.pressed || input.moveUp.pressed) {
+        if (input.pressed("jump") || input.pressed("moveUp")) {
             jumpRequested = true;
         }
-        jumpHeld = input.jump.down || input.moveUp.down;
-        interact = input.moveDown.pressed;
+        jumpHeld = input.down("jump") || input.down("moveUp");
+        interact = input.pressed("interact"); // levers
     }
 
     // Down was pressed this frame (levers read it during the step).

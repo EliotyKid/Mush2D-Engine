@@ -39,7 +39,7 @@
 | `SpatialGrid` | Grade que acha rápido quais caixas se sobrepõem a uma caixa. |
 | `CollisionWorld` | Linhas de colisão do cenário por sala, geradas do IntGrid `Collision` e das entidades `Terrain`. `query(caixa, out)`. Cada `Segment` tem uma `surface`: um `SurfaceId` (`DefaultSurface` = 0, ou o número de uma superfície do `project.json`, vinda do nome do valor da IntGrid ou do `terrainFlag` do `Terrain`). |
 | `CharacterController` | `move(body, velocity, dt, query, wasGrounded, jumped)` anda e resolve colisões: chão até 50°, segue rampas, gruda no chão até 0,3 u abaixo, desliza no íngreme. `requestDropThrough` (↓ + pulo em plataforma), `depenetrate` (empurra para fora do chão novo no hot reload, até 2 u). `probeWall(body, lado, query)` e `probeCeiling(body, query)` devolvem um `SurfaceHit` (`hit`, `surface`) da parede ou do teto a até 0,05 u, mesmo com o corpo parado; uma superfície que não é a padrão vence se as duas encostam. |
-| `JumpAssist` | Tempo do pulo, sem cena: `coyoteTime` (0,1 s) e `jumpBuffer` (0,12 s). `tick(dt, noChão, apertou)` por quadro (`apertou` = apertado neste quadro, não segurado; no quadro depois do pulo, não passe `noChão` verdadeiro, senão o coyote recarrega), `consumeJump()` (verdadeiro com aperto guardado e chão ou coyote; limpa os dois), `hasBufferedJump`, `clearBuffer`, `startCoyote` (coyote ao sair da parede). |
+| `JumpAssist` | Tempo do pulo, sem cena: `coyoteTime` (0,1 s) e `buffer`, um `InputBuffer` (0,12 s até o dono trocar `buffer.window`; o Iki usa o `bufferWindow("jump")` do projeto). `tick(dt, noChão, apertou)` por quadro (`apertou` = apertado neste quadro, não segurado; no quadro depois do pulo, não passe `noChão` verdadeiro, senão o coyote recarrega), `consumeJump()` (verdadeiro com aperto guardado e chão ou coyote; limpa os dois), `hasBufferedJump`, `clearBuffer`, `startCoyote` (coyote ao sair da parede). |
 | `TerrainMesh` | Gera o visual do terreno livre (preenchimento, borda e lados) como sprites comuns. |
 
 ### LDtk, salas e mundo
@@ -175,7 +175,7 @@ Com `MUSH2D_COMPONENT`, ele pode ser listado em `"components"` de um prefab.
 
 ### Congelar a cena num acerto (hit stop)
 
-`scene.hitstop(0.06f);` (ou a ação de efeito `{"hitstop": 0.06}`). Enquanto dura, `timeScale()` é 0 e `step(dt)` só desconta `dt` do hit stop: objetos, componentes, física, partículas, esperas de efeito e `Flash` ficam parados, e o `lateStep` desse quadro também. Pedidos ficam com o maior, sem somar; `clear()` zera. O tremor da câmera, a interface e a leitura das teclas seguem em tempo real. Depois de um passo congelado, `lastStepFrozen()` é verdadeiro. O `IkiObject::applyInput` usa isso para guardar os apertos (`keepEdges`, em `InputState.hpp`) até um passo lê-los, então o buffer de pulo atravessa o congelamento. Um botão novo no `InputState` precisa entrar no `keepEdges`.
+`scene.hitstop(0.06f);` (ou a ação de efeito `{"hitstop": 0.06}`). Enquanto dura, `timeScale()` é 0 e `step(dt)` só desconta `dt` do hit stop: objetos, componentes, física, partículas, esperas de efeito e `Flash` ficam parados, e o `lateStep` desse quadro também. Pedidos ficam com o maior, sem somar; `clear()` zera. O tremor da câmera, a interface e a leitura das teclas seguem em tempo real. Depois de um passo congelado, `lastStepFrozen()` é verdadeiro. O `IkiObject::applyInput` usa isso para guardar os apertos (`ActionFrame::keepEdges`, para todas as ações) até um passo lê-los, então o buffer de pulo atravessa o congelamento.
 
 ### Dar um ataque a um objeto
 

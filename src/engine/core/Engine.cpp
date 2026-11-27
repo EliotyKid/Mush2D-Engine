@@ -100,6 +100,7 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
     Scene2D scene{};
     scene.setService(&camera); // the "shake" effect action reaches it
     scene.setService(&audio);  // the "sound" effect action
+    scene.setService(&input.actions()); // the named input actions: objects read buffer windows from it
     audio.init();              // no device: silent (the game's sounds are scanned once the game is chosen)
     Bindless bindless;
     MaterialLibrary materials;

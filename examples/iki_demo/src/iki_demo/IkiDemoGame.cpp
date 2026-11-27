@@ -113,7 +113,7 @@ void IkiDemoGame::update(EngineServices& s, float deltaTime) {
     // A death fade only exists in the Showcase world; leaving it mid-fade must not freeze other scenes.
     const bool dying = currentSceneId == SceneId::Showcase && world.dying();
     if (player && !dying) { // a dying player stands still
-        player->applyInput(s.input.getState());
+        player->applyInput(s.input.actions().frame()); // the project's named actions for this frame
     }
 
     scene.step(deltaTime);
@@ -337,8 +337,8 @@ void IkiDemoGame::handleGlobalInput(EngineServices& s, float deltaTime) {
         reloadScenePressed = false;
     }
 
-    const InputState& state = input.getState();
-
+    const InputState& state = input.getState();   // the engine's fixed tool controls (camera, zoom, mouse)
+    const ActionFrame& actions = input.actions().frame(); // the project's actions (respawn)
 
     if (state.toggleFollow.pressed) {
         camera.followEnabled = !camera.followEnabled;
@@ -347,9 +347,9 @@ void IkiDemoGame::handleGlobalInput(EngineServices& s, float deltaTime) {
     GameObject* player = livePlayer(scene, playerObjectId);
     auto* control = dynamic_cast<IPlayer*>(player);
 
-    if (state.respawn.pressed && player && currentSceneId == SceneId::Showcase) {
+    if (actions.pressed("respawn") && player && currentSceneId == SceneId::Showcase) {
         killPlayer(s, player->id); // through World: restore, stream, fade
-    } else if (state.respawn.pressed && control) {
+    } else if (actions.pressed("respawn") && control) {
         control->respawnAtCheckpoint();
 
         if (camera.followEnabled) {

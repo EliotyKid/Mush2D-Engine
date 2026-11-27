@@ -117,7 +117,7 @@ const ActionState& ActionFrame::get(std::string_view name) const {
     static const ActionState stopped;
     auto it = states_.find(name);
     if (it != states_.end()) return it->second;
-    if (warned_->insert(std::string(name)).second) // report each unknown name once
+    if (fromMap_ && warned_->insert(std::string(name)).second) // report each unknown name once
         std::cerr << "Input: unknown action '" << name << "'\n";
     return stopped;
 }

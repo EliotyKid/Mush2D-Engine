@@ -21,19 +21,22 @@ Cada jogo é ligado ao build por uma linha `mush2d_add_game(...)` no `CMakeLists
 
 ## Controles (vitrine)
 
-| Tecla | Ação |
-|---|---|
-| `←` `→` | Correr. |
-| `Z` | Pular (só `Z`: a seta para cima não pula o Iki). |
-| `↓` + `Z` | Descer por uma plataforma atravessável. |
-| `X` | Golpe de gelo. Até 3 seguidos (o terceiro é mais forte). |
-| `C` | Estilhaço de gelo (gasta gelo). |
-| `V` (segurar, no chão) | Escudo: bloqueia golpes de frente (gasta gelo). Logo depois de erguer, apara (atordoa e devolve projéteis). |
-| `←`/`→` contra uma parede de gelo (no ar) | Cravar as estacas e agarrar a parede (precisa da habilidade). Na parede, `↑`/`↓` sobe e desce; `Z` salta para longe. |
-| `↑` sob um teto de gelo (no ar) | Pendurar no teto. Pendurado, `←`/`→` anda; `↓` ou `Z` solta. |
-| `J` (só Debug) | 1 de dano no Iki. |
-| `L` (só Debug) | Gasta 30 de gelo e 30 de fogo. |
-| `F1` | Painel e inspetor (mostra o estado do Iki). |
+| Teclado | Gamepad | Ação |
+|---|---|---|
+| `←` `→` | direcional ou analógico | Correr. |
+| `Z` | `A` | Pular (a seta para cima não pula o Iki). |
+| `↓` + `Z` | `↓` + `A` | Descer por uma plataforma atravessável. |
+| `X` | `X` | Golpe de gelo. Até 3 seguidos (o terceiro é mais forte). |
+| `C` | `Y` | Estilhaço de gelo (gasta gelo). |
+| `V` (segurar, no chão) | `R1` (segurar) | Escudo: bloqueia golpes de frente (gasta gelo). Logo depois de erguer, apara (atordoa e devolve projéteis). |
+| `←`/`→` contra uma parede de gelo (no ar) | direcional | Cravar as estacas e agarrar a parede (precisa da habilidade). Na parede, `↑`/`↓` sobe e desce; o pulo salta para longe. |
+| `↑` sob um teto de gelo (no ar) | direcional `↑` | Pendurar no teto. Pendurado, `←`/`→` anda; `↓` ou o pulo solta. |
+| `R` | | Morrer e voltar ao checkpoint. |
+| `J` (só Debug) | | 1 de dano no Iki. |
+| `L` (só Debug) | | Gasta 30 de gelo e 30 de fogo. |
+| `F1` | | Painel e inspetor (mostra o estado do Iki). |
+
+As teclas e os botões do jogo ficam em `examples/iki_demo/project.json` (`"actions"`).
 
 A lista completa está em `manual/docs/primeiros-passos.md`.
 

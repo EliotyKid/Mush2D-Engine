@@ -109,11 +109,11 @@ void IkiObject::onPrefabApplied(Scene2D& scene) {
     checkpoint_ = transform.position;
 }
 
-void IkiObject::applyInput(const InputState& input) {
-    InputState next = input;
+void IkiObject::applyInput(const ActionFrame& input) {
+    ActionFrame next = input;
     // The last step was frozen by a hit stop and did not read the input: its presses still count. A pause or an
     // inactive Iki (a step without the Iki) keeps nothing.
-    if (!inputRead_ && scene_ && scene_->lastStepFrozen()) keepEdges(next, input_);
+    if (!inputRead_ && scene_ && scene_->lastStepFrozen()) next.keepEdges(input_);
     input_ = next;
     inputRead_ = false;
 }
@@ -129,8 +129,9 @@ void IkiObject::onStep(Scene2D& scene, float dt) {
     shootLeft_ = std::max(0.0f, shootLeft_ - dt);
     if (grounded) airComboUsed_ = false;
     jump.coyoteTime = coyoteTime;
-    jump.jumpBuffer = jumpBuffer;
-    jump.tick(dt, grounded, input_.jump.pressed);
+    // The jump buffer window is the project's "jump" action buffer (no ActionMap service, as in tests: the default).
+    if (const ActionMap* map = scene.service<ActionMap>()) jump.buffer.window = map->bufferWindow("jump");
+    jump.tick(dt, grounded, input_.pressed("jump")); // scene time: a hit stop runs no step, so the buffer waits
     wallJumpLockLeft_ = grounded ? 0.0f : std::max(0.0f, wallJumpLockLeft_ - dt);
     wallCoyoteLeft_ = grounded ? 0.0f : std::max(0.0f, wallCoyoteLeft_ - dt);
     if (grounded || moveX() * float(wallBlockedSide_) <= 0.0f) wallBlockedSide_ = 0;
@@ -178,7 +179,7 @@ bool IkiObject::tryJump() {
         wallJump();
         return true;
     }
-    if (downHeld() && requestDropThrough(body_, lastMove_)) return false; // down + Z on a one-way: drop through
+    if (dropHeld() && requestDropThrough(body_, lastMove_)) return false; // dropThrough + Z on a one-way: drop through
     velocity_.y = jumpSpeed;
     jumped_ = true;
     jumpCuttable = true;
