@@ -24,7 +24,25 @@ cmake --build build/debug
 ctest --test-dir build/debug
 ```
 
-Use `release` no lugar de `debug` para um build otimizado. O executável fica em `build/<preset>/Mush2DEngine` (`Mush2DEngine.exe` no Windows).
+Use `release` no lugar de `debug` para um build otimizado. O executável fica em `build/<preset>/Mush2D` (`Mush2D.exe` no Windows).
+
+### Escolher o jogo
+
+O `Mush2D` traz todos os jogos compilados. Para abrir um jogo pelo id:
+
+```bash
+build/debug/Mush2D --game iki_demo
+```
+
+Sem o `--game`, ele abre o primeiro jogo da lista. Com um id que não existe, ele mostra os ids válidos e abre o primeiro.
+
+Hoje há um jogo: o `iki_demo`, em `examples/iki_demo/` (o Iki e a sala vitrine). Cada jogo tem a sua pasta, com:
+
+- `project.json`: o id e o nome do jogo;
+- `assets/`: salas, sprites, prefabs e sons do jogo;
+- `src/<id>/`: o código do jogo.
+
+Os caminhos `assets/...` no código do jogo são relativos à pasta dele. O build copia a pasta para perto do executável (`build/debug/examples/iki_demo/`). Os shaders são da engine e ficam em `build/debug/shaders/`.
 
 No Windows, o terminal precisa do ambiente do Visual Studio. Se o `cmake` não achar o compilador, carregue-o antes no PowerShell:
 
@@ -99,7 +117,7 @@ No Debug, salvar o `.ldtk` (ou um `.region.json`) recarrega a vitrine sozinho em
 Capturar uma imagem da vitrine para comparar antes e depois de mudar o look:
 
 ```powershell
-$env:MUSH2D_SCREENSHOT = "antes.png"; build/debug/Mush2DEngine.exe; Remove-Item Env:MUSH2D_SCREENSHOT
+$env:MUSH2D_SCREENSHOT = "antes.png"; build/debug/Mush2D.exe; Remove-Item Env:MUSH2D_SCREENSHOT
 ```
 
 Comparar o parallax de duas versões no mesmo ponto do mundo: rode as duas com o mesmo `MUSH2D_CAMERA_X` e `MUSH2D_SCREENSHOT`.

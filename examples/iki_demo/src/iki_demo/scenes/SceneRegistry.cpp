@@ -1,0 +1,21 @@
+#include "SceneRegistry.hpp"
+
+#include "SandboxScene.hpp"
+#include "TestScene.hpp"
+
+#include <stdexcept>
+
+std::unique_ptr<ISceneDefinition> SceneRegistry::create(SceneId sceneId) {
+    switch (sceneId) {
+        case SceneId::Showcase:
+            return nullptr; // built from LDtk by IkiDemoGame
+
+        case SceneId::Sandbox:
+            return std::make_unique<SandboxScene>();
+
+        case SceneId::Test:
+            return std::make_unique<TestScene>();
+    }
+
+    throw std::runtime_error("SceneId invalido ao criar definicao de cena.");
+}

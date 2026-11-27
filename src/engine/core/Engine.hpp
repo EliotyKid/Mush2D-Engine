@@ -1,8 +1,9 @@
 #pragma once
 
-#include "engine/core/IGame.hpp"
+#include "engine/core/GameRegistry.hpp"
 
 class Engine {
 public:
-    void run(IGame& game);
+    // Points the asset paths at game.dir, creates the game, opens the window and runs until it closes.
+    void run(const GameEntry& game);
 };

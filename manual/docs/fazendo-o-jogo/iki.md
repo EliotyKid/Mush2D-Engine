@@ -26,7 +26,7 @@ A seta `↑` **não** pula o Iki: ela sobe paredes e agarra tetos de gelo. As es
 
 ## Estados
 
-O movimento é uma **máquina de estados** chamada `"move"`. Em cada momento o Iki está em exatamente um estado. Cada estado é uma classe pequena em `src/game/iki/states/`, com três partes:
+O movimento é uma **máquina de estados** chamada `"move"`. Em cada momento o Iki está em exatamente um estado. Cada estado é uma classe pequena em `examples/iki_demo/src/iki_demo/iki/states/`, com três partes:
 
 - `enter`: roda ao entrar no estado;
 - `update`: roda a cada passo e devolve o nome do próximo estado, ou `nullptr` para ficar;
@@ -108,9 +108,9 @@ Os números de juice (squash, inclinação, piscar, partículas) não ficam no I
 - O componente `Resources` guarda a vida (5) e as energias de gelo e de fogo (100). Ele recarrega sozinho as energias, 10 por segundo, 1 s depois do último gasto.
 - O dano chega pelo `Damageable` do Iki (adicionado no `onCreate`, com uma `Hurtbox` do time `"player"` do tamanho do corpo). Para ferir o Iki, emita um `HitEvent` para ele (a tecla de debug `J` faz isso). O `Damageable` pergunta ao escudo, tira a vida uma vez só e emite `DamageTaken`. Durante `invulnerableTime`, um golpe novo é ignorado.
 - `hurt(DamageInfo)` é só a reação ao `DamageTaken`: empurra, entra em `hurt` (ou `dead` com vida 0) e emite `move:hurt` (o piscar). Ele não tira vida.
-- Vida em 0: o Iki entra em `dead` e o `Resources` emite `Died`. O `IkigaiGame` ouve `Died` e chama a morte que já existe: escurece, restaura a sala e leva ao checkpoint.
+- Vida em 0: o Iki entra em `dead` e o `Resources` emite `Died`. O `IkiDemoGame` ouve `Died` e chama a morte que já existe: escurece, restaura a sala e leva ao checkpoint.
 - No renascimento, o jogo move o Iki (`respawnAt`) e chama `respawn()`: vida e energias cheias, sem invulnerabilidade, sem velocidade, sem pulo guardado, estado `idle`.
-- O HUD de teste (canto superior esquerdo) mostra 5 corações, a barra azul de gelo e a laranja de fogo. Ele fica em `src/game/ui/DebugHud.cpp` e será trocado pela UI do D9.
+- O HUD de teste (canto superior esquerdo) mostra 5 corações, a barra azul de gelo e a laranja de fogo. Ele fica em `examples/iki_demo/src/iki_demo/ui/DebugHud.cpp` e será trocado pela UI do D9.
 
 ## Estacas de gelo
 
@@ -133,7 +133,7 @@ Valem numa superfície `IceClimb` (IntGrid valor 9, ou `Terrain` com `iceClimb`;
 
 ## Combate do Iki
 
-A segunda máquina, `"action"`, cuida do combate de gelo. Ela aparece no F1 ao lado da `"move"` e emite `StateChanged` (`state:action:<estado>`). Os estados ficam em `src/game/iki/actions/`.
+A segunda máquina, `"action"`, cuida do combate de gelo. Ela aparece no F1 ao lado da `"move"` e emite `StateChanged` (`state:action:<estado>`). Os estados ficam em `examples/iki_demo/src/iki_demo/iki/actions/`.
 
 | Estado | Quando | Sai para |
 |---|---|---|
@@ -189,7 +189,7 @@ A segunda máquina, `"action"`, cuida do combate de gelo. Ela aparece no F1 ao l
 
 ## Habilidades
 
-Uma habilidade é um **componente** no prefab do Iki, ligado por uma **flag global** do `WorldState`. A primeira é `IceStakesAbility` (`src/game/abilities/IceStakesAbility.hpp`):
+Uma habilidade é um **componente** no prefab do Iki, ligado por uma **flag global** do `WorldState`. A primeira é `IceStakesAbility` (`examples/iki_demo/src/iki_demo/abilities/IceStakesAbility.hpp`):
 
 ```cpp
 class IceStakesAbility : public Component {
@@ -208,8 +208,8 @@ public:
 
 Exemplo: o pulo duplo de fogo.
 
-1. Crie `src/game/abilities/FireDoubleJumpAbility.hpp`, copiando `IceStakesAbility`, com `unlockFlag` `"ability.fire.doublejump"`.
-2. Inclua o cabeçalho em `src/game/objects/IkiObject.hpp`. Assim o `all_objects.cpp` gerado registra o componente e o prefab o encontra.
+1. Crie `examples/iki_demo/src/iki_demo/abilities/FireDoubleJumpAbility.hpp`, copiando `IceStakesAbility`, com `unlockFlag` `"ability.fire.doublejump"`.
+2. Inclua o cabeçalho em `examples/iki_demo/src/iki_demo/objects/IkiObject.hpp`. Assim o `iki_demo_objects.cpp` gerado registra o componente e o prefab o encontra.
 3. Acrescente ao prefab: `{ "type": "FireDoubleJumpAbility" }` em `components`.
 4. No estado que usa a habilidade (por exemplo, `JumpState`), pergunte `getComponent<FireDoubleJumpAbility>()` e `unlocked(scene)` antes de agir. Se ela gasta energia, use `Resources::spend`.
 5. Ponha no LDtk um item com `kind` igual à flag. Escreva um teste com e sem a flag (veja `iki_wall_cling_requires_ability`).
@@ -238,7 +238,7 @@ Os efeitos ficam em `assets/effects/` (`land_dust`, `run_dust`, `turn_dust`, `ju
 
 Exemplo: um estado `crouch` (agachar) com `↓` no chão.
 
-1. Crie `src/game/iki/states/CrouchState.hpp`:
+1. Crie `examples/iki_demo/src/iki_demo/iki/states/CrouchState.hpp`:
 
     ```cpp
     #pragma once
@@ -266,4 +266,4 @@ Exemplo: um estado `crouch` (agachar) com `↓` no chão.
 
 Uma transição por passo: o nome devolvido pelo `update` só vale no passo seguinte. Um nome que não existe avisa uma vez no stderr e o Iki fica no estado atual.
 
-**Arquivos:** `src/game/objects/IkiObject.hpp/.cpp`, `src/game/iki/states/*.hpp`, `src/game/abilities/*.hpp`, `src/game/ui/DebugHud.cpp`, `assets/prefabs/iki.prefab.json`, `assets/effects/*.effect.json`.
+**Arquivos:** `examples/iki_demo/src/iki_demo/objects/IkiObject.hpp/.cpp`, `examples/iki_demo/src/iki_demo/iki/states/*.hpp`, `examples/iki_demo/src/iki_demo/abilities/*.hpp`, `examples/iki_demo/src/iki_demo/ui/DebugHud.cpp`, `assets/prefabs/iki.prefab.json`, `assets/effects/*.effect.json`.

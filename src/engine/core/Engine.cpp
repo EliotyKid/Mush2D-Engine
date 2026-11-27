@@ -70,7 +70,14 @@ void saveScreenshot(GpuContext& gpu, GpuBuffer& buf, VkExtent2D e, const std::st
 }
 }
 
-void Engine::run(IGame& game) {
+void Engine::run(const GameEntry& entry) {
+    // The game's folder first: every assetPath / sourceAssetPath after this line (also in the game's
+    // constructor) reads that game's files.
+    setGameRoot(entry.dir);
+    // Made here, before the window, and destroyed when run returns (after the teardown), as when main owned it.
+    std::unique_ptr<IGame> ownedGame = entry.create();
+    IGame& game = *ownedGame;
+
     if (!glfwInit()) {
         throw std::runtime_error("Erro: falha ao inicializar GLFW.");
     }
@@ -81,7 +88,7 @@ void Engine::run(IGame& game) {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Mush2D Engine - Vulkan", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, ("Mush2D - " + entry.name).c_str(), nullptr, nullptr);
     if (!window) {
         glfwTerminate();
         throw std::runtime_error("Erro: falha ao criar a janela.");
@@ -95,7 +102,7 @@ void Engine::run(IGame& game) {
     scene.setService(&camera); // the "shake" effect action reaches it
     scene.setService(&audio);  // the "sound" effect action
     audio.init();              // no device: silent
-    audio.scan(sourceAssetPath("assets/audio"));
+    audio.scan(sourceAssetPath("assets/audio")); // the game's own sounds (gameRoot is set above)
     Bindless bindless;
     MaterialLibrary materials;
     SceneRenderer renderer;

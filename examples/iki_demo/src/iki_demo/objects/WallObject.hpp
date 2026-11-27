@@ -1,0 +1,60 @@
+#pragma once
+
+#include "iki_demo/assets/GameAssets.hpp"
+#include "iki_demo/assets/GameSpriteId.hpp"
+
+#include "engine/world/GameObject.hpp"
+#include "engine/world/Scene2D.hpp"
+
+class WallObject : public GameObject {
+    MUSH2D_OBJECT(WallObject, GameObject)
+public:
+    struct Config {
+        int layer = 0;
+        int orderInLayer = 0;
+
+        glm::vec2 size{1.0f, 1.0f};
+        glm::vec2 colliderOffset{0.0f, 0.0f};
+    };
+
+public:
+    WallObject() = default;
+    explicit WallObject(const Config& config)
+        : config(config) {}
+
+    void onCreate(Scene2D& scene) override {
+        name = "Wall";
+        addTag("wall");
+
+        sprite = SpriteData{
+            .atlasTextureIndex = 0,
+            .frameName = "",
+            .layer = config.layer,
+            .orderInLayer = config.orderInLayer,
+            .color = glm::vec4(1.0f)
+        };
+
+        setSprite(scene, GameSpriteId::Wall);
+
+        collider = ColliderData{
+            .size = config.size,
+            .offset = config.colliderOffset,
+            .isTrigger = false,
+            .enabled = true
+        };
+    }
+
+private:
+    Config config{};
+
+private:
+    void setSprite(Scene2D& scene, GameSpriteId spriteId) {
+        if (!sprite.has_value() || !gameAssetsOf(scene)) {
+            return;
+        }
+
+        const auto& entry = gameAssetsOf(scene)->sprites.get(spriteId);
+        sprite->atlasTextureIndex = entry.atlasTextureIndex;
+        sprite->frameName = entry.frameName;
+    }
+};

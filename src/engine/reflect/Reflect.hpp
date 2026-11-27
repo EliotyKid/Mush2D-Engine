@@ -30,7 +30,8 @@
 //   PrefabRef (prefab name), EntityRef (LDtk iid) and AssetRef ("atlas/frame" or "atlas/animation").
 //   PrefabRef, EntityRef and AssetRef behave like std::string.
 // - MUSH2D_ENUM goes at namespace scope (not inside a class). Values are numbered 0, 1, 2... (no `= 5`).
-// - A class in src/game/objects/*.hpp is registered just by existing (the build includes every header).
+// - A class in a game's src/<id>/objects/*.hpp is registered just by existing (the build includes every header).
+// - Type names are unique across every compiled game: a second C++ class under a taken name is a fatal error.
 //
 // A new attribute type = one branch in propTypeOf, toJson and fromJson below (plus an inspector widget).
 //
@@ -53,6 +54,7 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 
@@ -98,6 +100,7 @@ struct TypeInfo {
     std::function<std::unique_ptr<GameObject>()> createObject;
     std::function<std::unique_ptr<Component>()> createComponent;
     std::vector<PropertyInfo> props; // own props only, in declaration order
+    const std::type_info* cppType = nullptr; // the C++ class registered under this name (nullptr: engine roots)
 };
 
 class TypeRegistry {
@@ -111,7 +114,9 @@ public:
     const std::map<std::string, std::vector<std::string>>& enums() const { return enums_; }
 
     // Used by the macros.
-    TypeInfo& add(const std::string& name); // get or create
+    // Get or create. With cppType, throws std::runtime_error (naming the type and both C++ classes) when
+    // another C++ class already holds this name: type names must be unique across every compiled game.
+    TypeInfo& add(const std::string& name, const std::type_info* cppType = nullptr);
     void addEnum(const std::string& name, std::vector<std::string> values);
 
 private:
@@ -272,7 +277,7 @@ void addMember(TypeInfo& type, const char* name, T C::*member, const T& defaultV
 
 template<class C>
 TypeInfo& registerClass(const char* name, const char* base) {
-    TypeInfo& type = typeRegistry().add(name);
+    TypeInfo& type = typeRegistry().add(name, &typeid(C)); // throws if another class has the name
     type.base = base;
     constexpr bool creatable = std::is_default_constructible_v<C> && !std::is_abstract_v<C>;
     if constexpr (std::is_base_of_v<Component, C>) {

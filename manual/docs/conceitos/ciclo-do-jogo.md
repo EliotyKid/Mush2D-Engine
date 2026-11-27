@@ -3,8 +3,8 @@
 ## O que acontece quando o jogo abre
 
 ```
-main.cpp ──► cria IkigaiGame (o "jogo") e Engine (a "máquina")
-             engine.run(game)
+main.cpp ──► escolhe o jogo (--game) e cria a Engine (a "máquina")
+             engine.run(jogo)   ← cria o IkiDemoGame (o "jogo")
                  │
                  ├─ abre a janela, liga a GPU (Vulkan), o renderer e o input
                  ├─ game.init(...)          ← o jogo carrega assets e a primeira sala
@@ -17,7 +17,7 @@ main.cpp ──► cria IkigaiGame (o "jogo") e Engine (a "máquina")
 
 ## Um frame dentro de `game.update`
 
-`game.update` é o "Step" de todo o jogo. O `IkigaiGame` faz, nesta ordem:
+`game.update` é o "Step" de todo o jogo. O `IkiDemoGame` faz, nesta ordem:
 
 1. teclas globais (TAB troca de cena, F5 recarrega) e hot reload;
 2. passa o input para o player;

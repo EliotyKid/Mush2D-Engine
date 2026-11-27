@@ -34,7 +34,7 @@ Leia primeiro: [docs/VISAO.md](docs/VISAO.md) (o jogo e os sistemas) e [docs/ROA
 
 ## Cautelas
 
-- Não alterar o conteúdo do `assets/levels/showcase.ldtk` sem o autor pedir. Mudanças que forem pedidas são feitas por scripts idempotentes em `tools/`, só com acréscimos.
+- Não alterar o conteúdo do `examples/iki_demo/assets/levels/showcase.ldtk` sem o autor pedir. Mudanças que forem pedidas são feitas por scripts idempotentes em `tools/`, só com acréscimos.
 - O player não emite luz.
 - Não usar `git stash`: o OneDrive trava os arquivos no Windows.
 - Não fazer push sem pedido.

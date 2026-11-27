@@ -11,6 +11,14 @@ py -m mkdocs serve -f manual/mkdocs.yml
 
 e depois `http://127.0.0.1:8000`.
 
+## Pastas
+
+- `src/engine/`: a engine (nunca cita um jogo).
+- `src/app/main.cpp`: o programa `Mush2D`, que abre qualquer jogo compilado.
+- `examples/iki_demo/`: o jogo de exemplo (o Iki na sala vitrine), com `project.json`, `assets/` e `src/iki_demo/`.
+
+Cada jogo é ligado ao build por uma linha `mush2d_add_game(...)` no `CMakeLists.txt` (veja `cmake/Games.cmake`).
+
 ## Controles (vitrine)
 
 | Tecla | Ação |
@@ -31,11 +39,11 @@ A lista completa está em `manual/docs/primeiros-passos.md`.
 
 ## Mundo
 
-`assets/levels/showcase.ldtk` é um mundo contínuo: `Showcase` (início), `Forest2` e `Cave1` à direita, e `IceTest` à esquerda. Para chegar à `IceTest`, saia da vitrine pela porta na parede esquerda. Lá estão o item das estacas de gelo, uma parede de gelo de 8 u, um teto de gelo de 6 u sobre um vão e uma plataforma alta com checkpoint, que só se alcança com a habilidade. No chão, à direita do vão, ficam três bonecos de treino: um fraco a gelo (rosa), um resistente (ciano) e, perto da porta, um atirador (magenta) para treinar o escudo e o aparo. No LDtk, o gelo escalável é o valor `9` (`IceClimb`, azul-gelo) da camada `Collision`, ou o campo `iceClimb` de um `Terrain`. Detalhes em `manual/docs/fazendo-o-jogo/mundo-e-salas.md`.
+`examples/iki_demo/assets/levels/showcase.ldtk` é um mundo contínuo: `Showcase` (início), `Forest2` e `Cave1` à direita, e `IceTest` à esquerda. Para chegar à `IceTest`, saia da vitrine pela porta na parede esquerda. Lá estão o item das estacas de gelo, uma parede de gelo de 8 u, um teto de gelo de 6 u sobre um vão e uma plataforma alta com checkpoint, que só se alcança com a habilidade. No chão, à direita do vão, ficam três bonecos de treino: um fraco a gelo (rosa), um resistente (ciano) e, perto da porta, um atirador (magenta) para treinar o escudo e o aparo. No LDtk, o gelo escalável é o valor `9` (`IceClimb`, azul-gelo) da camada `Collision`, ou o campo `iceClimb` de um `Terrain`. Detalhes em `manual/docs/fazendo-o-jogo/mundo-e-salas.md`.
 
 ## Sons
 
-Os sons de `assets/audio/sfx` e as músicas de `assets/audio/music` (só `.wav`) são provisórios, gerados por um script com semente fixa: rodar de novo grava os mesmos bytes. Para gerar de novo, na raiz do projeto: `py tools/gen_placeholder_sfx.py` (Python 3, só a biblioteca padrão). Sem dispositivo de áudio, o jogo roda em silêncio. Detalhes em `manual/docs/sistemas/audio.md`.
+Os sons de `examples/iki_demo/assets/audio/sfx` e as músicas de `examples/iki_demo/assets/audio/music` (só `.wav`) são provisórios, gerados por um script com semente fixa: rodar de novo grava os mesmos bytes. Para gerar de novo, na raiz do projeto: `py tools/gen_placeholder_sfx.py` (Python 3, só a biblioteca padrão). Sem dispositivo de áudio, o jogo roda em silêncio. Detalhes em `manual/docs/sistemas/audio.md`.
 
 ## Prerequisites
 
@@ -52,6 +60,8 @@ cmake --build build/debug
 ctest --test-dir build/debug
 ```
 
-Use `release` instead of `debug` for an optimized build. The executable is `build/<preset>/Mush2DEngine`.
+Use `release` instead of `debug` for an optimized build. The executable is `build/<preset>/Mush2D` (`Mush2D.exe` on Windows).
+
+Run a game by id: `build/debug/Mush2D --game iki_demo`. Without `--game` (or with an unknown id, which also prints the valid ids) it opens the first compiled game.
 
 Se o configure do Release travar baixando o imgui, passe `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<caminho de um checkout do imgui>`; `build/debug/_deps/imgui-src` serve depois de um configure Debug.

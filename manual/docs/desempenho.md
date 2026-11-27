@@ -22,7 +22,7 @@ Cada coluna é uma passada do renderer. Veja [render e shaders](sistemas/render.
 2. Rode com o log ligado por 30 segundos e não mexa no player:
 
     ```powershell
-    $env:MUSH2D_PERF_LOG = "30"; build/release/Mush2DEngine.exe; Remove-Item Env:MUSH2D_PERF_LOG
+    $env:MUSH2D_PERF_LOG = "30"; build/release/Mush2D.exe; Remove-Item Env:MUSH2D_PERF_LOG
     ```
 
 3. Leia no terminal os ms por passada a cada segundo e as linhas `room <nome> load_ms=` com o tempo de CPU de cada carga de sala.

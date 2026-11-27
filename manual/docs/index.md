@@ -1,6 +1,6 @@
 # Manual da Mush2D
 
-A Mush2D é uma engine 2D em C++20 e Vulkan 1.3. O jogo que roda nela hoje é o `IkigaiGame` (`src/game/`), com salas feitas no LDtk, um mundo contínuo, luz com normal maps, névoa e bloom.
+A Mush2D é uma engine 2D em C++20 e Vulkan 1.3. O jogo que roda nela hoje é o `IkiDemoGame` (`examples/iki_demo/src/iki_demo/`), com salas feitas no LDtk, um mundo contínuo, luz com normal maps, névoa e bloom.
 
 Este manual é para quem conhece o GameMaker e sabe pouco de C++. Use a busca (tecla `/` ou `S`) para achar qualquer termo.
 
@@ -34,5 +34,5 @@ O que já é fácil: montar salas no LDtk, hot reload de salas e prefabs, o pain
 O que ainda é trabalhoso, com a solução proposta:
 
 1. **Recompilar e reabrir o jogo para testar código.** Solução proposta: hot reload de código, ou scripts (Lua) para a lógica de gameplay.
-2. **Um jogo novo exige escrever um `IkigaiGame` próprio.** Solução proposta: um "jogo padrão" da engine que já faz salas, mundo, regiões, player e câmera. Você só escreve os objetos.
+2. **Um jogo novo exige escrever um `IkiDemoGame` próprio.** Solução proposta: um "jogo padrão" da engine que já faz salas, mundo, regiões, player e câmera. Você só escreve os objetos.
 3. **Ids de sprite e animação em código** (`GameSpriteId`, `GameAnimationId`, registrados em `GameAssets.cpp`) para o player e o código antigo. Prefabs já acham os atlas sozinhos pelo nome do arquivo (veja [graphics e assets](sistemas/graficos-e-assets.md)); falta o player e as cenas antigas usarem o mesmo caminho.

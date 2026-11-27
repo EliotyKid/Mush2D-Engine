@@ -16,11 +16,10 @@ function(mush2d_compile_shaders target)
     add_dependencies(${target} ${target}_shaders)
 endfunction()
 
-# Makes assets/ and compiled shaders/ reachable next to the exe.
+# Makes the compiled shaders/ reachable next to the exe (enginePath). Game assets: mush2d_copy_game_files.
 function(mush2d_copy_assets target)
-    # No outputs: runs on every build, so edits to assets/shaders always land.
+    # No outputs: runs on every build, so edits to shaders always land.
     add_custom_target(${target}_assets ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:${target}>/assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/shaders $<TARGET_FILE_DIR:${target}>/shaders
         VERBATIM)
     add_dependencies(${target}_assets ${target}_shaders)

@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw
 
 from import_kaa import make_normal_map  # same normal-map recipe as the kaa import
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "examples" / "iki_demo"  # the demo game's folder (assets/ lives there)
 ASSETS = ROOT / "assets"
 U = 32.0  # art px per world unit (LevelLoader)
 

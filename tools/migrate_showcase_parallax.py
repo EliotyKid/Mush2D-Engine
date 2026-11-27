@@ -15,7 +15,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "examples" / "iki_demo"  # the demo game's folder (assets/ lives there)
 LDTK = ROOT / "assets" / "levels" / "showcase.ldtk"
 LOOK = ROOT / "assets" / "levels" / "showcase.look.json"
 REGION = ROOT / "assets" / "regions" / "forest.region.json"

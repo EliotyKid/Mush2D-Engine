@@ -34,7 +34,7 @@ struct Glow : Component {
 - `MUSH2D_OBJECT` / `MUSH2D_COMPONENT` vêm primeiro no corpo da classe e deixam a classe em `public:`.
 - A classe precisa de um construtor sem argumentos para ser criada por prefab.
 - `MUSH2D_ENUM` fica fora da classe. Os valores são numerados 0, 1, 2... (sem `= 5`).
-- Uma classe em `src/game/objects/*.hpp` é registrada só por existir (o build inclui todo header dessa pasta).
+- Uma classe em `examples/iki_demo/src/iki_demo/objects/*.hpp` é registrada só por existir (o build inclui todo header dessa pasta).
 
 ### Tipos de atributo
 
