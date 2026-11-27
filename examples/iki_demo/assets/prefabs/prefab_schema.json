@@ -1,10 +1,5 @@
 {
   "enums": {
-    "Energy": [
-      "None",
-      "Ice",
-      "Fire"
-    ],
     "Persistence": [
       "None",
       "Permanent",
@@ -731,26 +726,6 @@
           "default": 5,
           "name": "maxHealth",
           "type": "Int"
-        },
-        {
-          "default": 100.0,
-          "name": "maxIce",
-          "type": "Float"
-        },
-        {
-          "default": 100.0,
-          "name": "maxFire",
-          "type": "Float"
-        },
-        {
-          "default": 10.0,
-          "name": "regenPerSecond",
-          "type": "Float"
-        },
-        {
-          "default": 1.0,
-          "name": "regenDelay",
-          "type": "Float"
         }
       ]
     },

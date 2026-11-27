@@ -24,6 +24,13 @@ bool Project::hasElement(std::string_view name) const {
     return std::find(elements.begin(), elements.end(), name) != elements.end();
 }
 
+std::string_view Project::barForElement(std::string_view element) const {
+    if (element.empty()) return {};
+    for (const ResourceBarDef& bar : resources)
+        if (bar.element == element) return bar.name;
+    return {};
+}
+
 std::optional<Project> loadProject(const std::filesystem::path& file) {
     std::ifstream in(file);
     if (!in) {
@@ -62,6 +69,49 @@ std::optional<Project> loadProject(const std::filesystem::path& file) {
                 return std::nullopt;
             }
             project.elements.push_back(item.get<std::string>());
+        }
+    }
+
+    if (doc.contains("resources")) { // optional list of bars: {name, element?, max?, regenPerSecond?, regenDelay?}
+        if (!doc["resources"].is_array()) {
+            warn(file, "resources", "expected a list of bars");
+            return std::nullopt;
+        }
+        std::set<std::string> names;
+        for (const nlohmann::json& item : doc["resources"]) {
+            if (!item.is_object() || !item.contains("name") || !item["name"].is_string() || item["name"].get<std::string>().empty()) {
+                warn(file, "resources", "every bar needs a non-empty \"name\"");
+                return std::nullopt;
+            }
+            ResourceBarDef bar;
+            bar.name = item["name"].get<std::string>();
+            const std::string where = "resources." + bar.name;
+            if (!names.insert(bar.name).second) {
+                warn(file, "resources", "duplicate bar name '" + bar.name + "'");
+                return std::nullopt;
+            }
+            if (item.contains("element")) {
+                if (!item["element"].is_string()) {
+                    warn(file, where + ".element", "expected an element name");
+                    return std::nullopt;
+                }
+                bar.element = item["element"].get<std::string>();
+                if (!bar.element.empty() && !project.hasElement(bar.element)) {
+                    warn(file, where + ".element", "unknown element '" + bar.element + "' (not in \"elements\")");
+                    return std::nullopt;
+                }
+            }
+            // The three numbers: max must be above 0, the regen values 0 or more.
+            struct Number { const char* key; float* target; bool positive; };
+            for (const Number& n : {Number{"max", &bar.max, true}, {"regenPerSecond", &bar.regenPerSecond, false}, {"regenDelay", &bar.regenDelay, false}}) {
+                if (!item.contains(n.key)) continue; // missing: the default stays
+                if (!item[n.key].is_number() || item[n.key].get<float>() < 0.0f || (n.positive && item[n.key].get<float>() <= 0.0f)) {
+                    warn(file, where + "." + n.key, n.positive ? "expected a number above 0" : "expected a number of 0 or more");
+                    return std::nullopt;
+                }
+                *n.target = item[n.key].get<float>();
+            }
+            project.resources.push_back(bar);
         }
     }
     return project;

@@ -1,6 +1,7 @@
 #include "engine/tools/SceneInspector.hpp"
 
 #include "engine/world/PrefabSave.hpp"
+#include "engine/world/Resources.hpp"
 #include "engine/world/StateMachine.hpp"
 
 #include <imgui.h>
@@ -160,6 +161,17 @@ void SceneInspector::drawSelected(GameObject& o, PrefabLibrary& prefabs) {
         ImGui::PushID(c.get());
         if (ImGui::TreeNode("comp", "%s (ao vivo, nao salvo)", typeOf(*c).name.c_str())) {
             for (const PropertyInfo* p : typeRegistry().allProps(typeOf(*c).name)) propWidget(static_cast<Component*>(c.get()), *p);
+            // Resources keeps its bars in a list (not exported attributes): one set of controls per bar.
+            if (auto* resources = dynamic_cast<Resources*>(c.get())) {
+                for (ResourceBarDef& bar : resources->bars()) {
+                    ImGui::PushID(bar.name.c_str());
+                    ImGui::SeparatorText(bar.name.c_str());
+                    ImGui::DragFloat("max", &bar.max, 0.5f, 1.0f, 100000.0f);
+                    ImGui::DragFloat("regenPerSecond", &bar.regenPerSecond, 0.1f, 0.0f, 100000.0f);
+                    ImGui::DragFloat("regenDelay", &bar.regenDelay, 0.05f, 0.0f, 100.0f);
+                    ImGui::PopID();
+                }
+            }
             ImGui::TreePop();
         }
         ImGui::PopID();

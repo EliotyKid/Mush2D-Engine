@@ -1,5 +1,9 @@
 {
     "id": "iki_demo",
     "name": "IkiDemo",
-    "elements": ["Ice", "Fire"]
+    "elements": ["Ice", "Fire"],
+    "resources": [
+        { "name": "ice", "element": "Ice", "max": 100, "regenPerSecond": 10, "regenDelay": 1 },
+        { "name": "fire", "element": "Fire", "max": 100, "regenPerSecond": 10, "regenDelay": 1 }
+    ]
 }

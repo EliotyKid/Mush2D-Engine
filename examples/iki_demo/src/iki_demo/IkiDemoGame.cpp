@@ -364,7 +364,7 @@ void IkiDemoGame::handleGlobalInput(EngineServices& s, float deltaTime) {
     if (auto* iki = dynamic_cast<IkiObject*>(player); iki && hurtKey && !hurtPressed)
         scene.events().emit(HitEvent{InvalidGameObjectId, iki->id, DamageInfo{1, {-iki->facing, 0.0f}}});
     if (Resources* resources = player ? player->getComponent<Resources>() : nullptr; resources && spendKey && !spendPressed)
-        resources->spendBoth(30.0f, 30.0f);
+        resources->spendAll({{"ice", 30.0f}, {"fire", 30.0f}});
     hurtPressed = hurtKey;
     spendPressed = spendKey;
 

@@ -22,6 +22,12 @@ void drawDebugHud(const Resources& resources) {
         draw->AddRectFilled(a, {a.x + BarWidth * fill, b.y}, color);
         draw->AddRect(a, b, IM_COL32(255, 255, 255, 160));
     };
-    bar(Top + 2.0f * Radius + 8.0f, resources.energy(Energy::Ice), resources.maxIce, IM_COL32(80, 170, 255, 255));
-    bar(Top + 2.0f * Radius + 24.0f, resources.energy(Energy::Fire), resources.maxFire, IM_COL32(255, 140, 40, 255));
+    // One bar per resource bar of the project, stacked under the hearts. The bar linked to "Ice" is blue, "Fire" orange.
+    float y = Top + 2.0f * Radius + 8.0f;
+    for (const ResourceBarDef& def : resources.bars()) {
+        const ImU32 color = def.element == "Ice" ? IM_COL32(80, 170, 255, 255) : def.element == "Fire" ? IM_COL32(255, 140, 40, 255)
+                                                                                                        : IM_COL32(200, 200, 200, 255);
+        bar(y, resources.energy(def.name), def.max, color);
+        y += 16.0f;
+    }
 }

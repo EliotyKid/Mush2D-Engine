@@ -17,7 +17,7 @@
   },
   "sprite": { "atlas": "kaa_player", "layer": 2 },
   "components": [
-    { "type": "Resources", "props": { "maxHealth": 5, "maxIce": 100.0, "maxFire": 100.0, "regenPerSecond": 10.0, "regenDelay": 1.0 } },
+    { "type": "Resources", "props": { "maxHealth": 5 } },
     { "type": "SpriteAnimator" },
     { "type": "SquashStretch", "props": { "stiffness": 300.0, "damping": 18.0 } },
     { "type": "VelocityLean", "props": { "maxDegrees": 4.0, "fullSpeed": 5.0 } },

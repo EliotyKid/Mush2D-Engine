@@ -3428,27 +3428,44 @@ TEST(world_state_global_flag_survives_room_restore) {
 
 // --- Resources, damage and the player found by tag (D2 Task 4) -----------------------------------------------
 
-TEST(resources_spend_regen_delay) {
+TEST(resources_bars_from_project) {
+    // The bars come from the active project (set in main): name, element, max, regen.
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    CHECK(r.bars().size() == 2 && r.bars()[0].name == "ice" && r.bars()[1].name == "fire");
+    CHECK(r.health() == 5 && r.energy("ice") == 100.0f && r.energy("fire") == 100.0f);
+    CHECK(r.maxOf("ice") == 100.0f && r.bars()[0].regenPerSecond == 10.0f && r.bars()[0].regenDelay == 1.0f);
+    CHECK(activeProject().barForElement("Fire") == "fire" && activeProject().barForElement("Lava").empty());
+
+    // Another project, another bars: this object has only "mana".
+    const Project before = activeProject();
+    setActiveProject(Project{"p", "P", {}, {{"mana", "", 40.0f, 5.0f, 2.0f}}});
+    GameObject& m = scene.createObject<GameObject>();
+    auto& rm = m.addComponent<Resources>();
+    CHECK(rm.bars().size() == 1 && rm.energy("mana") == 40.0f && rm.energy("ice") == 0.0f);
+    setActiveProject(before);
+}
+
+TEST(resources_spend_and_regen_per_bar) {
     Scene2D scene;
     GameObject& o = scene.createObject<GameObject>();
     auto& r = o.addComponent<Resources>();
     std::vector<EnergyChanged> seen;
     auto sub = scene.events().subscribe<EnergyChanged>([&](const EnergyChanged& e) { seen.push_back(e); });
-    CHECK(r.health() == 5 && r.energy(Energy::Ice) == 100.0f && r.energy(Energy::Fire) == 100.0f);
-    CHECK(r.spend(Energy::Ice, 30.0f) && r.energy(Energy::Ice) == 70.0f);
-    CHECK(!r.spend(Energy::Ice, 71.0f) && r.energy(Energy::Ice) == 70.0f); // not enough: nothing spent
-    CHECK(r.spend(Energy::Fire, 10.0f));
+    CHECK(r.spend("ice", 30.0f) && r.energy("ice") == 70.0f);
     scene.flush();
-    CHECK(seen.size() == 2 && seen[0].id == o.id && seen[0].element == Energy::Ice && seen[0].value == 70.0f &&
-          seen[0].max == 100.0f);
-    r.update(scene, 0.5f); // still within regenDelay (1 s) of the spend
-    CHECK(r.energy(Energy::Ice) == 70.0f);
-    r.spend(Energy::Fire, 10.0f); // fire's delay restarts, ice's does not
-    r.update(scene, 0.6f);         // ice waited 1.1 s: regenerates; fire waited 0.6 s
-    CHECK(r.energy(Energy::Ice) == 76.0f && r.energy(Energy::Fire) == 80.0f); // 70 + 10/s * 0.6 s
+    CHECK(seen.size() == 1 && seen[0].id == o.id && seen[0].bar == "ice" && seen[0].value == 70.0f && seen[0].max == 100.0f);
+    r.update(scene, 0.9f); // still within regenDelay (1 s) of the spend
+    CHECK(r.energy("ice") == 70.0f);
+    r.update(scene, 1.0f); // past the delay: 10 per second for 1 s
+    CHECK(r.energy("ice") == 80.0f);
+    r.spend("fire", 10.0f); // fire's delay restarts, ice's does not
+    r.update(scene, 0.5f);
+    CHECK(r.energy("ice") == 85.0f && r.energy("fire") == 90.0f);
     for (int i = 0; i < 100; ++i) r.update(scene, 0.1f);
-    CHECK(r.energy(Energy::Ice) == 100.0f && r.energy(Energy::Fire) == 100.0f); // capped at the max
-    CHECK(r.spend(Energy::Ice, 0.0f) && !r.spend(Energy::Ice, -1.0f) && r.energy(Energy::Ice) == 100.0f);
+    CHECK(r.energy("ice") == 100.0f && r.energy("fire") == 100.0f); // capped at the max
+    CHECK(r.spend("ice", 0.0f) && !r.spend("ice", -1.0f) && !r.spend("ice", 101.0f) && r.energy("ice") == 100.0f);
 }
 
 TEST(resources_on_step_updates_once_per_step) {
@@ -3456,29 +3473,55 @@ TEST(resources_on_step_updates_once_per_step) {
     GameObject& o = scene.createObject<GameObject>();
     auto& r = o.addComponent<Resources>();
     scene.flush();
-    CHECK(r.spend(Energy::Ice, 10.0f));
+    CHECK(r.spend("ice", 10.0f));
     scene.step(0.5f); // 0.5 s since the spend: still waiting (two updates per step would regenerate already)
-    CHECK(r.energy(Energy::Ice) == 90.0f);
+    CHECK(r.energy("ice") == 90.0f);
     scene.step(0.5f); // 1 s: one update of 0.5 s regenerates 5
-    CHECK(r.energy(Energy::Ice) == 95.0f);
+    CHECK(r.energy("ice") == 95.0f);
 }
 
-TEST(resources_spend_both_atomic) {
+TEST(resources_spend_all_or_nothing) {
     Scene2D scene;
     GameObject& o = scene.createObject<GameObject>();
     auto& r = o.addComponent<Resources>();
-    CHECK(r.spend(Energy::Fire, 80.0f));
-    CHECK(!r.spendBoth(30.0f, 30.0f)); // fire has 20: neither is spent
-    CHECK(r.energy(Energy::Ice) == 100.0f && r.energy(Energy::Fire) == 20.0f);
-    CHECK(r.spendBoth(30.0f, 20.0f));
-    CHECK(r.energy(Energy::Ice) == 70.0f && r.energy(Energy::Fire) == 0.0f);
-    r.update(scene, 1.0f);            // both waited 1 s: both regenerate 10
-    CHECK(r.spendBoth(0.0f, 5.0f));   // ice is not spent, so its delay does not restart
+    CHECK(r.spend("fire", 80.0f));
+    CHECK(!r.spendAll({{"ice", 30.0f}, {"fire", 30.0f}})); // fire has 20: neither is spent
+    CHECK(r.energy("ice") == 100.0f && r.energy("fire") == 20.0f);
+    CHECK(!r.spendAll({{"ice", 10.0f}, {"nope", 1.0f}}) && r.energy("ice") == 100.0f); // unknown bar: nothing
+    CHECK(r.spendAll({{"ice", 30.0f}, {"fire", 20.0f}}));
+    CHECK(r.energy("ice") == 70.0f && r.energy("fire") == 0.0f);
+    r.update(scene, 1.0f);                          // both waited 1 s: both regenerate 10
+    CHECK(r.spendAll({{"ice", 0.0f}, {"fire", 5.0f}})); // ice is not spent, so its delay does not restart
     r.update(scene, 0.5f);
-    CHECK(r.energy(Energy::Ice) == 85.0f && r.energy(Energy::Fire) == 5.0f);
-    CHECK(!r.spendBoth(-1.0f, 1.0f) && r.energy(Energy::Fire) == 5.0f);
+    CHECK(r.energy("ice") == 85.0f && r.energy("fire") == 5.0f);
+    CHECK(!r.spendAll({{"ice", -1.0f}, {"fire", 1.0f}}) && r.energy("fire") == 5.0f);
     r.refill();
-    CHECK(r.energy(Energy::Ice) == 100.0f && r.energy(Energy::Fire) == 100.0f);
+    CHECK(r.energy("ice") == 100.0f && r.energy("fire") == 100.0f);
+}
+
+TEST(resources_unknown_bar_is_zero_and_spend_fails) {
+    Scene2D scene;
+    GameObject& o = scene.createObject<GameObject>();
+    auto& r = o.addComponent<Resources>();
+    CHECK(r.energy("nope") == 0.0f && r.maxOf("nope") == 0.0f && r.energy("") == 0.0f);
+    CHECK(!r.spend("nope", 1.0f) && !r.spend("nope", 0.0f)); // an unknown bar always fails
+    CHECK(r.energy("ice") == 100.0f);
+}
+
+TEST(resources_prefab_overrides_bar_max) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_resources_override";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "tough.prefab.json", std::ios::trunc)
+        << R"({"version": 1, "resources": {"ice": {"max": 120, "regenPerSecond": 20}, "lava": {"max": 5}}})";
+    PrefabLibrary lib{dir};
+    Scene2D scene;
+    CerrCapture err;
+    GameObject* o = lib.instantiate(scene, "tough");
+    auto* r = o ? o->getComponent<Resources>() : nullptr;
+    CHECK(r && r->maxOf("ice") == 120.0f && r->energy("ice") == 120.0f && r->bars()[0].regenPerSecond == 20.0f);
+    CHECK(r && r->maxOf("fire") == 100.0f); // the other bar keeps the project's value
+    CHECK(hasWarning(lib.warnings(), "lava") && hasWarning(lib.warnings(), "tough")); // unknown bar: warned
+    std::filesystem::remove_all(dir);
 }
 
 TEST(resources_death_event) {
@@ -4557,12 +4600,12 @@ TEST(iki_respawn_resets_state) {
     IkiObject& iki = ikiOnFloor(scene, 3.0f);
     auto* resources = iki.getComponent<Resources>();
     if (!resources) { CHECK(false); return; }
-    CHECK(resources->spend(Energy::Ice, 30.0f));
+    CHECK(resources->spend("ice", 30.0f));
     damageIki(scene, iki, {5, {}});
     stepIki(scene, iki, zPress()); // a Z while dead must not jump after the respawn
     iki.respawnAt({6.0f, -4.4f});
     iki.respawn();
-    CHECK(inState(iki, "idle") && resources->health() == 5 && resources->energy(Energy::Ice) == 100.0f);
+    CHECK(inState(iki, "idle") && resources->health() == 5 && resources->energy("ice") == 100.0f);
     CHECK(iki.velocity_ == glm::vec2(0.0f) && !iki.invulnerable() && iki.transform.position == glm::vec2(6.0f, -4.4f));
     bool jumped = false;
     for (int f = 0; f < 10; ++f) {
@@ -5269,6 +5312,32 @@ TEST(project_rejects_duplicate_element) {
     std::filesystem::remove(empty);
 }
 
+TEST(project_loads_resource_bars) {
+    const auto file = writeTemp("mush2d_project_bars.json", R"({"id": "g", "name": "G", "elements": ["Ice"],
+        "resources": [{"name": "ice", "element": "Ice", "max": 50, "regenPerSecond": 5, "regenDelay": 2}, {"name": "mana"}]})");
+    CerrCapture err;
+    std::optional<Project> p = loadProject(file);
+    CHECK(p && p->resources.size() == 2 && p->resources[0].element == "Ice" && p->resources[0].max == 50.0f);
+    CHECK(p && p->resources[0].regenPerSecond == 5.0f && p->resources[0].regenDelay == 2.0f);
+    CHECK(p && p->resources[1].max == 100.0f && p->resources[1].element.empty()); // defaults
+    CHECK(p && p->barForElement("Ice") == "ice" && p->barForElement("").empty());
+    CHECK(err.str().empty());
+    std::filesystem::remove(file);
+}
+
+TEST(project_rejects_bad_resource_bars) {
+    const char* bad[] = {
+        R"({"id":"g","name":"G","resources":[{"name":"a"},{"name":"a"}]})",                  // duplicate name
+        R"({"id":"g","name":"G","resources":[{"name":"a","max":0}]})",                       // max must be > 0
+        R"({"id":"g","name":"G","elements":["Ice"],"resources":[{"name":"a","element":"Lava"}]})", // unknown element
+        R"({"id":"g","name":"G","resources":[{"max":5}]})",                                  // no name
+        R"({"id":"g","name":"G","resources":{}})"};                                          // not a list
+    CerrCapture err;
+    for (const char* text : bad) CHECK(!loadProject(writeTemp("mush2d_project_badbars.json", text)));
+    CHECK(countOf(err.str(), "resources") == 5 && countOf(err.str(), "Project: ") == 5);
+    std::filesystem::remove(std::filesystem::temp_directory_path() / "mush2d_project_badbars.json");
+}
+
 TEST(project_bad_reload_keeps_previous) {
     const Project before = activeProject();
     const auto file = writeTemp("mush2d_project_reload.json", R"({"id": "a", "name": "A", "elements": ["Wind"]})");
@@ -5709,7 +5778,7 @@ struct IkiCombat {
         return action(name);
     }
     int count(const std::vector<std::string>& v, const char* s) const { return int(std::count(v.begin(), v.end(), s)); }
-    float ice() const { return iki->getComponent<Resources>()->energy(Energy::Ice); }
+    float ice() const { return iki->getComponent<Resources>()->energy("ice"); }
 };
 InputState xPress() { InputState in; in.attack.pressed = in.attack.down = true; return in; }
 InputState cPress() { InputState in; in.shoot.pressed = in.shoot.down = true; return in; }
@@ -5930,7 +5999,7 @@ TEST(iki_shoot_costs_and_cooldown) {
     CHECK(c.taken.size() == 1 && c.taken[0].info.projectile && c.taken[0].info.element == "Ice");
     CHECK(c.taken.size() == 1 && c.taken[0].info.source == c.iki->id && c.count(c.cues, "hit") == 1);
     // Without the ice: no shard, the "no_energy" cue (the prefab plays the failure sound).
-    c.iki->getComponent<Resources>()->spend(Energy::Ice, c.ice() - 10.0f);
+    c.iki->getComponent<Resources>()->spend("ice", c.ice() - 10.0f);
     c.step(cPress());
     c.scene.flush();
     CHECK(c.action("none") && c.count(c.cues, "no_energy") == 1 && c.ice() == 10.0f && c.count(c.actions, "shoot") == 3);
@@ -6041,7 +6110,7 @@ TEST(iki_guard_break_without_energy) {
     IkiCombat c;
     if (!c.iki) return;
     auto& resources = *c.iki->getComponent<Resources>();
-    resources.spend(Energy::Ice, 95.0f);
+    resources.spend("ice", 95.0f);
     c.step(vPress());
     c.step(vHeld(), 20);
     hitIki(c, {-1.0f, 0.0f});
@@ -6380,7 +6449,7 @@ int main() {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #endif
     mush2dLinkGame_iki_demo(); // keeps the demo's object types linked (their registrations run at start)
-    setActiveProject(Project{"test", "Test", {"Ice", "Fire"}}); // the elements the engine tests use
+    setActiveProject(Project{"test", "Test", {"Ice", "Fire"}, {{"ice", "Ice"}, {"fire", "Fire"}}}); // elements and bars the engine tests use
     setGameRoot("examples/iki_demo"); // assetPath / sourceAssetPath("assets/...") read the demo's folder
     for (auto& [name, fn] : registry()) {
         std::printf("[ RUN ] %s\n", name);

@@ -4,19 +4,22 @@
 
 #include <algorithm>
 
-namespace {
-int slot(Energy element) { return element == Energy::Ice ? 0 : 1; }
-}
-
 int Resources::health() const { return std::max(0, maxHealth - lost_); }
 
-float Resources::max(Energy element) const {
-    return element == Energy::Ice ? maxIce : element == Energy::Fire ? maxFire : 0.0f;
+int Resources::indexOf(std::string_view bar) const {
+    for (std::size_t i = 0; i < bars_.size(); ++i)
+        if (bars_[i].name == bar) return int(i);
+    return -1;
 }
 
-float Resources::energy(Energy element) const {
-    if (element == Energy::None) return 0.0f;
-    return std::max(0.0f, max(element) - used_[slot(element)]);
+float Resources::maxOf(std::string_view bar) const {
+    const int i = indexOf(bar);
+    return i < 0 ? 0.0f : bars_[i].max;
+}
+
+float Resources::energy(std::string_view bar) const {
+    const int i = indexOf(bar);
+    return i < 0 ? 0.0f : std::max(0.0f, bars_[i].max - used_[i]);
 }
 
 void Resources::damage(int amount) {
@@ -34,47 +37,50 @@ void Resources::heal(int amount) {
 
 void Resources::refill() {
     lost_ = 0;
-    used_[0] = used_[1] = 0.0f;
+    std::fill(used_.begin(), used_.end(), 0.0f);
     emitHealth();
-    emitEnergy(Energy::Ice);
-    emitEnergy(Energy::Fire);
+    for (int i = 0; i < int(bars_.size()); ++i) emitEnergy(i);
 }
 
-bool Resources::spend(Energy element, float amount) {
+bool Resources::spend(std::string_view bar, float amount) {
+    const int i = indexOf(bar);
+    if (i < 0 || amount < 0.0f) return false;
     if (amount == 0.0f) return true; // nothing spent: no event, the regen delay keeps running
-    if (amount < 0.0f || element == Energy::None || energy(element) < amount) return false;
-    used_[slot(element)] += amount;
-    sinceSpend_[slot(element)] = 0.0f;
-    emitEnergy(element);
+    if (energy(bar) < amount) return false;
+    used_[i] += amount;
+    sinceSpend_[i] = 0.0f;
+    emitEnergy(i);
     return true;
 }
 
-bool Resources::spendBoth(float ice, float fire) {
-    if (ice < 0.0f || fire < 0.0f || energy(Energy::Ice) < ice || energy(Energy::Fire) < fire) return false;
-    spend(Energy::Ice, ice);
-    spend(Energy::Fire, fire);
+bool Resources::spendAll(std::initializer_list<std::pair<std::string_view, float>> costs) {
+    for (const auto& [bar, amount] : costs) // first pass: check everything, change nothing
+        if (indexOf(bar) < 0 || amount < 0.0f || energy(bar) < amount) return false;
+    for (const auto& [bar, amount] : costs) spend(bar, amount); // second pass: it cannot fail now
     return true;
 }
 
 void Resources::update(Scene2D&, float dt) {
-    for (Energy element : {Energy::Ice, Energy::Fire}) {
-        const int i = slot(element);
+    for (int i = 0; i < int(bars_.size()); ++i) {
         sinceSpend_[i] += dt;
-        if (sinceSpend_[i] < regenDelay || used_[i] <= 0.0f) continue;
-        used_[i] = std::max(0.0f, used_[i] - regenPerSecond * dt);
-        emitEnergy(element);
+        if (sinceSpend_[i] < bars_[i].regenDelay || used_[i] <= 0.0f) continue;
+        used_[i] = std::max(0.0f, used_[i] - bars_[i].regenPerSecond * dt);
+        emitEnergy(i);
     }
 }
 
 void Resources::onAttach(GameObject& owner, Scene2D& scene) {
     owner_ = owner.id;
     scene_ = &scene;
+    bars_ = activeProject().resources; // every object starts with the project's bars, full
+    used_.assign(bars_.size(), 0.0f);
+    sinceSpend_.assign(bars_.size(), 1e9f); // 1e9: no recent spend, so regen is not held back
 }
 
 void Resources::emitHealth() {
     if (scene_) scene_->events().emit(HealthChanged{owner_, health(), maxHealth});
 }
 
-void Resources::emitEnergy(Energy element) {
-    if (scene_) scene_->events().emit(EnergyChanged{owner_, element, energy(element), max(element)});
+void Resources::emitEnergy(int index) {
+    if (scene_) scene_->events().emit(EnergyChanged{owner_, bars_[index].name, energy(bars_[index].name), bars_[index].max});
 }

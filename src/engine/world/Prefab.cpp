@@ -4,6 +4,7 @@
 #include "engine/core/Project.hpp"
 #include "engine/world/Combat.hpp"
 #include "engine/world/Effects.hpp"
+#include "engine/world/Resources.hpp"
 #include "engine/world/Scene2D.hpp"
 #include "engine/world/SpriteAnimator.hpp"
 // Included so their MUSH2D_COMPONENT registration is linked in: prefabs name them in "components".
@@ -26,8 +27,8 @@ namespace {
 constexpr int MaxDepth = 16; // children of children...: also stops a child that instantiates its own parent
 
 const std::set<std::string> KnownKeys = {"version", "base", "type", "props", "extra", "sprite", "collider",
-                                         "animations", "animationEvents", "effects", "multipliers", "components", "children", "name", "position", "prefab", "remove"};
-const std::set<std::string> KeyedSections = {"props", "extra", "sprite", "collider", "animations", "animationEvents", "effects", "multipliers"};
+                                         "animations", "animationEvents", "effects", "multipliers", "resources", "components", "children", "name", "position", "prefab", "remove"};
+const std::set<std::string> KeyedSections = {"props", "extra", "sprite", "collider", "animations", "animationEvents", "effects", "multipliers", "resources"};
 
 // Prefab section field -> GameObject attribute.
 const std::map<std::string, std::string> SpriteFields = {{"atlas", "spriteAtlas"}, {"frame", "spriteFrame"},
@@ -362,6 +363,28 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
                 if (!activeProject().hasElement(name)) warn(where + ": multipliers." + name + ": unknown element (not in project.json)");
                 else if (!value.is_number() || value.get<float>() < 0.0f) warn(where + ": multipliers." + name + ": expected a number >= 0");
                 else damageable->multipliers[name] = value.get<float>();
+            }
+        }
+    }
+
+    if (doc.contains("resources")) { // bar name -> {max, regenPerSecond, regenDelay} overrides (Resources added if missing)
+        if (!doc["resources"].is_object()) warn(where + ": resources: expected {\"<bar>\": {\"max\": 120}, ...}");
+        else {
+            Resources* resources = o.getComponent<Resources>();
+            if (!resources) resources = &o.addComponent<Resources>();
+            for (const auto& [name, fields] : doc["resources"].items()) {
+                auto bar = std::find_if(resources->bars().begin(), resources->bars().end(),
+                                        [&](const ResourceBarDef& b) { return b.name == name; });
+                if (bar == resources->bars().end()) { warn(where + ": resources." + name + ": unknown bar (not in project.json)"); continue; }
+                if (!fields.is_object()) { warn(where + ": resources." + name + ": expected an object"); continue; }
+                for (const auto& [key, value] : fields.items()) {
+                    const bool ok = value.is_number() && value.get<float>() >= 0.0f && !(key == "max" && value.get<float>() <= 0.0f);
+                    if (!ok) warn(where + ": resources." + name + "." + key + ": expected a number (max above 0, others 0 or more)");
+                    else if (key == "max") bar->max = value.get<float>();
+                    else if (key == "regenPerSecond") bar->regenPerSecond = value.get<float>();
+                    else if (key == "regenDelay") bar->regenDelay = value.get<float>();
+                    else warn(where + ": resources." + name + "." + key + ": unknown field (max, regenPerSecond, regenDelay)");
+                }
             }
         }
     }
