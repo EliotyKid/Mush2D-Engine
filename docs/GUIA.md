@@ -2,6 +2,8 @@
 
 O guia agora faz parte do manual em `manual/`. Para abrir: `py -m mkdocs serve -f manual/mkdocs.yml` e depois `http://127.0.0.1:8000`. As páginas estão em `manual/docs/`.
 
+Os jogos são pastas (`examples/iki_demo/`, `games/ikigai/`), cada uma com `project.json`, `assets/` e `src/<id>/`. As teclas e os botões ficam no `project.json`, em `"actions"`. Veja `manual/docs/fazendo-o-jogo/criando-o-seu-jogo.md` e `projeto-em-dados.md`.
+
 ## O Iki e a máquina de estados (para quem está começando)
 
 O Iki é o personagem jogável (`examples/iki_demo/src/iki_demo/objects/IkiObject.hpp/.cpp`). Ele nasce do arquivo `assets/prefabs/iki.prefab.json`, que guarda os números dele (velocidade, pulo, vida) e o visual (animações, poeira, piscar).

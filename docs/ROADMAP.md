@@ -72,19 +72,21 @@ Para cada fase:
 ### E0: Base — engine e jogo separados
 
 **Entra:**
-- [ ] Projeto em dados (`project.json` do jogo):
+- [x] Projeto em dados (`project.json` do jogo):
   - elementos (no lugar do `Element` fixo);
   - barras de recurso com nome (no lugar de `maxIce`/`maxFire`);
   - tipos de superfície pelo nome do valor da IntGrid (no lugar de `Surface::IceClimb`);
   - mapa de ações de entrada com teclas e gamepad configuráveis (no lugar dos botões fixos do `InputState`).
-- [ ] Remover da engine os comentários e nomes que citam o Iki, o kaa ou o Ikigai.
-- [ ] Pastas `examples/iki_demo/` (o código, os prefabs, os efeitos, os sons e a sala atuais) e `games/ikigai/`.
-- [ ] O executável escolhe qual jogo abrir.
-- [ ] Modelo inicial de `games/ikigai/`:
+- [x] Remover da engine os comentários e nomes que citam o Iki, o kaa ou o Ikigai.
+- [x] Pastas `examples/iki_demo/` (o código, os prefabs, os efeitos, os sons e a sala atuais) e `games/ikigai/`.
+- [x] O executável escolhe qual jogo abrir.
+- [x] Modelo inicial de `games/ikigai/`:
   - uma sala vazia no LDtk;
   - um personagem que anda e pula, feito só com componentes da engine;
   - o `project.json` com os elementos e as ações do Ikigai.
-- [ ] Manual: "Criando o seu jogo", "Projeto em dados" e a regra de divisão entre engine e jogo.
+- [x] Manual: "Criando o seu jogo", "Projeto em dados" e a regra de divisão entre engine e jogo.
+
+**Estado:** feita no branch `feat/e0-base` (ainda sem merge no `main`).
 
 **Exemplo:** o `iki_demo` inteiro, adaptado aos dados do projeto.
 
@@ -195,13 +197,16 @@ Para cada fase:
 
 ---
 
+## Decisões tomadas
+
+- **Controle (E0):** teclado e gamepad são iguais (as mesmas ações, no `project.json`), com cuidado especial com o gamepad (zona morta, gatilhos, desligar no meio do jogo).
+
 ## Decisões em aberto
 
 Cada uma é decidida no design da fase indicada.
 
 | Decisão | Fase | Opções |
 |---|---|---|
-| Controle principal | E0 | Gamepad primeiro, ou teclado primeiro |
 | Formato das cutscenes | E3 | JSON próprio editado no painel, ou o mesmo formato dos diálogos |
 | Formato dos diálogos | E4 | JSON próprio, Yarn Spinner ou ink |
 
@@ -210,7 +215,6 @@ As decisões de jogo (por exemplo, o modelo de energia do Iki ou a origem da art
 ## Pendências técnicas registradas
 
 - O `TeleportObject` zera a velocidade.
-- ↓ é ao mesmo tempo "interagir" e "descer de plataforma". Resolver com o mapa de ações da E0.
 - A sala atual pode alternar de um lado para o outro quando o player fica em cima da borda.
 - Salvar o look grava valores que ninguém editou.
 - Itens permanentes reaparecem ao morrer. Resolver na E1.

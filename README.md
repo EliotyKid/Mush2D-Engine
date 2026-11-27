@@ -2,6 +2,8 @@
 
 C++20 / Vulkan 2D engine. Needs Vulkan 1.3 (`vulkaninfo --summary`, `apiVersion` >= 1.3).
 
+Para começar: `manual/docs/fazendo-o-jogo/criando-o-seu-jogo.md` (pastas e `--game`) e `projeto-em-dados.md` (o `project.json`, com as teclas e os botões).
+
 Manual completo (controles, mundo e LDtk, prefabs, objetos, sistemas, variáveis de ambiente, desempenho): pasta `manual/`. Para abrir:
 
 ```
@@ -16,6 +18,7 @@ e depois `http://127.0.0.1:8000`.
 - `src/engine/`: a engine (nunca cita um jogo).
 - `src/app/main.cpp`: o programa `Mush2D`, que abre qualquer jogo compilado.
 - `examples/iki_demo/`: o jogo de exemplo (o Iki na sala vitrine), com `project.json`, `assets/` e `src/iki_demo/`.
+- `games/ikigai/`: o modelo do Ikigai (sala vazia e um personagem que anda e pula).
 
 Cada jogo é ligado ao build por uma linha `mush2d_add_game(...)` no `CMakeLists.txt` (veja `cmake/Games.cmake`).
 
