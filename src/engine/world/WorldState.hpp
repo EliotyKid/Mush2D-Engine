@@ -26,7 +26,7 @@ public:
     void set(const std::string& iid, const std::string& key, double value);
     const EntityState* find(const std::string& iid) const; // null when the iid has no entry
 
-    // Global flags ("ability.ice.stakes"), kept under the reserved iid GlobalIid: a room restore never touches them.
+    // Global flags ("ability.climb"), kept under the reserved iid GlobalIid: a room restore never touches them.
     static constexpr const char* GlobalIid = "_global";
     bool flag(const std::string& name) const;
     void setFlag(const std::string& name, bool on);

@@ -5,14 +5,14 @@
 //
 // HOW TO USE (this is all you need to write):
 //
-//     MUSH2D_ENUM(Element, Fire, Ice, Combined, None)   // declares `enum class Element` and its names
+//     MUSH2D_ENUM(Element, Red, Blue, Combined, None)   // declares `enum class Element` and its names
 //
 //     class Slime : public EnemyBase {
 //         MUSH2D_OBJECT(Slime, EnemyBase)                // registers the class and its C++ base
 //     public:
 //         MUSH2D_EXPORT(float, speed, 1.0f)              // a normal member `float speed = 1.0f;`
 //         MUSH2D_EXPORT(float, patrolDistance, 2.0f)     //   that the editor can also see and change
-//         MUSH2D_EXPORT(Element, weakness, Element::Fire)
+//         MUSH2D_EXPORT(Element, weakness, Element::Red)
 //
 //         void onStep(Scene2D& scene, float dt) override { transform.position.x += speed * dt; }
 //     };
@@ -135,10 +135,10 @@ nlohmann::json exportSchema();
 // --- Internals used by the macros ----------------------------------------------------------------------
 namespace reflect {
 
-// "Fire, Ice, None" -> {"Fire", "Ice", "None"}
+// "Red, Blue, None" -> {"Red", "Blue", "None"}
 std::vector<std::string> splitEnumNames(const char* list);
 
-// MUSH2D_ENUM names index a list, so `Fire = 5` would break the name <-> value mapping.
+// MUSH2D_ENUM names index a list, so `Red = 5` would break the name <-> value mapping.
 constexpr bool enumListHasNoValues(const char* list) {
     for (; *list; ++list)
         if (*list == '=') return false;

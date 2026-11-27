@@ -36,7 +36,7 @@ mush2d_copy_game_files(Mush2D)
 enable_testing()
 add_executable(mush2d_tests tests/tests.cpp ${MUSH2D_GAMES_LIST})
 target_link_libraries(mush2d_tests PRIVATE ${MUSH2D_GAME_LIBS})
-target_compile_definitions(mush2d_tests PRIVATE MUSH2D_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data")
+target_compile_definitions(mush2d_tests PRIVATE MUSH2D_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data" MUSH2D_ENGINE_SRC="${CMAKE_SOURCE_DIR}/src/engine") # engine_has_no_game_content scans the engine sources
 if(MSVC)
     target_compile_options(mush2d_tests PRIVATE /bigobj) # one large test file
 endif()

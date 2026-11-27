@@ -58,7 +58,9 @@
 #include <sstream>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cstring>
 #include <cmath>
 #include <filesystem>
 #include <glm/gtc/constants.hpp>
@@ -88,6 +90,69 @@ void mush2dLinkGame_iki_demo();
 
 #define CHECK(expr) do { if (!(expr)) { std::printf("  CHECK failed: %s (%s:%d)\n", #expr, __FILE__, __LINE__); ++failures; } } while (0)
 #define TEST(name) static void name(); static Registrar reg_##name(#name, name); static void name()
+
+#ifdef _WIN32
+#include <io.h>
+#define DUP _dup
+#define FILENO _fileno
+#define DUP2 _dup2
+#define CLOSE _close
+#else
+#include <unistd.h>
+#define DUP dup
+#define FILENO fileno
+#define DUP2 dup2
+#define CLOSE close
+#endif
+
+namespace {
+// Captures everything written to stderr while alive: std::cerr (via its buffer) and C stderr / fprintf
+// (by pointing file descriptor 2 at a temp file). Works on Linux and MSVC (_dup/_dup2).
+struct CerrCapture {
+    std::ostringstream out;
+    std::streambuf* old = std::cerr.rdbuf(out.rdbuf());
+    std::filesystem::path tmpPath = std::filesystem::temp_directory_path() / ("mush2d_stderr_" + std::to_string(counter()++) + ".txt");
+    std::FILE* tmp = std::fopen(tmpPath.string().c_str(), "w+b"); // receives the C-level stderr text
+    static int& counter() { static int n = 0; return n; }
+    int saved = -1; // the real fd 2, restored in the destructor
+    CerrCapture() {
+        std::fflush(stderr);
+        if (!tmp) return;
+        saved = DUP(2);
+        DUP2(FILENO(tmp), 2);
+    }
+    ~CerrCapture() {
+        std::cerr.rdbuf(old);
+        if (saved < 0) return;
+        std::fflush(stderr);
+        DUP2(saved, 2);
+        CLOSE(saved);
+        std::fclose(tmp);
+        std::error_code ignored;
+        std::filesystem::remove(tmpPath, ignored); // closed first: Windows cannot delete an open file
+    }
+    // C-level text first, then the std::cerr text.
+    std::string str() const {
+        std::string text;
+        if (tmp) {
+            std::fflush(stderr);
+            std::fflush(tmp);
+            std::rewind(tmp);
+            char buf[512];
+            std::size_t n;
+            while ((n = std::fread(buf, 1, sizeof buf, tmp)) > 0) text.append(buf, n);
+            std::fseek(tmp, 0, SEEK_END); // go back to appending
+        }
+        return text + out.str();
+    }
+};
+
+std::size_t countOf(const std::string& text, const std::string& part) {
+    std::size_t n = 0;
+    for (std::size_t i = text.find(part); i != std::string::npos; i = text.find(part, i + 1)) ++n;
+    return n;
+}
+} // namespace
 
 namespace {
 // Calls f and reports whether it threw an exception whose message contains text.
@@ -293,11 +358,14 @@ TEST(ldtk_parses_mini) {
     CHECK(lv.layers[0].depth == -1.0f);                  // in front of Collision
 }
 TEST(ldtk_tolerates_unknowns) {
+    CerrCapture cap; // catches this test's expected warnings
     // mini2.ldtk: AutoLayer with 2 autoLayerTiles, Tiles layer without tileset, entity "Mystery"
     auto lv = loadLdtkLevel(MUSH2D_TEST_DATA "/mini2.ldtk", "Level_0");
     CHECK(lv.layers.size() == 2);                        // layer without tileset skipped
     CHECK(lv.layers[1].tiles.size() == 2);               // AutoLayer
     CHECK(lv.layers[0].entities[0].identifier == "Mystery");
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("layer 'NoTileset' has no tileset") != std::string::npos);
 }
 
 TEST(ldtk_world_coordinates) {
@@ -803,7 +871,10 @@ TEST(ldtk_malformed_throws) {
 }
 
 TEST(intgrid_short_csv_is_ignored) {
+    CerrCapture cap; // catches this test's expected warnings
     CHECK(mergeIntGrid({1, 1, 1}, 2, 2, 1).empty()); // 3 cells for a 2x2 grid
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("intGridCsv has 3 cells") != std::string::npos);
 }
 TEST(ldtk_parallax_anchor_is_level_centre) {
     const glm::vec2 centre{24.0f, 8.0f}, authored{10.0f, 3.0f}, scroll{0.25f, 0.5f};
@@ -855,6 +926,7 @@ TEST(look_ignores_unknown_and_corrupt) {
     CHECK(l && l->settings.exposure == 1.5f && l->settings.fogDensity == FrameSettings{}.fogDensity);
 }
 TEST(look_apply_skips_stale_ids) {
+    CerrCapture cap; // catches this test's expected warnings
     LookFile look; look.lights["gone"] = {{1, 1, 1}, 9, 9, 9, 9, 9}; look.lights["here"] = {{1, 1, 1}, 4, 5, 6, 7, 8};
     look.layers["Nope"] = {{0, 0}, 1};
     std::vector<EditableLight> lights{{"here", {0, 0}, {{0, 0, 0}, 1, 1, 1, 1, 1}}};
@@ -863,6 +935,8 @@ TEST(look_apply_skips_stale_ids) {
     CHECK(lights.size() == 1 && lights[0].value.radius == 5 && layers[0].value.depth == 0);
     LookFile out; captureLook(out, lights, layers);
     CHECK(out.lights.size() == 1 && out.layers.at("Far").parallax.x == 1);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("light iid 'gone' not in level") != std::string::npos && cap.str().find("layer 'Nope' not in level") != std::string::npos);
 }
 
 TEST(region_roundtrip) {
@@ -882,9 +956,12 @@ TEST(region_roundtrip) {
     CHECK(!parseRegion("{ nope", FrameSettings{}));
 }
 TEST(missing_region_falls_back) {
+    CerrCapture cap; // catches this test's expected warnings
     FrameSettings d; d.exposure = 2.5f;
     Region r = loadRegionOrDefault(std::filesystem::temp_directory_path() / "mush2d_nowhere.region.json", d);
     CHECK(r.name == "mush2d_nowhere" && r.layers.empty() && r.look.settings.exposure == 2.5f);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("not found, using defaults") != std::string::npos);
 }
 TEST(region_look_blend) {
     FrameSettings a, b;
@@ -977,6 +1054,7 @@ TEST(file_watcher_separate_stamps) {
     fs::remove_all(dir);
 }
 TEST(region_bad_image_is_skipped) {
+    CerrCapture cap; // catches this test's expected warnings
     Region r;
     r.layers.push_back({"assets/nowhere/missing.png", 1.0f, {1.0f, 1.0f}, {0.0f, 0.0f}, true});
     MaterialLibrary lib; // no GPU: an unreadable image fails before any upload
@@ -986,6 +1064,8 @@ TEST(region_bad_image_is_skipped) {
     SpriteBatch b;
     appendRegionLayers(r, cam, VkExtent2D{1280, 720}, b);
     CHECK(b.sorted().empty());
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("layer skipped") != std::string::npos);
 }
 
 // --- Entity model (Scene2D) ---
@@ -1185,6 +1265,7 @@ TEST(destroy_parent_destroys_children) {
 }
 
 TEST(reparent_cycle_rejected) {
+    CerrCapture cap; // catches this test's expected warnings
     Scene2D scene;
     auto& a = scene.createObject<GameObject>(); auto& b = scene.createObject<GameObject>(); auto& c = scene.createObject<GameObject>();
     CHECK(scene.setParent(b.id, a.id) && scene.setParent(c.id, b.id));
@@ -1193,6 +1274,8 @@ TEST(reparent_cycle_rejected) {
     CHECK(!a.parent());
     CHECK(scene.setParent(c.id, a.id)); // legal reparent
     CHECK(b.children().empty() && a.children().size() == 2);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("setParent rejected") != std::string::npos);
 }
 
 TEST(setParent_to_dying_parent_is_consistent) {
@@ -1278,6 +1361,7 @@ TEST(component_lifecycle_and_step_order) {
 }
 
 TEST(event_bus_deferred_dispatch_and_unsubscribe) {
+    CerrCapture cap; // catches this test's expected warnings
     struct Ping { int n; };
     EventBus bus;
     std::vector<int> got;
@@ -1306,6 +1390,8 @@ TEST(event_bus_deferred_dispatch_and_unsubscribe) {
     auto loop = bus.subscribe<Ping>([&](const Ping&) { ++rounds; bus.emit(Ping{0}); });
     bus.emit(Ping{0}); bus.dispatch();
     CHECK(rounds == 8);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("events still queued") != std::string::npos);
 }
 
 TEST(subscription_dies_with_owner) {
@@ -1494,6 +1580,7 @@ TEST(setParent_refreshes_only_what_it_needs) {
 }
 
 TEST(grid_ignores_nonfinite_and_survives_huge_boxes) {
+    CerrCapture cap; // catches this test's expected warnings
     const float inf = std::numeric_limits<float>::infinity(), nan = std::numeric_limits<float>::quiet_NaN();
     SpatialGrid grid;
     auto id = [](std::uint32_t i) { return GameObjectId{i, 1}; };
@@ -1519,6 +1606,8 @@ TEST(grid_ignores_nonfinite_and_survives_huge_boxes) {
     bad.collider = ColliderData{}; bad.collider->size = {inf, 1};
     scene.step(0.016f);
     CHECK(Collision2D::queryAABB(scene, AABB{{-1, -1}, {1, 1}}).empty());
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("NaN or infinite") != std::string::npos && cap.str().find("spans more than") != std::string::npos);
 }
 
 TEST(spatial_grid_wide_entry_found_by_narrow_query) {
@@ -2351,6 +2440,7 @@ TEST(depenetrate_leaves_body_resting_on_ramp) {
 }
 
 TEST(terrain_style_falls_back_to_forest) {
+    CerrCapture cap; // catches this test's expected warnings
     namespace fs = std::filesystem;
     const fs::path root = fs::temp_directory_path() / "mush2d_terrain_style_test";
     fs::remove_all(root);
@@ -2362,6 +2452,8 @@ TEST(terrain_style_falls_back_to_forest) {
     CHECK(terrainStyleDir(root, "lava") == root / "forest"); // warned once, not thrown
     CHECK(terrainStyleDir(root, "lava") == root / "forest");
     fs::remove_all(root);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("style 'lava' has no textures") != std::string::npos);
 }
 
 TEST(collides_at_position_sees_segments) {
@@ -2670,6 +2762,7 @@ TEST(prefab_inheritance_merge_and_remove) {
 }
 
 TEST(prefab_inheritance_cycle_rejected) {
+    CerrCapture cap; // catches this test's expected warnings
     PrefabScene t;
     std::string err;
     CHECK(!t.prefabs.resolved("test_cycle_a", err) && err.find("cycle") != std::string::npos);
@@ -2679,9 +2772,12 @@ TEST(prefab_inheritance_cycle_rejected) {
     CHECK(!t.prefabs.resolved("no_such_prefab", err) && err.find("no_such_prefab") != std::string::npos);
     err.clear();
     CHECK(!t.prefabs.resolved("../escape", err) && !err.empty()); // names are plain file stems
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("prefab cycle") != std::string::npos);
 }
 
 TEST(prefab_unknown_prop_warns_and_keeps_default) {
+    CerrCapture cap; // catches this test's expected warnings
     PrefabScene t;
     GameObject* o = t.prefabs.instantiate(t.scene, "test_unknown");
     auto* s = dynamic_cast<TestSlime*>(o);
@@ -2694,16 +2790,22 @@ TEST(prefab_unknown_prop_warns_and_keeps_default) {
     TestSlime direct;
     auto warnings = applyProps(static_cast<GameObject*>(&direct), "TestSlime", {{"speed", 3}, {"nope", 1}});
     CHECK(warnings.size() == 1 && direct.speed == 3.0f);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("props.bogus: unknown attribute") != std::string::npos && cap.str().find("props.maxHealth") != std::string::npos && cap.str().find("props.speed") != std::string::npos);
 }
 
 TEST(prefab_wrong_type_warns) {
+    CerrCapture cap; // catches this test's expected warnings
     PrefabScene t;
     GameObject* o = t.prefabs.instantiate(t.scene, "test_unknown");
     CHECK(o && hasWarning(t.prefabs.warnings(), "props.speed") && hasWarning(t.prefabs.warnings(), "expected Float"));
     CHECK(hasWarning(t.prefabs.warnings(), "props.maxHealth"));
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("props.speed: expected Float") != std::string::npos);
 }
 
 TEST(prefab_invalid_json_warns) {
+    CerrCapture cap; // catches this test's expected warnings
     const auto dir = std::filesystem::temp_directory_path() / "mush2d_prefabs_invalid";
     std::filesystem::create_directories(dir);
     std::ofstream(dir / "half.prefab.json") << R"({ "version": 1, "type": "TestSlime", "props": { "speed": )";
@@ -2723,6 +2825,8 @@ TEST(prefab_invalid_json_warns) {
     err.clear();
     const nlohmann::json* kept = prefabs.resolved("half", err);
     CHECK(kept && (*kept)["props"]["speed"] == 7 && err.find("half.prefab.json") != std::string::npos);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("invalid JSON") != std::string::npos);
 }
 
 TEST(prefab_children_become_scene_children) {
@@ -2824,6 +2928,7 @@ TEST(ldtk_entity_factory_fallback_and_code_only) {
 }
 
 TEST(ldtk_entity_without_prefab_warns_once) {
+    CerrCapture cap; // catches this test's expected warnings
     auto f = std::make_unique<FakeServices>();
     LevelLoader loader;
     LdtkLevel level;
@@ -2831,6 +2936,8 @@ TEST(ldtk_entity_without_prefab_warns_once) {
     loader.spawnEntity(level, entityOf("Mystery", "m2"), f->s);
     CHECK(loader.warnings().size() == 1 && hasWarning(loader.warnings(), "Mystery"));
     CHECK(f->t.scene.aliveCount() == 0);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("no prefab (mystery.prefab.json)") != std::string::npos);
 }
 
 TEST(sprite_animator_plays_state) {
@@ -2925,13 +3032,17 @@ TEST(scene_sprite_size_is_scale_times_draw_size) {
 }
 
 TEST(prefab_child_containing_its_own_prefab_is_refused) {
+    CerrCapture cap; // catches this test's expected warnings
     PrefabScene t;
     GameObject* o = t.prefabs.instantiate(t.scene, "test_self_child");
     CHECK(o && o->children().empty() && t.scene.aliveCount() == 1);
     CHECK(hasWarning(t.prefabs.warnings(), "contains itself") && t.prefabs.warnings().size() == 1);
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("contains itself") != std::string::npos);
 }
 
 TEST(ldtk_prefab_entity_tracking_parallax_and_missing_prefab) {
+    CerrCapture cap; // catches this test's expected warnings
     auto f = std::make_unique<FakeServices>();
     LevelLoader loader;
     LdtkLevel level;
@@ -2954,22 +3065,8 @@ TEST(ldtk_prefab_entity_tracking_parallax_and_missing_prefab) {
     loader.spawnEntity(level, entityOf("TestSlime", "m1", {{"prefab", "nope_prefab"}}), f->s);
     loader.spawnEntity(level, entityOf("TestSlime", "m2", {{"prefab", "nope_prefab"}}), f->s);
     CHECK(loader.warnings().size() == 2 && hasWarning(loader.warnings(), "names prefab 'nope_prefab'"));
-}
-
-namespace {
-// Captures std::cerr while alive.
-struct CerrCapture {
-    std::ostringstream out;
-    std::streambuf* old = std::cerr.rdbuf(out.rdbuf());
-    ~CerrCapture() { std::cerr.rdbuf(old); }
-    std::string str() const { return out.str(); }
-};
-
-std::size_t countOf(const std::string& text, const std::string& part) {
-    std::size_t n = 0;
-    for (std::size_t i = text.find(part); i != std::string::npos; i = text.find(part, i + 1)) ++n;
-    return n;
-}
+    // The expected warnings were printed (captured, so the test output stays clean).
+    CHECK(cap.str().find("names prefab 'nope_prefab'") != std::string::npos);
 }
 
 // ---- Input actions (fake RawInput: no window, no GLFW device) ----
@@ -6738,6 +6835,62 @@ TEST(showcase_ice_test_dummies_load) {
     for (const auto& [id, at] : feet) CHECK(at.y == 592.0f && at.x > 704.0f && at.x < 992.0f); // floor top row 37
     CHECK(feet["TrainingDummyShooter"].x > feet["TrainingDummyWeak"].x && feet["TrainingDummyShooter"].x > feet["TrainingDummyResist"].x);
 }
+
+// ---- Split rule: src/engine never names game content (see CLAUDE.md) ----
+namespace {
+// True when `line` has a banned word (iki, ikigai, kaa, ice, fire, gelo, fogo) starting a word or a camelCase part.
+// "iceClimb", "IceTest", "ice_stake" match; "device", "slice", "Notice" do not (the word starts mid-part).
+bool namesGameContent(const std::string& line) {
+    static const char* banned[] = {"iki", "ikigai", "kaa", "ice", "fire", "gelo", "fogo"};
+    auto isAlpha = [](char c) { return std::isalpha(static_cast<unsigned char>(c)) != 0; };
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        if (!isAlpha(line[i])) continue;
+        // A part starts after a non-letter, or at an uppercase letter that follows a lowercase one.
+        bool partStart = i == 0 || !isAlpha(line[i - 1]) ||
+                         (std::isupper(static_cast<unsigned char>(line[i])) && std::islower(static_cast<unsigned char>(line[i - 1])));
+        if (!partStart) continue;
+        for (const char* word : banned) {
+            std::size_t n = std::strlen(word), k = 0;
+            while (k < n && i + k < line.size() && std::tolower(static_cast<unsigned char>(line[i + k])) == word[k]) ++k;
+            if (k == n) return true;
+        }
+    }
+    return false;
+}
+
+// True when the line includes a header from a game or an example.
+bool includesGameCode(const std::string& line) {
+    for (const char* prefix : {"#include \"iki_demo/", "#include \"ikigai/", "#include \"game/"})
+        if (line.find(prefix) != std::string::npos) return true;
+    return false;
+}
+} // namespace
+
+TEST(engine_has_no_game_content) {
+    // Self-checks of the matcher first.
+    CHECK(namesGameContent("iceClimb") && namesGameContent("IceTest") && namesGameContent("a ice_stake b"));
+    CHECK(namesGameContent("Fire") && namesGameContent("assets/kaa/x") && namesGameContent("the Iki"));
+    CHECK(!namesGameContent("device") && !namesGameContent("slice") && !namesGameContent("Notice") && !namesGameContent("office"));
+    CHECK(includesGameCode("#include \"iki_demo/X.hpp\"") && !includesGameCode("#include \"engine/core/X.hpp\""));
+
+    // Then every engine file, line by line; each hit is reported as file:line.
+    int files = 0;
+    std::vector<std::string> hits;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(MUSH2D_ENGINE_SRC)) {
+        auto ext = entry.path().extension();
+        if (!entry.is_regular_file() || (ext != ".hpp" && ext != ".cpp")) continue;
+        ++files;
+        std::ifstream in(entry.path());
+        std::string line;
+        for (int n = 1; std::getline(in, line); ++n)
+            if (namesGameContent(line) || includesGameCode(line))
+                hits.push_back(entry.path().string() + ":" + std::to_string(n) + ": " + line);
+    }
+    CHECK(files > 20); // the folder was found
+    for (const auto& h : hits) std::fprintf(stderr, "  game content in engine: %s\n", h.c_str());
+    CHECK(hits.empty());
+}
+
 
 #ifdef _WIN32 // last in the file: windows.h macros reach nothing else
 #define NOMINMAX

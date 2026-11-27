@@ -248,7 +248,7 @@ glm::vec2 effectFeet(const GameObject& obj) {
     return p + obj.collider->offset - glm::vec2(0.0f, 0.5f * obj.collider->size.y);
 }
 
-void EffectTriggers::fire(GameObject& owner, Scene2D& scene, const std::string& key, float strength,
+void EffectTriggers::trigger(GameObject& owner, Scene2D& scene, const std::string& key, float strength,
                           std::optional<glm::vec2> pos, int direction) {
     auto it = triggers.find(key);
     if (it == triggers.end()) return;
@@ -266,7 +266,7 @@ void EffectTriggers::onAttach(GameObject& owner, Scene2D& scene) {
     // Handlers find the owner again: events are delivered later, at a flush.
     auto run = [this, id, s](const std::string& key, float strength, std::optional<glm::vec2> pos, std::optional<int> dir) {
         GameObject* o = s->findObject(id);
-        if (o && enabled && !removing()) fire(*o, *s, key, strength, pos, dir ? *dir : (o->flipX ? -1 : 1));
+        if (o && enabled && !removing()) trigger(*o, *s, key, strength, pos, dir ? *dir : (o->flipX ? -1 : 1));
     };
     subscriptions_.push_back(scene.events().subscribe<StateChanged>([run, id](const StateChanged& e) {
         if (e.object == id) run("state:" + e.label + ":" + e.to, 1.0f, {}, {});

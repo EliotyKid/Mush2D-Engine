@@ -5,7 +5,7 @@
 //
 //     { "version": 1, "base": "enemy_base", "type": "Slime",
 //       "props": { "speed": 2.5 }, "extra": { "lootChance": 0.3 },
-//       "sprite": { "atlas": "kaa_animals", "frame": "fox_idle 0", "animation": "fox_idle", "layer": 1,
+//       "sprite": { "atlas": "hero_animals", "frame": "fox_idle 0", "animation": "fox_idle", "layer": 1,
 //                   "color": [1, 1, 1, 1], "depth": 0, "additive": false },
 //       "collider": { "size": [0.8, 0.8], "offset": [0, 0], "isTrigger": false },
 //       "animations": { "idle": "slime_idle", "walk": "slime_walk" },      // -> SpriteAnimator

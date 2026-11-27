@@ -5,7 +5,7 @@
 //   Hurtbox    where the object can be hit; lives in the CombatWorld service (its own SpatialGrid).
 //   Damageable takes the HitEvents aimed at its owner: guard, invulnerability, multipliers, Resources, DamageTaken.
 //   Stunned    a timer other code checks (the parry stuns info.source when it has one).
-// Effect triggers fired here: "hit:dealt" on info.source (else the attacker), "hit:taken" (damage > 0),
+// Effect triggers raised here: "hit:dealt" on info.source (else the attacker), "hit:taken" (damage > 0),
 // "hit:immune", "hit:blocked" and "hit:parried" on the target.
 
 #include "engine/world/Component.hpp"
