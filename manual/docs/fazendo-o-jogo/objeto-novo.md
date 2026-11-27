@@ -82,7 +82,7 @@ Pinta a alavanca de vermelho ou verde. `onPrefabApplied` roda depois que o prefa
 ```cpp
     void onStep(Scene2D& scene, float) override {
         auto* player = scene.findObjectAs<IPlayer>(playerId);
-        if (player && player->downPressedThisFrame()) toggle();
+        if (player && player->interactPressed()) toggle();
         refresh();
     }
 ```
@@ -97,7 +97,7 @@ Step Event, a cada frame:
         if (other.hasTag("player")) playerId = other.id;
     }
 ```
-"Algo entrou na minha máscara." `hasTag("player")` pergunta "esse `other` é o player?", seja qual for o tipo dele. Se for, guarda o id dele. No `onStep`, `findObjectAs<IPlayer>` chega na interface `IPlayer`, que tem o `downPressedThisFrame()`.
+"Algo entrou na minha máscara." `hasTag("player")` pergunta "esse `other` é o player?", seja qual for o tipo dele. Se for, guarda o id dele. No `onStep`, `findObjectAs<IPlayer>` chega na interface `IPlayer`, que tem o `interactPressed()`.
 
 ```cpp
     void onTriggerExit(Scene2D&, GameObject& other) override {

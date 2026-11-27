@@ -33,12 +33,12 @@ As barras do jogo (energia, mana, o que for). Cada uma é um objeto:
 | Campo | Significa |
 |---|---|
 | `name` | nome da barra (único) |
-| `element` | de qual elemento ela é (precisa estar em `elements`) |
+| `element` | de qual elemento ela é (precisa estar em `elements`). Opcional: sem ele, a barra não é de nenhum elemento |
 | `max` | valor máximo (maior que 0). Se faltar, vale 100 |
 | `regenPerSecond` | quanto volta por segundo (0 ou mais). Se faltar, vale 10 |
 | `regenDelay` | segundos parada antes de começar a voltar (0 ou mais). Se faltar, vale 1 |
 
-`name` e `element` são obrigatórios; os três números podem ser deixados de fora.
+`name` é obrigatório; `element` e os três números podem ser deixados de fora.
 No painel F1, cada barra tem controles para mudar esses números enquanto o jogo roda.
 
 ## `surfaces`
@@ -126,8 +126,19 @@ Um componente da engine, o `PlatformerMover` (`src/engine/world/PlatformerMover.
 
 ## Atualização ao vivo (hot reload)
 
-No Debug, salvar o `project.json` do jogo atualiza o jogo sem fechar. Se o arquivo estiver com erro, o jogo **mantém o projeto anterior** e avisa no terminal, no formato `Project: <arquivo>: <campo>: <motivo>`. Corrija e salve de novo.
+No Debug, a engine lê de novo o `project.json` do jogo quando você salva o arquivo, sem fechar o jogo. Mas nem tudo muda na hora:
+
+| Parte | Quando a mudança vale |
+|---|---|
+| `actions` e `input` | Na hora. Cuidado: a recarga troca também os valores que você mudou no F1 (o `buffer` das ações e os dois números de `input`) pelos do arquivo. |
+| `elements` | Na hora, para o que é lido depois (por exemplo, os avisos de um prefab recarregado). |
+| `resources` | Só nos objetos criados depois. Os objetos que já existem guardam as barras que tinham. Recarregue a sala para recriá-los. |
+| `surfaces` | Só na próxima vez que uma sala carrega. Recarregue a sala. |
+
+Recarregar a sala: no `iki_demo`, a tecla `F5`. O modelo `games/ikigai` não tem tecla de recarga: feche e abra o jogo.
+
+Se o arquivo estiver com erro, o jogo **mantém o projeto anterior** e avisa no terminal, no formato `Project: <arquivo>: <campo>: <motivo>`. Corrija e salve de novo.
 
 ## No painel F1
 
-A seção **Projeto · Entrada** tem os controles dos dois números de `input` e do `buffer` de cada ação. Cada barra de `resources` tem os seus controles. Mudanças no F1 valem na hora, mas não são salvas: para guardar, copie o número para o `project.json`.
+A janela **Projeto (F1)** aparece em todo jogo, desenhada pela engine. A seção **Projeto · Entrada** tem os controles dos dois números de `input` e do `buffer` de cada ação. Cada barra de `resources` tem os seus controles, no componente `Resources` do objeto, na janela "Cena (F1)". Mudanças no F1 valem na hora, mas não são salvas: para guardar, copie o número para o `project.json`.

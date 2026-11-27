@@ -72,7 +72,7 @@ E todo objeto feito de uma entidade do LDtk aceita os campos de persistência `r
 
 - Ajustar a altura do pulo ao vivo: `F1` → "Cena (F1)" → player → `jumpSpeed`. O ápice é `jumpSpeed² / (2 × |gravity|)` unidades.
 - Mandar o player para outro lugar em código: `player->teleport(posicao)`, ou `respawnAt(posicao)` pela interface `IPlayer`.
-- Saber se o player apertou ↓ neste frame (para interagir): `downPressedThisFrame()` (`IPlayer`), o mesmo que `interactPressed()`.
+- Saber se o player apertou a ação de interagir neste frame: `interactPressed()` (`IPlayer`).
 - Os outros objetos acham o player pela tag `player` e falam com ele pela interface `IPlayer`, nunca pelo tipo `PlayerObject`. Veja [Comunicação](fazendo-o-jogo/comunicacao.md).
 
 **Arquivos:** `examples/iki_demo/src/iki_demo/objects/PlayerObject.hpp`, `examples/iki_demo/src/iki_demo/spawners/Spawn.cpp`.

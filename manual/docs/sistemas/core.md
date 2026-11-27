@@ -14,8 +14,8 @@ A `Engine` abre a janela, inicializa GPU, renderer, materiais, input e câmera, 
 
 | Tipo | Papel |
 |---|---|
-| `IGame` | O contrato de todo jogo: `init(EngineServices&)`, `update(EngineServices&, float dt)`, `onHud(EngineServices&)` (todo quadro com o painel F1 fechado, dentro de um quadro do ImGui, para um HUD; opcional), `onImGui(EngineServices&)` (só com o painel F1 aberto, opcional) e `shutdown(EngineServices&)` (opcional). |
-| `EngineServices` | A caixa de ferramentas que a engine entrega ao jogo: `gpu`, `renderer`, `materials`, `input`, `camera`, `scene` e `audio`. |
+| `IGame` | O contrato de todo jogo: `init(EngineServices&)`, `update(EngineServices&, float dt)`, `onHud(EngineServices&)` (todo quadro com o painel F1 fechado, dentro de um quadro do ImGui, para um HUD; opcional), `onImGui(EngineServices&)` (só com o painel F1 aberto, depois das janelas "Cena (F1)" e "Projeto (F1)" que a engine desenha para todo jogo; para os painéis do próprio jogo; opcional) e `shutdown(EngineServices&)` (opcional). |
+| `EngineServices` | A caixa de ferramentas que a engine entrega ao jogo: `gpu`, `renderer`, `materials`, `input`, `camera`, `scene`, `audio` e `inspector` (o inspetor do F1: `selected()` e `pausing()`). |
 | `Engine` | `run(IGame&)`: abre tudo, roda o loop até a janela fechar e desliga. |
 | `assetPath(rel)` | `<pasta do executável>/rel`. Onde o jogo lê assets copiados pelo build. |
 | `sourceAssetPath(rel)` | No Debug, o arquivo dentro do projeto (`MUSH2D_SOURCE_DIR/rel`), para editar e salvar no git. No Release, igual a `assetPath`. |
