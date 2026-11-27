@@ -187,7 +187,8 @@ private:
     };
 
     template<typename TScene>
-    static auto findLive(TScene& scene, GameObjectId id) {
+    // Explicit return type: GCC rejects deducing `auto` here when findObject uses it before this point.
+    static auto findLive(TScene& scene, GameObjectId id) -> decltype(scene.find(id)) {
         auto* object = scene.find(id);
         return object && !object->pendingDestroy_ ? object : nullptr;
     }
