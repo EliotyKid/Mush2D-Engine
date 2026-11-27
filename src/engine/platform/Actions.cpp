@@ -140,9 +140,10 @@ void ActionMap::configure(const std::map<std::string, ActionBinding, std::less<>
         next[name] = old != frame_.states_.end() ? old->second : ActionState{};
     }
     frame_.states_ = std::move(next);
+    stepFrame_ = frame_; // the step frame follows the new list of actions too
 }
 
-void ActionMap::update(const RawInput& raw) {
+void ActionMap::update(const RawInput& raw, bool keepStepEdges) {
     for (const auto& [name, b] : bindings_) {
         bool keyDown = false, padDown = false;
         for (int k : b.keys)
@@ -168,6 +169,10 @@ void ActionMap::update(const RawInput& raw) {
         frame_.stick_.x = deadZoned(raw.padAxes[GLFW_GAMEPAD_AXIS_LEFT_X], settings_.stickDeadzone);
         frame_.stick_.y = -deadZoned(raw.padAxes[GLFW_GAMEPAD_AXIS_LEFT_Y], settings_.stickDeadzone); // GLFW: down is +
     }
+    // The step frame: this frame, plus (after a frozen step) the edges the frozen step never read.
+    ActionFrame next = frame_;
+    if (keepStepEdges) next.keepEdges(stepFrame_);
+    stepFrame_ = std::move(next);
 }
 
 float ActionMap::bufferWindow(std::string_view name) const {

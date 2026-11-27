@@ -102,10 +102,8 @@ void IkiDemoGame::update(EngineServices& s, float deltaTime) {
         }
     }
 #endif
-    // The inspector's pause holds only while the F1 panel is open.
-    const bool paused = inspectorPause && panelShown;
-    panelShown = false;
-    if (paused) {
+    // The engine's inspector: its "pausar o jogo" box holds only while the F1 panel is open.
+    if (s.inspector.pausing()) {
         submitRenderData(s);
         return;
     }
@@ -113,7 +111,7 @@ void IkiDemoGame::update(EngineServices& s, float deltaTime) {
     // A death fade only exists in the Showcase world; leaving it mid-fade must not freeze other scenes.
     const bool dying = currentSceneId == SceneId::Showcase && world.dying();
     if (player && !dying) { // a dying player stands still
-        player->applyInput(s.input.actions().frame()); // the project's named actions for this frame
+        player->applyInput(s.input.actions().stepFrame()); // the project's named actions, with hit-stop presses kept
     }
 
     scene.step(deltaTime);
@@ -584,10 +582,9 @@ void IkiDemoGame::onHud(EngineServices& s) {
 }
 
 void IkiDemoGame::onImGui(EngineServices& s) {
-    panelShown = true;
-    inspector.draw(s.scene, prefabs, inspectorPause);
+    // The engine already drew the "Cena" and "Projeto" windows; this adds the outline and the Look panel.
     // Selection outline: the collider box (else the scale), drawn under the ImGui windows.
-    if (const GameObject* o = s.scene.findObject(inspector.selected())) {
+    if (const GameObject* o = s.scene.findObject(s.inspector.selected())) {
         const Transform2D w = o->world();
         const glm::vec2 centre = w.position + (o->collider ? o->collider->offset : glm::vec2(0.0f));
         const glm::vec2 half = o->collider ? o->collider->size * 0.5f : glm::abs(w.scale) * 0.5f;
@@ -613,7 +610,7 @@ void IkiDemoGame::onImGui(EngineServices& s) {
         }
     }
     bool save = false;
-    lookPanel.draw(regions.current(), lightEdits, roomLayers, s.renderer.timers(), s.camera, s.audio, s.input.actions(), save);
+    lookPanel.draw(regions.current(), lightEdits, roomLayers, s.renderer.timers(), s.camera, s.audio, save);
     // Look edits reach the renderer through regions.update next frame (it may be blending).
     for (const EditableLayer& l : roomLayers) levelLoader.setLayer(regions.currentName(), l.identifier, l.value.parallax, l.value.depth);
     if (save) {

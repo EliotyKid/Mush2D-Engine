@@ -80,12 +80,19 @@ private:
 // Turns raw devices into actions, one update per frame.
 class ActionMap {
 public:
-    ActionMap() { frame_.fromMap_ = true; } // its frame lists every declared action: other names warn
+    // Its frames list every declared action: other names warn.
+    ActionMap() { frame_.fromMap_ = stepFrame_.fromMap_ = true; }
     // Sets the bindings and limits. Actions that keep their name keep their current state.
     void configure(const std::map<std::string, ActionBinding, std::less<>>& actions, const InputSettings& settings);
     // Reads one raw snapshot and computes the new frame (edges come from the change of the combined "down").
-    void update(const RawInput& raw);
+    // keepStepEdges: the scene's last step was frozen (hit stop) and read nothing, so stepFrame() keeps the
+    // presses and releases it had and adds this frame's on top.
+    void update(const RawInput& raw, bool keepStepEdges = false);
+    // This frame only: for code that runs once per frame (menus, a respawn key).
     const ActionFrame& frame() const { return frame_; }
+    // This frame plus the presses of the frames a hit stop froze: for code that runs in the scene step
+    // (movement, jumps), so a press made during a freeze is still there when the next step runs.
+    const ActionFrame& stepFrame() const { return stepFrame_; }
     // The press buffer of `name` in seconds (0 for an unknown name).
     float bufferWindow(std::string_view name) const;
 
@@ -97,6 +104,7 @@ private:
     std::map<std::string, ActionBinding, std::less<>> bindings_;
     InputSettings settings_;
     ActionFrame frame_;
+    ActionFrame stepFrame_; // frame_ plus the edges kept through a frozen step
 };
 
 // Name tables for project.json. They return -1 (or false) for an unknown name.

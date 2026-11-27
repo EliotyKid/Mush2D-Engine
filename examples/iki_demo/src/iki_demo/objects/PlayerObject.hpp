@@ -155,8 +155,7 @@ public:
     }
 
     // Down was pressed this frame (levers read it during the step).
-    bool interactPressed() const { return interact; }
-    bool downPressedThisFrame() const override { return interact; }
+    bool interactPressed() const override { return interact; }
 
     void onStep(Scene2D& scene, float dt) override {
         if (platformer()) {

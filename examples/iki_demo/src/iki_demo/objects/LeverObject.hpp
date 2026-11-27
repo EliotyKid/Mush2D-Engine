@@ -35,7 +35,7 @@ public:
 
     void onStep(Scene2D& scene, float) override {
         auto* player = scene.findObjectAs<IPlayer>(playerId);
-        if (player && player->downPressedThisFrame()) toggle();
+        if (player && player->interactPressed()) toggle();
         refresh();
     }
 

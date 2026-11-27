@@ -5,9 +5,11 @@
 #include "engine/core/Project.hpp"
 #include "engine/gpu/Buffer.hpp"
 #include "engine/gpu/Image.hpp"
+#include "engine/tools/InputPanel.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <cmath>
+#include <cstdint>
 #include <stb_image_write.h>
 
 #include <imgui.h>
@@ -105,7 +107,8 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
     Bindless bindless;
     MaterialLibrary materials;
     SceneRenderer renderer;
-    EngineServices services{gpu, renderer, materials, input, camera, scene, audio};
+    SceneInspector inspector; // the F1 "Cena" window, drawn for every game
+    EngineServices services{gpu, renderer, materials, input, camera, scene, audio, inspector};
     VkDescriptorPool imguiPool = VK_NULL_HANDLE;
     bool imguiReady = false;
     auto teardown = [&] {
@@ -203,7 +206,8 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
         IGame& game = *ownedGame;
         // The game's project.json: a bad file only warns; the game then runs with an empty project.
         const std::filesystem::path projectFile = sourceAssetPath("project.json");
-        if (std::optional<Project> project = loadProject(assetPath("project.json"))) setActiveProject(std::move(*project));
+        // The same file the Debug hot reload watches (the source copy in Debug; in Release, the copy next to the exe).
+        if (std::optional<Project> project = loadProject(projectFile)) setActiveProject(std::move(*project));
         input.actions().configure(activeProject().actions, activeProject().input); // the project's input actions
 #ifndef NDEBUG
         FileWatcher projectWatcher; // Debug: edits to project.json apply while the game runs
@@ -216,6 +220,7 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
         bool f1Held = false;
 
         int prevMode = -1;
+        std::uint64_t stepsAtLastPoll = 0; // scene.stepCount() at the previous input poll
         double lastTime = glfwGetTime();
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
@@ -229,7 +234,11 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
             input.beginFrame();
-            input.poll();
+            // A step ran since the last poll and it froze (hit stop), so it read no input: the actions' step frame
+            // keeps its presses. No step at all (a pause) keeps nothing.
+            const bool frozenUnread = scene.lastStepFrozen() && scene.stepCount() != stepsAtLastPoll;
+            stepsAtLastPoll = scene.stepCount();
+            input.poll(frozenUnread);
 
             double currentTime = glfwGetTime();
             float deltaTime = std::min(static_cast<float>(currentTime - lastTime), MAX_DELTA_TIME);
@@ -239,6 +248,7 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
             if (projectWatcher.poll(deltaTime).file && reloadActiveProject(projectFile)) // keeps the old one on error
                 input.actions().configure(activeProject().actions, activeProject().input);
 #endif
+            inspector.setOpen(showPanel); // its "pausar o jogo" box only holds while the panel is open
             game.update(services, deltaTime);
 
             const int mode = renderer.settings().pixelMode;
@@ -253,6 +263,9 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
             audio.update(deltaTime);                                 // real time too
 
             if (showPanel) {
+                // Every game gets the scene inspector and the input controls; the game adds its own panels after.
+                inspector.draw(scene, scene.service<PrefabLibrary>());
+                drawInputPanel(input.actions());
                 game.onImGui(services);
             } else {
                 game.onHud(services); // the HUD would cover the panel's windows

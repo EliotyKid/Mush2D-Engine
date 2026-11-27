@@ -23,7 +23,7 @@ void GlfwInput::updateButton(ButtonState& button, bool currentDown, bool& previo
     previousDown = currentDown;
 }
 
-void GlfwInput::poll() {
+void GlfwInput::poll(bool keepStepEdges) {
     if (!window) {
         return;
     }
@@ -38,7 +38,7 @@ void GlfwInput::poll() {
 
     updateButton(state.toggleFollow, !keyboardBlocked && glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS, previousToggleFollow);
 
-    actions_.update(readRaw()); // the named actions see the same frame
+    actions_.update(readRaw(), keepStepEdges); // the named actions see the same frame
 
     updateButton(
         state.dragCamera,

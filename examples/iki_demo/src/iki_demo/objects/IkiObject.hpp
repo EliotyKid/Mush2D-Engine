@@ -101,7 +101,7 @@ public:
     // IPlayer
     void applyInput(const ActionFrame& input) override;
     void respawnAt(glm::vec2 position) override; // teleport only: no velocity, ground or slide carried over
-    bool downPressedThisFrame() const override { return input_.pressed("interact"); } // levers
+    bool interactPressed() const override { return input_.pressed("interact"); } // levers
     void setCheckpoint(glm::vec2 position) override { checkpoint_ = position; }
     void respawnAtCheckpoint() override { respawnAt(checkpoint_); respawn(); }
 

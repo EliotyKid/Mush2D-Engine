@@ -9,7 +9,6 @@
 #include "engine/world/Projectile.hpp"
 #include "engine/scenes/ISceneDefinition.hpp"
 #include "engine/tools/LookPanel.hpp"
-#include "engine/tools/SceneInspector.hpp"
 #include "engine/world/LevelLoader.hpp"
 #include "engine/world/RegionSet.hpp"
 #include "engine/world/World.hpp"
@@ -44,9 +43,6 @@ private:
     World world;                         // streams the rooms of showcase.ldtk around the player
     RegionSet regions;                   // assets/regions/<name>.region.json; the current room's look
     LookPanel lookPanel;
-    SceneInspector inspector; // F1 "Cena"
-    bool inspectorPause = false; // its "pausar o jogo" box
-    bool panelShown = false;     // onImGui ran since the last update (F1 panel open)
     std::vector<EditableLight> lightEdits;   // one per LDtk Light entity of a loaded room
     GameObjectId playerObjectId = InvalidGameObjectId;
 

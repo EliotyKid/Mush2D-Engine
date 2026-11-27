@@ -12,7 +12,8 @@ void PlatformerMover::onStep(GameObject& owner, Scene2D& scene, float dt) {
     // No input service or no collider: nothing to read or nothing to move.
     const ActionMap* map = scene.service<ActionMap>();
     if (!map || !owner.collider) return;
-    const ActionFrame& in = map->frame();
+    // The step frame: a press made while a hit stop froze the scene still counts in this step.
+    const ActionFrame& in = map->stepFrame();
 
     // Jump timing: the buffer window comes from the project's jump action.
     jump_.coyoteTime = coyoteTime;

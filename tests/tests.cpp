@@ -2866,8 +2866,9 @@ namespace {
 // EngineServices without a GPU: the loader only touches the scene, the factories get the struct.
 struct FakeServices {
     GpuContext gpu; SceneRenderer renderer; MaterialLibrary materials; GlfwInput input; Camera2D camera; Audio audio;
+    SceneInspector inspector;
     PrefabScene t;
-    EngineServices s{gpu, renderer, materials, input, camera, t.scene, audio};
+    EngineServices s{gpu, renderer, materials, input, camera, t.scene, audio, inspector};
 };
 LdtkEntity entityOf(std::string identifier, std::string iid, nlohmann::json fields = nlohmann::json::object()) {
     LdtkEntity e{};
@@ -6946,14 +6947,102 @@ struct MoverRig {
         obj->collider = ColliderData{.size = {0.6f, 1.6f}}; // a collider is all the mover needs
         mover = &obj->addComponent<PlatformerMover>();
     }
-    // One scene step with the current raw input.
+    // One scene step with the current raw input. Like Engine::run, the actions keep their step edges after a
+    // frozen step (hit stop).
     void step(int n = 1) {
         for (int i = 0; i < n; ++i) {
-            actions.update(raw);
+            actions.update(raw, scene.lastStepFrozen());
             scene.step(kDt);
         }
     }
+    // Moves the mover straight up from where it stands (it is then in the air, falling).
+    void lift(float up) { obj->transform.position.y += up; }
+    // Steps until the mover stands on the floor again; returns how many steps that took (-1: never).
+    int stepsToLand(int max = 200) {
+        for (int i = 1; i <= max; ++i) {
+            step();
+            if (mover->grounded()) return i;
+        }
+        return -1;
+    }
+    // The highest y the mover reaches in n steps.
+    float peak(int n) {
+        float top = obj->transform.position.y;
+        for (int i = 0; i < n; ++i) {
+            step();
+            top = std::max(top, obj->transform.position.y);
+        }
+        return top;
+    }
 };
+}
+
+// A jump pressed and released while a hit stop freezes the scene still jumps on the first step that runs.
+TEST(platformer_mover_jump_survives_hit_stop) {
+    MoverRig r;
+    r.step(30); // settle on the floor
+    r.scene.hitstop(4.5f * kDt); // four frozen steps, the fifth runs
+    r.raw.keys[GLFW_KEY_Z] = true;
+    r.step(); // frozen: the press is only in the actions
+    r.raw.keys[GLFW_KEY_Z] = false;
+    r.step(); // frozen: the release too
+    CHECK(r.scene.lastStepFrozen() && r.mover->velocity().y == 0.0f);
+    while (r.scene.lastStepFrozen()) r.step(); // the first step that runs reads the kept press
+    CHECK(r.mover->velocity().y > 0.0f && !r.mover->grounded());
+}
+
+// Letting go of jump early gives a lower jump than holding it (variable jump height).
+TEST(platformer_mover_jump_cut) {
+    MoverRig held, tapped;
+    held.step(30);
+    tapped.step(30);
+    const float y0 = held.obj->transform.position.y;
+    held.raw.keys[GLFW_KEY_Z] = tapped.raw.keys[GLFW_KEY_Z] = true;
+    held.step(3);
+    tapped.step(3);
+    tapped.raw.keys[GLFW_KEY_Z] = false; // released while still rising: the speed is cut once
+    const float highPeak = held.peak(60), lowPeak = tapped.peak(60);
+    CHECK(lowPeak > y0 + 0.2f && lowPeak < highPeak - 0.5f);
+}
+
+// Coyote time: a jump still works a moment after leaving the ground, and not after that.
+TEST(platformer_mover_coyote_time) {
+    MoverRig soon, late;
+    soon.step(30);
+    late.step(30);
+    soon.lift(3.0f); // standing on nothing: it starts to fall
+    late.lift(3.0f);
+    soon.step(3);    // 0.05 s in the air: inside coyoteTime (0.1 s)
+    late.step(12);   // 0.2 s in the air: too late
+    soon.raw.keys[GLFW_KEY_Z] = late.raw.keys[GLFW_KEY_Z] = true;
+    soon.step();
+    late.step();
+    CHECK(soon.mover->velocity().y > 0.0f);
+    CHECK(late.mover->velocity().y < 0.0f);
+}
+
+// Jump buffer: a press shortly before landing jumps on landing; a press long before does not.
+TEST(platformer_mover_jump_buffer) {
+    MoverRig dry;
+    dry.step(30);
+    dry.lift(4.0f);
+    const int land = dry.stepsToLand(); // how many steps the fall takes
+    CHECK(land > 20);
+    auto jumpsOnLanding = [&](int pressBeforeLand) {
+        MoverRig r;
+        r.step(30);
+        r.lift(4.0f);
+        r.step(land - pressBeforeLand); // well past coyote time
+        r.raw.keys[GLFW_KEY_Z] = true;  // pressed and held until the floor
+        bool rose = false;
+        for (int i = 0; i < pressBeforeLand + 5; ++i) {
+            r.step();
+            rose = rose || r.mover->velocity().y > 0.0f;
+        }
+        return rose;
+    };
+    CHECK(jumpsOnLanding(4));    // 0.067 s before: inside the 0.12 s buffer
+    CHECK(!jumpsOnLanding(14));  // 0.23 s before: the press expired in the air
 }
 
 TEST(platformer_mover_walks_and_jumps) {

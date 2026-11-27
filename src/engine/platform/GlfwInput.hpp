@@ -9,7 +9,8 @@ class GlfwInput {
 public:
     void attachWindow(GLFWwindow* window);
     void beginFrame();
-    void poll();
+    // Reads the devices. keepStepEdges: the last scene step was frozen, so the actions' step frame keeps its edges.
+    void poll(bool keepStepEdges = false);
     // The fixed developer-tool controls (camera, zoom, mouse). Updated by poll().
     const InputState& getState() const;
     // The named actions (keyboard and gamepad on the same action). Updated by poll(), once per frame.
