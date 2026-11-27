@@ -36,8 +36,9 @@ A sala foi criada por `tools/add_ice_test_room.py`. O script pode rodar de novo:
 
 ## Marcar gelo no LDtk
 
-- **IntGrid:** na camada `Collision`, pinte com o valor `9` (`IceClimb`, azul-gelo `#7fd4ff`). Ele colide como o `1`, e todas as faces dele são gelo escalável. Paredes e tetos comuns continuam `1`. Pinte só a face que deve ser escalável, como a coluna da direita do pilar da `IceTest`.
-- **Terrain:** ligue o campo `iceClimb` da entidade. Todos os segmentos dela viram gelo.
+- **IntGrid:** na camada `Collision`, pinte com um valor cujo nome (o *identifier* na definição da camada no LDtk) é o `intGrid` de uma superfície declarada em `surfaces` no `project.json`. No `iki_demo`, o valor `9` se chama `IceClimb` (azul-gelo `#7fd4ff`). Ele colide como o `1`, e todas as faces dele recebem a superfície. Paredes e tetos comuns continuam `1`. Pinte só a face que deve ter a superfície, como a coluna da direita do pilar da `IceTest`.
+- **Terrain:** ligue o campo booleano que a superfície declara em `terrainFlag` (no `iki_demo`, `iceClimb`). Todos os segmentos da entidade recebem a superfície.
+- **No `project.json`:** `"surfaces": [{"name": "IceClimb", "intGrid": "IceClimb", "terrainFlag": "iceClimb", "tags": ["climbable"]}]`. `tags` são rótulos livres que o código do jogo consulta (`activeProject().surfaceHas(id, "climbable")`). Um nome de valor que nenhuma superfície declara é ignorado (a célula fica vazia).
 
 O gelo só agarra com a habilidade desbloqueada. Sem ela, é uma parede comum. Veja [Colisão e rampas](colisao-e-rampas.md) e [Iki](iki.md).
 

@@ -80,10 +80,15 @@ LdtkProject loadLdtkProject(const std::filesystem::path& file) {
     if (root.is_discarded()) throw std::runtime_error("LDtk: invalid JSON in " + file.string());
 
     std::map<std::string, glm::vec2> parallax; // layer def identifier -> LDtk factors
+    std::map<std::string, std::map<int, std::string>> intNames; // layer def identifier -> {IntGrid value: identifier}
     std::map<int, glm::ivec2> tilesetSize;     // tileset uid -> pixel size
     if (root.contains("defs")) {
         for (auto& d : root["defs"].value("layers", json::array()))
             parallax[str(d, "identifier")] = {d.value("parallaxFactorX", 0.0f), d.value("parallaxFactorY", 0.0f)};
+        for (auto& d : root["defs"].value("layers", json::array()))
+            for (auto& v : d.value("intGridValues", json::array()))
+                if (v.contains("value") && v["value"].is_number_integer() && v.contains("identifier") && v["identifier"].is_string())
+                    intNames[str(d, "identifier")][v["value"].get<int>()] = v["identifier"].get<std::string>();
         for (auto& t : root["defs"].value("tilesets", json::array()))
             tilesetSize[t.value("uid", -1)] = {t.value("pxWid", 0), t.value("pxHei", 0)};
     }
@@ -125,6 +130,7 @@ LdtkProject loadLdtkProject(const std::filesystem::path& file) {
             // shortcut: parallaxScaling ignored; add per-layer scaling if a layer needs it.
             const glm::ivec2 off{li.value("__pxTotalOffsetX", 0), li.value("__pxTotalOffsetY", 0)};
 
+            if (auto nit = intNames.find(L.identifier); nit != intNames.end()) L.intGridNames = nit->second;
             if (li.contains("intGridCsv")) L.intGrid = li["intGridCsv"].get<std::vector<int>>();
             for (const char* key : {"gridTiles", "autoLayerTiles"})
                 for (auto& t : li.value(key, json::array()))

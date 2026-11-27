@@ -1557,12 +1557,22 @@ namespace {
 LdtkLayer gridLayer(int cw, int ch, std::initializer_list<std::pair<glm::ivec2, int>> cells) {
     LdtkLayer L; L.identifier = "Collision"; L.type = "IntGrid"; L.gridSize = 16; L.cells = {cw, ch};
     L.intGrid.assign(size_t(cw) * ch, 0);
+    L.intGridNames[9] = "IceClimb"; // like the showcase level, value 9 is named after a surface of the test project
     for (auto& [c, v] : cells) L.intGrid[size_t(c.y) * cw + c.x] = v;
     return L;
 }
-std::vector<Segment> gridSegs(const LdtkLayer& L) {
-    return segmentsFromIntGrid(L, {0, 0}, L.cells * L.gridSize, "r");
+// Maps each named IntGrid value to the project's surface (like LevelLoader does), then builds the segments.
+std::map<int, SurfaceId> valueSurfaces(const LdtkLayer& L) {
+    std::map<int, SurfaceId> m;
+    for (auto& [value, name] : L.intGridNames)
+        if (SurfaceId id = activeProject().surface(name); id != DefaultSurface) m[value] = id;
+    return m;
 }
+std::vector<Segment> gridSegs(const LdtkLayer& L) {
+    return segmentsFromIntGrid(L, {0, 0}, L.cells * L.gridSize, "r", valueSurfaces(L));
+}
+// The id of the surface the test project declares as climbable (the one the old IceClimb value had).
+SurfaceId climbSurface() { return activeProject().surface("IceClimb"); }
 bool hasNormal(const Segment& s, glm::vec2 n) { return glm::length(s.normal - n) < 1e-4f; }
 template <class P> int countIf(const std::vector<Segment>& v, P pred) { int n = 0; for (auto& s : v) n += pred(s) ? 1 : 0; return n; }
 bool isDiag(const Segment& s) { return std::abs(s.normal.x) > 0.01f && std::abs(s.normal.y) > 0.01f; }
@@ -3326,7 +3336,7 @@ TEST(jump_assist_no_double_consume) {
 }
 
 TEST(intgrid_ice_climb_surface) {
-    auto ice = [](const Segment& s) { return s.surface == Surface::IceClimb; };
+    auto ice = [](const Segment& s) { return s.surface == climbSurface(); };
     // a 3 x 2 block of 9 collides like 1: four outer faces, all ice
     auto a = gridSegs(gridLayer(6, 4, {{{1,1},9},{{2,1},9},{{3,1},9},{{1,2},9},{{2,2},9},{{3,2},9}}));
     CHECK(a.size() == 4 && countIf(a, ice) == 4);
@@ -3361,7 +3371,7 @@ TEST(showcase_ice_test_room_loads) {
     int iceSegments = 0, abilityItems = 0, checkpoints = 0;
     for (auto& L : ice->layers) {
         if (L.type == "IntGrid" && L.identifier == "Collision")
-            iceSegments = countIf(gridSegs(L), [](auto& s) { return s.surface == Surface::IceClimb; });
+            iceSegments = countIf(gridSegs(L), [](auto& s) { return s.surface == climbSurface(); });
         for (auto& e : L.entities) {
             if (e.identifier == "Item" && e.fields.value("kind", "") == "ability.ice.stakes") ++abilityItems;
             if (e.identifier == "Checkpoint") ++checkpoints;
@@ -3380,36 +3390,93 @@ TEST(showcase_ice_test_room_loads) {
 TEST(terrain_ice_climb_field) {
     auto e = terrainEntity({0, 0}, {{0, 8}, {8, 8}, {8, 0}}, true, 3.0f, false);
     auto plain = segmentsFromTerrain(e, {0, 0}, 4, "r");
-    CHECK(!plain.empty() && countIf(plain, [](auto& s) { return s.surface == Surface::Default; }) == int(plain.size()));
+    CHECK(!plain.empty() && countIf(plain, [](auto& s) { return s.surface == DefaultSurface; }) == int(plain.size()));
     e.fields["iceClimb"] = true;
     auto ice = segmentsFromTerrain(e, {0, 0}, 4, "r");
-    CHECK(ice.size() == plain.size() && countIf(ice, [](auto& s) { return s.surface == Surface::IceClimb; }) == int(ice.size()));
+    CHECK(ice.size() == plain.size() && countIf(ice, [](auto& s) { return s.surface == climbSurface(); }) == int(ice.size()));
+}
+
+TEST(surface_from_intgrid_identifier) {
+    // mini_surface.ldtk: the Collision layer names value 9 "IceClimb" and value 10 "Nothing" (not a project surface)
+    LdtkLevel lv = loadLdtkLevel(MUSH2D_TEST_DATA "/mini_surface.ldtk", "Level_0");
+    const LdtkLayer* L = nullptr;
+    for (auto& l : lv.layers) if (l.identifier == "Collision") L = &l;
+    CHECK(L && L->intGridNames.count(9) && L->intGridNames.at(9) == "IceClimb" && L->intGridNames.at(10) == "Nothing");
+    if (!L) return;
+    const SurfaceId climb = climbSurface();
+    CHECK(climb != DefaultSurface);
+    auto m = valueSurfaces(*L);
+    CHECK(m.size() == 1 && m.at(9) == climb); // the unknown name 10 is left out
+    // a lone mapped cell is solid: four faces, all of that surface
+    auto segs = segmentsFromIntGrid(gridLayer(6, 4, {{{2, 1}, 9}}), {0, 0}, {96, 64}, "r", {{9, climb}});
+    CHECK(segs.size() == 4 && countIf(segs, [&](auto& s) { return s.surface == climb; }) == 4);
+    // a value the map does not know is not solid
+    CHECK(segmentsFromIntGrid(gridLayer(6, 4, {{{2, 1}, 9}}), {0, 0}, {96, 64}, "r", {}).empty());
+}
+
+TEST(surface_from_terrain_flag) {
+    auto e = terrainEntity({0, 0}, {{0, 8}, {8, 8}, {8, 0}}, true, 3.0f, false);
+    e.fields["iceClimb"] = false;
+    CHECK(terrainShape(e, {0, 0}, 4).surface == DefaultSurface);
+    e.fields["iceClimb"] = true; // the project's terrainFlag for the IceClimb surface
+    CHECK(terrainShape(e, {0, 0}, 4).surface == climbSurface());
+    e.fields.erase("iceClimb");
+    e.fields["other"] = true; // a flag no surface declared does nothing
+    CHECK(terrainShape(e, {0, 0}, 4).surface == DefaultSurface);
+}
+
+TEST(surface_unknown_name_is_default) {
+    const Project& p = activeProject();
+    CHECK(p.surface("NoSuchSurface") == DefaultSurface && p.surface("") == DefaultSurface);
+    CHECK(p.surfaceHas(climbSurface(), "climbable") && !p.surfaceHas(climbSurface(), "slippery"));
+    CHECK(!p.surfaceHas(DefaultSurface, "climbable") && !p.surfaceHas(200, "climbable"));
+}
+
+TEST(project_surfaces_parse_and_validate) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mush2d_surfaces_test";
+    fs::create_directories(dir);
+    auto load = [&](const std::string& surfaces) {
+        const fs::path f = dir / "project.json";
+        std::ofstream(f) << R"({"id":"t","name":"T","surfaces":)" << surfaces << "}";
+        return loadProject(f);
+    };
+    auto p = load(R"([{"name":"Sticky","intGrid":"Glue","terrainFlag":"sticky","tags":["climbable"]},{"name":"Slick"}])");
+    CHECK(p && p->surfaces.size() == 2 && p->surface("Sticky") == 1 && p->surface("Slick") == 2);
+    CHECK(p && p->surfaceHas(1, "climbable") && !p->surfaceHas(2, "climbable"));
+    for (const char* bad : {R"({})", R"([{"name":""}])", R"([{"name":"A"},{"name":"A"}])", R"([{"name":"A","tags":[1]}])",
+                            R"([{"name":"A","terrainFlag":3}])"}) {
+        CerrCapture cap;
+        CHECK(!load(bad));
+        CHECK(cap.str().find("surfaces") != std::string::npos);
+    }
+    fs::remove_all(dir);
 }
 
 TEST(probe_wall_and_ceiling_surface) {
-    auto withSurface = [](std::vector<Segment> v, Surface s) { for (auto& seg : v) seg.surface = s; return v; };
+    auto withSurface = [](std::vector<Segment> v, SurfaceId s) { for (auto& seg : v) seg.surface = s; return v; };
     CollisionWorld w;
-    w.addRoom("ice", withSurface(polySegs({{1, -5}, {3, -5}, {3, 5}, {1, 5}}), Surface::IceClimb));   // wall face x = 1
+    w.addRoom("ice", withSurface(polySegs({{1, -5}, {3, -5}, {3, 5}, {1, 5}}), climbSurface()));   // wall face x = 1
     w.addRoom("rock", polySegs({{-3, -5}, {-1, -5}, {-1, 5}, {-3, 5}}));                                // wall face x = -1
-    w.addRoom("roof", withSurface(polySegs({{-1, 2}, {1, 2}, {1, 3}, {-1, 3}}), Surface::IceClimb));  // ceiling y = 2
+    w.addRoom("roof", withSurface(polySegs({{-1, 2}, {1, 2}, {1, 3}, {-1, 3}}), climbSurface()));  // ceiling y = 2
     CollisionQuery q{&w, {}};
     Body b; // half size 0.3 x 0.8
     CHECK(!probeWall(b, 1, q).hit && !probeWall(b, -1, q).hit && !probeCeiling(b, q).hit);
     b.position = {0.68f, 0.0f}; // 0.02 from the ice wall
     SurfaceHit r = probeWall(b, 1, q);
-    CHECK(r.hit && r.surface == Surface::IceClimb);
+    CHECK(r.hit && r.surface == climbSurface());
     CHECK(!probeWall(b, -1, q).hit);
     b.position = {-0.68f, 0.0f};
     r = probeWall(b, -1, q);
-    CHECK(r.hit && r.surface == Surface::Default);
+    CHECK(r.hit && r.surface == DefaultSurface);
     b.position = {0.0f, 1.18f}; // top 0.02 under the roof
     r = probeCeiling(b, q);
-    CHECK(r.hit && r.surface == Surface::IceClimb);
+    CHECK(r.hit && r.surface == climbSurface());
     CHECK(!probeWall(b, 1, q).hit);
     b.position = {0.0f, 0.0f};
     CollisionQuery boxes{&w, {{{0.32f, -1.0f}, {0.6f, 1.0f}}}}; // a dynamic solid is a plain wall
     r = probeWall(b, 1, boxes);
-    CHECK(r.hit && r.surface == Surface::Default);
+    CHECK(r.hit && r.surface == DefaultSurface);
 }
 
 TEST(world_state_global_flag_survives_room_restore) {
@@ -6449,7 +6516,7 @@ int main() {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #endif
     mush2dLinkGame_iki_demo(); // keeps the demo's object types linked (their registrations run at start)
-    setActiveProject(Project{"test", "Test", {"Ice", "Fire"}, {{"ice", "Ice"}, {"fire", "Fire"}}}); // elements and bars the engine tests use
+    setActiveProject(Project{"test", "Test", {"Ice", "Fire"}, {{"ice", "Ice"}, {"fire", "Fire"}}, {{"IceClimb", "IceClimb", "iceClimb", {"climbable"}}}}); // elements, bars and surfaces the engine tests use
     setGameRoot("examples/iki_demo"); // assetPath / sourceAssetPath("assets/...") read the demo's folder
     for (auto& [name, fn] : registry()) {
         std::printf("[ RUN ] %s\n", name);

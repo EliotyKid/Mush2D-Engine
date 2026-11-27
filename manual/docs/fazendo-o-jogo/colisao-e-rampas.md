@@ -11,11 +11,11 @@ A colisão do cenário vem da camada IntGrid `Collision` de cada sala do LDtk (c
 | `3` / `4` | rampa de 45° subindo para a direita / esquerda |
 | `5` / `6` | rampa de 22,5°, metade baixa (sobe de 0 a ½ célula), para a direita / esquerda |
 | `7` / `8` | rampa de 22,5°, metade alta (sobe de ½ a 1 célula), para a direita / esquerda |
-| `9` | gelo escalável: colide como o `1`, e as faces recebem a superfície `IceClimb` (as estacas de gelo do Iki agarram parede e teto) |
+| outro valor | um valor cujo nome é uma superfície do `project.json` (no `iki_demo`, o `9` `IceClimb`): colide como o `1`, e as faces recebem essa superfície |
 
 Uma rampa de 22,5° ocupa 2 células: `5` seguida de `7` (subindo para a direita) ou `8` seguida de `6` (descendo). Rampas vizinhas iguais viram um segmento só. Faces de superfícies diferentes não se juntam: uma fileira `1` `9` tem dois topos, um comum e um de gelo.
 
-Num `Terrain`, o campo booleano `iceClimb` faz o mesmo que o `9`: todos os segmentos da entidade viram `IceClimb`.
+Num `Terrain`, o campo booleano que a superfície declara em `terrainFlag` faz o mesmo: todos os segmentos da entidade recebem a superfície.
 
 !!! warning "Bordas da sala"
     Faces verticais na borda da sala não colidem. Feche o mundo no level design.

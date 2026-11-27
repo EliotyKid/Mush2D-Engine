@@ -1,5 +1,6 @@
 #include "iki_demo/objects/IkiObject.hpp"
 
+#include "engine/core/Project.hpp"
 #include "engine/world/Collision.hpp"
 #include "engine/world/Effects.hpp"
 #include "engine/world/Projectile.hpp"
@@ -325,7 +326,7 @@ bool IkiObject::iceWall(int side, bool grip) const {
     if (!iceStakes()) return false;
     Body b = bodyHere();
     if (grip) b.halfSize.y = wallGripHalf;
-    return probeWall(b, side, query(1.0f)).surface == Surface::IceClimb;
+    return activeProject().surfaceHas(probeWall(b, side, query(1.0f)).surface, "climbable");
 }
 
 bool IkiObject::anyWall(int side) const { return probeWall(bodyHere(), side, query(1.0f)).hit; }
@@ -334,7 +335,7 @@ bool IkiObject::iceCeiling() const {
     if (!iceStakes()) return false;
     Body b = bodyHere();
     b.halfSize.x = wallGripHalf;
-    return probeCeiling(b, query(1.0f), ceilingGrabReach).surface == Surface::IceClimb;
+    return activeProject().surfaceHas(probeCeiling(b, query(1.0f), ceilingGrabReach).surface, "climbable");
 }
 
 const char* IkiObject::nextGrab() {

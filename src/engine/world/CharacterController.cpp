@@ -308,7 +308,7 @@ SurfaceHit probeBox(const Body& body, glm::vec2 lo, glm::vec2 hi, const Collisio
         if (s->oneWay || !faces(s->normal, side) || glm::dot(s->normal, body.position - s->a) <= 0.0f) continue;
         if (!touchesBox(s->a, s->b, lo, hi)) continue;
         r.hit = true;
-        if (s->surface == Surface::IceClimb) r.surface = Surface::IceClimb;
+        if (s->surface != DefaultSurface) r.surface = s->surface; // a special surface beats the plain one
     }
     return r;
 }

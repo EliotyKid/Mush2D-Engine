@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@ struct LdtkLayer {
     float depth = 0.0f;
     std::string tilesetPath;     // relative to the .ldtk; empty if none
     glm::ivec2 tilesetPx{0, 0};  // tileset image size in pixels
+    std::map<int, std::string> intGridNames; // IntGrid value -> its identifier in the LDtk layer definition
     std::vector<int> intGrid; std::vector<LdtkTile> tiles; std::vector<LdtkEntity> entities;
 };
 struct LdtkLevel {

@@ -114,7 +114,7 @@ Os números de juice (squash, inclinação, piscar, partículas) não ficam no I
 
 ## Estacas de gelo
 
-Valem numa superfície `IceClimb` (IntGrid valor 9, ou `Terrain` com `iceClimb`; veja [Colisão e rampas](colisao-e-rampas.md)) e só com a habilidade desbloqueada. Sem ela, o gelo é uma parede ou teto comum.
+Valem numa superfície com a tag `climbable` (no `iki_demo`, `IceClimb`: IntGrid valor 9, ou `Terrain` com `iceClimb`; veja [Colisão e rampas](colisao-e-rampas.md)) e só com a habilidade desbloqueada. Sem ela, o gelo é uma parede ou teto comum.
 
 - **Agarrar a parede:** no ar, segurando a direção de uma parede de gelo, o Iki entra em `wall`. Vale também com `↑` segurado. Ele agarra pelo meio do corpo: encostado numa parede comum com gelo só embaixo, ele não agarra até o meio do corpo chegar ao gelo.
 - **Na parede:** `↑` sobe e `↓` desce a `wallClimbSpeed`. Sem direção, fica parado, sem limite de tempo. Soltar a direção da parede não o solta.

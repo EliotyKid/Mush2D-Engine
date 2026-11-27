@@ -8,20 +8,20 @@
 namespace {
 
 // IntGrid cells are built in half-cell integer coordinates (x right, y up) so merging is exact.
-struct Raw { glm::ivec2 a, b; bool oneWay; Surface surface; };
+struct Raw { glm::ivec2 a, b; bool oneWay; SurfaceId surface; };
 
 // Top-edge heights (half cells) at the left and right side of a solid cell; {-1,-1} = not solid.
-glm::ivec2 profile(int v) {
+// A value outside 1-8 that the project maps to a surface is a full solid cell.
+glm::ivec2 profile(int v, const std::map<int, SurfaceId>& valueSurface) {
     switch (v) {
-        case 1:
-        case 9: return {2, 2};
+        case 1: return {2, 2};
         case 3: return {0, 2};
         case 4: return {2, 0};
         case 5: return {0, 1};
         case 6: return {1, 0};
         case 7: return {1, 2};
         case 8: return {2, 1};
-        default: return {-1, -1};
+        default: return v > 8 && valueSurface.count(v) ? glm::ivec2(2, 2) : glm::ivec2(-1, -1);
     }
 }
 
@@ -58,7 +58,7 @@ std::vector<Raw> mergeCollinear(const std::vector<Raw>& in) {
     return out;
 }
 
-Segment makeSegment(glm::vec2 a, glm::vec2 b, bool oneWay, const std::string& roomIid, Surface surface = Surface::Default) {
+Segment makeSegment(glm::vec2 a, glm::vec2 b, bool oneWay, const std::string& roomIid, SurfaceId surface = DefaultSurface) {
     const glm::vec2 d = b - a;
     return {a, b, glm::normalize(glm::vec2(d.y, -d.x)), oneWay, roomIid, surface};
 }
@@ -66,23 +66,25 @@ Segment makeSegment(glm::vec2 a, glm::vec2 b, bool oneWay, const std::string& ro
 } // namespace
 
 std::vector<Segment> segmentsFromIntGrid(const LdtkLayer& L, glm::ivec2 levelWorldPx, glm::ivec2 levelPxSize,
-                                         const std::string& roomIid) {
+                                         const std::string& roomIid, const std::map<int, SurfaceId>& valueSurface) {
     const int cw = L.cells.x, ch = L.cells.y, g = L.gridSize;
     auto at = [&](int x, int y) { return x < 0 || y < 0 || x >= cw || y >= ch ? 0 : L.intGrid[size_t(y) * cw + x]; };
-    auto solid = [&](int x, int y) { return profile(at(x, y)).x >= 0; };
+    auto shape = [&](int x, int y) { return profile(at(x, y), valueSurface); }; // the cell's top-edge profile
+    auto solid = [&](int x, int y) { return shape(x, y).x >= 0; };
 
     std::vector<Raw> raw;
     for (int cy = 0; cy < ch; ++cy)
         for (int cx = 0; cx < cw; ++cx) {
             const int v = at(cx, cy);
             const glm::ivec2 o{2 * cx, -2 * cy - 2}; // lower-left corner
-            const Surface surface = v == 9 ? Surface::IceClimb : Surface::Default;
+            const auto sit = valueSurface.find(v); // the surface this cell's value is mapped to, if any
+            const SurfaceId surface = sit != valueSurface.end() ? sit->second : DefaultSurface;
             auto add = [&](glm::ivec2 a, glm::ivec2 b, bool oneWay = false) { raw.push_back({o + a, o + b, oneWay, surface}); };
             if (v == 2) { add({2, 2}, {0, 2}, true); continue; }
-            const glm::ivec2 p = profile(v);
+            const glm::ivec2 p = shape(cx, cy);
             if (p.x < 0) continue;
-            if (profile(at(cx, cy + 1)) != glm::ivec2(2, 2) && cy + 1 < ch) add({0, 0}, {2, 0});          // bottom (not on the room border)
-            const glm::ivec2 pr = profile(at(cx + 1, cy)), pl = profile(at(cx - 1, cy));
+            if (shape(cx, cy + 1) != glm::ivec2(2, 2) && cy + 1 < ch) add({0, 0}, {2, 0});          // bottom (not on the room border)
+            const glm::ivec2 pr = shape(cx + 1, cy), pl = shape(cx - 1, cy);
             if (p.y > std::max(pr.x, 0) && (cx + 1) * g < levelPxSize.x) add({2, std::max(pr.x, 0)}, {2, p.y}); // right
             if (p.x > std::max(pl.y, 0) && cx > 0) add({0, p.x}, {0, std::max(pl.y, 0)});                      // left
             if (!(p.x == 2 && p.y == 2 && (cy == 0 || solid(cx, cy - 1)))) add({2, p.y}, {0, p.x}); // top / diagonal (not on the room border)
@@ -102,7 +104,11 @@ TerrainShape terrainShape(const LdtkEntity& e, glm::ivec2 levelWorldPx, int laye
     TerrainShape t;
     t.closed = flag("closed");
     t.oneWay = flag("oneWay");
-    t.iceClimb = flag("iceClimb");
+    // The first project surface whose terrainFlag is switched on gives the terrain its surface.
+    for (size_t i = 0; i < activeProject().surfaces.size(); ++i) {
+        const std::string& f = activeProject().surfaces[i].terrainFlag;
+        if (!f.empty() && flag(f.c_str())) { t.surface = SurfaceId(i + 1); break; }
+    }
     if (auto it = e.fields.find("thickness"); it != e.fields.end() && it->is_number()) t.thickness = it->get<float>();
 
     t.points.push_back(ldtkToWorld(levelWorldPx, e.px));
@@ -146,7 +152,7 @@ std::vector<Segment> segmentsFromTerrain(const LdtkEntity& e, glm::ivec2 levelWo
     for (size_t i = 0; i < pts.size(); ++i) {
         const glm::vec2 a = pts[i], b = pts[(i + 1) % pts.size()];
         if (a == b) continue;
-        Segment s = makeSegment(a, b, oneWay, roomIid, t.iceClimb ? Surface::IceClimb : Surface::Default);
+        Segment s = makeSegment(a, b, oneWay, roomIid, t.surface);
         if (!oneWay || s.normal.y > 0.7f) out.push_back(std::move(s));
     }
     return out;

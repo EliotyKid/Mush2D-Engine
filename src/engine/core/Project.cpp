@@ -31,6 +31,18 @@ std::string_view Project::barForElement(std::string_view element) const {
     return {};
 }
 
+SurfaceId Project::surface(std::string_view name) const {
+    for (size_t i = 0; i < surfaces.size(); ++i)
+        if (surfaces[i].name == name) return SurfaceId(i + 1); // ids start at 1: 0 is the default
+    return DefaultSurface;
+}
+
+bool Project::surfaceHas(SurfaceId id, std::string_view tag) const {
+    if (id == DefaultSurface || id > surfaces.size()) return false;
+    const std::vector<std::string>& tags = surfaces[id - 1].tags;
+    return std::find(tags.begin(), tags.end(), tag) != tags.end();
+}
+
 std::optional<Project> loadProject(const std::filesystem::path& file) {
     std::ifstream in(file);
     if (!in) {
@@ -112,6 +124,55 @@ std::optional<Project> loadProject(const std::filesystem::path& file) {
                 *n.target = item[n.key].get<float>();
             }
             project.resources.push_back(bar);
+        }
+    }
+
+    if (doc.contains("surfaces")) { // optional list of surfaces: {name, intGrid?, terrainFlag?, tags?}
+        if (!doc["surfaces"].is_array()) {
+            warn(file, "surfaces", "expected a list of surfaces");
+            return std::nullopt;
+        }
+        if (doc["surfaces"].size() > 255) { // a SurfaceId is one byte and 0 is the default
+            warn(file, "surfaces", "at most 255 surfaces");
+            return std::nullopt;
+        }
+        std::set<std::string> names;
+        for (const nlohmann::json& item : doc["surfaces"]) {
+            if (!item.is_object() || !item.contains("name") || !item["name"].is_string() || item["name"].get<std::string>().empty()) {
+                warn(file, "surfaces", "every surface needs a non-empty \"name\"");
+                return std::nullopt;
+            }
+            SurfaceDef def;
+            def.name = item["name"].get<std::string>();
+            const std::string where = "surfaces." + def.name;
+            if (!names.insert(def.name).second) {
+                warn(file, "surfaces", "duplicate surface name '" + def.name + "'");
+                return std::nullopt;
+            }
+            // The two optional text links to the level editor.
+            struct Text { const char* key; std::string* target; };
+            for (const Text& t : {Text{"intGrid", &def.intGrid}, {"terrainFlag", &def.terrainFlag}}) {
+                if (!item.contains(t.key)) continue;
+                if (!item[t.key].is_string()) {
+                    warn(file, where + "." + t.key, "expected a text");
+                    return std::nullopt;
+                }
+                *t.target = item[t.key].get<std::string>();
+            }
+            if (item.contains("tags")) {
+                if (!item["tags"].is_array()) {
+                    warn(file, where + ".tags", "expected a list of texts");
+                    return std::nullopt;
+                }
+                for (const nlohmann::json& tag : item["tags"]) {
+                    if (!tag.is_string()) {
+                        warn(file, where + ".tags", "every tag must be a text");
+                        return std::nullopt;
+                    }
+                    def.tags.push_back(tag.get<std::string>());
+                }
+            }
+            project.surfaces.push_back(std::move(def));
         }
     }
     return project;
