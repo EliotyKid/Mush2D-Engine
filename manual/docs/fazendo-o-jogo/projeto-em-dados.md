@@ -34,10 +34,11 @@ As barras do jogo (energia, mana, o que for). Cada uma é um objeto:
 |---|---|
 | `name` | nome da barra (único) |
 | `element` | de qual elemento ela é (precisa estar em `elements`) |
-| `max` | valor máximo (maior que 0) |
-| `regenPerSecond` | quanto volta por segundo |
-| `regenDelay` | segundos parada antes de começar a voltar |
+| `max` | valor máximo (maior que 0). Se faltar, vale 100 |
+| `regenPerSecond` | quanto volta por segundo (0 ou mais). Se faltar, vale 10 |
+| `regenDelay` | segundos parada antes de começar a voltar (0 ou mais). Se faltar, vale 1 |
 
+`name` e `element` são obrigatórios; os três números podem ser deixados de fora.
 No painel F1, cada barra tem controles para mudar esses números enquanto o jogo roda.
 
 ## `surfaces`
@@ -63,9 +64,10 @@ Dois números da entrada com gamepad:
 
 | Campo | Significa |
 |---|---|
-| `triggerThreshold` | quanto os gatilhos `L2`/`R2` precisam ser apertados (0 a 1) para contar como botão |
-| `stickDeadzone` | o quanto o analógico precisa se mover antes de contar (ignora tremidas) |
+| `triggerThreshold` | quanto os gatilhos `L2`/`R2` precisam ser apertados (0 a 1) para contar como botão. Se faltar, vale 0.5 |
+| `stickDeadzone` | o quanto o analógico precisa se mover antes de contar (ignora tremidas). Se faltar, vale 0.25 |
 
+A seção `input` inteira pode ser deixada de fora: valem os dois padrões.
 Os dois aparecem no F1, em **Projeto · Entrada**.
 
 ## `actions`

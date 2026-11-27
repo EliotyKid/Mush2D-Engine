@@ -12,7 +12,8 @@ Na Mush2D, cada jogo é uma **pasta**. A engine (`src/engine/`) é uma só; os j
 ```
 games/ikigai/
   project.json          os dados do projeto (veja "Projeto em dados")
-  assets/               salas (LDtk), prefabs, sprites, sons
+  assets/               prefabs, sprites, sons
+    levels/             as salas (LDtk), por exemplo ikigai.ldtk
   src/ikigai/           o código do jogo
     IkigaiGame.hpp/.cpp a classe do jogo
     objects/            um .hpp por objeto novo
@@ -51,7 +52,7 @@ O programa é o `Mush2D` (`build/debug/Mush2D`).
 ## A sala do modelo Ikigai
 
 !!! note "O chão tem duas partes"
-    Na sala do modelo (`games/ikigai/assets/ikigai.ldtk`), o chão que você **vê** é feito de entidades `Block`. O chão em que o personagem **pisa** vem da camada `Collision` (IntGrid). Os dois são independentes: se mexer em um, mexa no outro também, senão o desenho e a colisão não combinam.
+    Na sala do modelo (`games/ikigai/assets/levels/ikigai.ldtk`), o chão que você **vê** é feito de entidades `Block`. O chão em que o personagem **pisa** vem da camada `Collision` (IntGrid). Os dois são independentes: se mexer em um, mexa no outro também, senão o desenho e a colisão não combinam.
 
 ## Engine diz como, jogo diz o quê
 
