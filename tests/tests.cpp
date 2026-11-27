@@ -13,6 +13,7 @@
 #include "engine/world/VelocityLean.hpp"
 #include "engine/core/FileWatcher.hpp"
 #include "engine/core/GameRegistry.hpp"
+#include "engine/core/Launcher.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/render/LightComponent.hpp"
 #include "engine/render/Materials.hpp"
@@ -115,6 +116,40 @@ TEST(compiled_games_lists_iki_demo) {
     bool found = false;
     for (const GameEntry& g : compiledGames()) found |= g.id == "iki_demo" && g.dir == "examples/iki_demo";
     CHECK(found);
+}
+
+TEST(find_game_known_and_unknown) {
+    CHECK(findGame("nope") == nullptr);
+    const GameEntry* g = findGame("iki_demo");
+    CHECK(g != nullptr && g->id == "iki_demo");
+}
+
+TEST(last_game_roundtrip_and_bad_file) {
+    const auto f = std::filesystem::temp_directory_path() / "mush2d_last_game_test.json";
+    writeLastGame(f, "iki_demo");
+    CHECK(readLastGame(f) == "iki_demo");
+    std::ofstream(f) << "{not json";
+    CHECK(readLastGame(f).empty());
+    std::filesystem::remove(f);
+    CHECK(readLastGame(f).empty());
+}
+
+TEST(pick_game_cli_skips_screen_and_uncompiled_scan) {
+    const auto f = std::filesystem::temp_directory_path() / "mush2d_last_game_pick.json";
+    // --game with a known id: returned at once (no frame runner needed).
+    const GameEntry* g = pickGame(compiledGames(), f, "iki_demo");
+    CHECK(g != nullptr && g->id == "iki_demo");
+    // No --game and no window: nothing to show, so nullptr.
+    CHECK(pickGame(compiledGames(), f, "") == nullptr);
+    // A folder with a project.json whose id is not compiled is listed; a compiled one is not.
+    const auto root = std::filesystem::temp_directory_path() / "mush2d_uncompiled";
+    std::filesystem::create_directories(root / "games" / "x");
+    std::filesystem::create_directories(root / "games" / "y");
+    std::ofstream(root / "games" / "x" / "project.json") << R"({"id":"x_game","name":"X"})";
+    std::ofstream(root / "games" / "y" / "project.json") << R"({"id":"iki_demo","name":"Y"})";
+    auto list = findUncompiledGames(root, compiledGames());
+    CHECK(list.size() == 1 && list[0].id == "x_game");
+    std::filesystem::remove_all(root);
 }
 
 TEST(material_paths_found_when_present) {

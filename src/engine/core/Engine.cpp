@@ -1,4 +1,5 @@
 #include "engine/core/Engine.hpp"
+#include "engine/core/Launcher.hpp"
 #include "engine/core/Paths.hpp"
 #include "engine/gpu/Buffer.hpp"
 #include "engine/gpu/Image.hpp"
@@ -70,13 +71,9 @@ void saveScreenshot(GpuContext& gpu, GpuBuffer& buf, VkExtent2D e, const std::st
 }
 }
 
-void Engine::run(const GameEntry& entry) {
-    // The game's folder first: every assetPath / sourceAssetPath after this line (also in the game's
-    // constructor) reads that game's files.
-    setGameRoot(entry.dir);
-    // Made here, before the window, and destroyed when run returns (after the teardown), as when main owned it.
-    std::unique_ptr<IGame> ownedGame = entry.create();
-    IGame& game = *ownedGame;
+void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) {
+    // The chosen game. Made after the launcher, destroyed when run returns (after the teardown).
+    std::unique_ptr<IGame> ownedGame;
 
     if (!glfwInit()) {
         throw std::runtime_error("Erro: falha ao inicializar GLFW.");
@@ -88,7 +85,7 @@ void Engine::run(const GameEntry& entry) {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, ("Mush2D - " + entry.name).c_str(), nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Mush2D", nullptr, nullptr); // the title gets the game name later
     if (!window) {
         glfwTerminate();
         throw std::runtime_error("Erro: falha ao criar a janela.");
@@ -101,8 +98,7 @@ void Engine::run(const GameEntry& entry) {
     Scene2D scene{};
     scene.setService(&camera); // the "shake" effect action reaches it
     scene.setService(&audio);  // the "sound" effect action
-    audio.init();              // no device: silent
-    audio.scan(sourceAssetPath("assets/audio")); // the game's own sounds (gameRoot is set above)
+    audio.init();              // no device: silent (the game's sounds are scanned once the game is chosen)
     Bindless bindless;
     MaterialLibrary materials;
     SceneRenderer renderer;
@@ -144,8 +140,6 @@ void Engine::run(const GameEntry& entry) {
         materials.init(gpu, bindless);
         renderer.init(gpu, bindless);
         gpu.onResize = [&](VkExtent2D extent) { renderer.resize(extent); };
-        game.init(services);
-
         // Dear ImGui (after attachWindow: it chains our scroll callback). Own descriptor pool, dynamic rendering.
         VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16};
         VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -176,9 +170,39 @@ void Engine::run(const GameEntry& entry) {
         ImGui_ImplVulkan_Init(&vkInit);
         imguiReady = true;
 
+        // The launcher runs before any game exists, in this same window. One call = one frame.
+        ImGuiIO& io = ImGui::GetIO();
+        FrameRunner runLauncherFrame = [&](const std::function<void()>& drawUi) {
+            glfwPollEvents();
+            if (glfwWindowShouldClose(window)) return false;
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+            drawUi();
+            ImGui::Render();
+            FrameContext* f = gpu.beginFrame();
+            if (!f) return true; // minimized: try again next frame
+            renderer.overlay = [](VkCommandBuffer cmd) { ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd); };
+            renderer.render(*f, camera, 0.0f); // an empty scene: just the background and the ImGui overlay
+            gpu.endFrame();
+            return true;
+        };
+        const GameEntry* entry = pickGame(games, enginePath("mush2d_last_game.json"), cliGame, runLauncherFrame);
+        if (!entry) { // the window was closed in the launcher
+            teardown();
+            return;
+        }
+        // The game's folder first: every assetPath / sourceAssetPath after this line (also in the game's
+        // constructor) reads that game's files.
+        setGameRoot(entry->dir);
+        glfwSetWindowTitle(window, ("Mush2D - " + entry->name).c_str());
+        ownedGame = entry->create();
+        IGame& game = *ownedGame;
+        audio.scan(sourceAssetPath("assets/audio")); // the game's own sounds
+        game.init(services);
+
         bool showPanel = std::getenv("MUSH2D_SHOW_PANEL") != nullptr; // F1 toggles
         bool f1Held = false;
-        ImGuiIO& io = ImGui::GetIO();
 
         int prevMode = -1;
         double lastTime = glfwGetTime();

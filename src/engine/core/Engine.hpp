@@ -2,8 +2,12 @@
 
 #include "engine/core/GameRegistry.hpp"
 
+#include <string_view>
+#include <vector>
+
 class Engine {
 public:
-    // Points the asset paths at game.dir, creates the game, opens the window and runs until it closes.
-    void run(const GameEntry& game);
+    // Opens the window, picks a game (cliGame if it names one, else the launcher screen), then runs it
+    // until the window closes. The window and the Vulkan context are made once, for both.
+    void run(const std::vector<GameEntry>& games, std::string_view cliGame);
 };

@@ -34,7 +34,9 @@ O `Mush2D` traz todos os jogos compilados. Para abrir um jogo pelo id:
 build/debug/Mush2D --game iki_demo
 ```
 
-Sem o `--game`, ele abre o primeiro jogo da lista. Com um id que não existe, ele mostra os ids válidos e abre o primeiro.
+Sem o `--game`, ele mostra a tela de escolha: um botão por jogo, com o último jogo aberto marcado. `Enter` abre o marcado. A última escolha fica em `mush2d_last_game.json`, ao lado do executável. A tela também avisa, sem botão, das pastas com `project.json` que não têm código compilado.
+
+Com `--game <id>` a tela é pulada. Com um id que não existe (ou sem o id), ele mostra os ids válidos e abre a tela de escolha.
 
 Hoje há um jogo: o `iki_demo`, em `examples/iki_demo/` (o Iki e a sala vitrine). Cada jogo tem a sua pasta, com:
 
