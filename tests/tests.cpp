@@ -15,6 +15,7 @@
 #include "engine/core/GameRegistry.hpp"
 #include "engine/core/Launcher.hpp"
 #include "engine/core/Paths.hpp"
+#include "engine/core/Project.hpp"
 #include "engine/render/LightComponent.hpp"
 #include "engine/render/Materials.hpp"
 #include "engine/render/PixelScale.hpp"
@@ -106,6 +107,7 @@ TEST(asset_path_is_next_to_executable) {
 
 TEST(game_root_moves_asset_paths) {
     const auto before = gameRoot();
+    setActiveProject(Project{"test", "Test", {"Ice", "Fire"}}); // the elements the engine tests use
     setGameRoot("examples/iki_demo");
     CHECK(assetPath("assets/x.png").generic_string().ends_with("examples/iki_demo/assets/x.png"));
     CHECK(enginePath("shaders/a.spv").generic_string().ends_with("/shaders/a.spv"));
@@ -2966,7 +2968,7 @@ TEST(game_prefabs_load_without_warnings) {
         GameObject* d = prefabs.instantiate(scene, name);
         auto* damageable = d ? d->getComponent<Damageable>() : nullptr;
         auto* dummy = d ? d->getComponent<TrainingDummy>() : nullptr;
-        CHECK(damageable && damageable->invulnerableTime == 0.0f && damageable->multipliers[Element::Ice] == ice);
+        CHECK(damageable && damageable->invulnerableTime == 0.0f && damageable->multipliers["Ice"] == ice);
         CHECK(dummy && dummy->respawnTime == 3.0f && d->getComponent<Resources>()->maxHealth == 10 && d->getComponent<Hurtbox>());
     }
     auto* shooter = prefabs.instantiate(scene, "training_dummy_shooter");
@@ -3433,21 +3435,21 @@ TEST(resources_spend_regen_delay) {
     auto& r = o.addComponent<Resources>();
     std::vector<EnergyChanged> seen;
     auto sub = scene.events().subscribe<EnergyChanged>([&](const EnergyChanged& e) { seen.push_back(e); });
-    CHECK(r.health() == 5 && r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f);
-    CHECK(r.spend(Element::Ice, 30.0f) && r.energy(Element::Ice) == 70.0f);
-    CHECK(!r.spend(Element::Ice, 71.0f) && r.energy(Element::Ice) == 70.0f); // not enough: nothing spent
-    CHECK(r.spend(Element::Fire, 10.0f));
+    CHECK(r.health() == 5 && r.energy(Energy::Ice) == 100.0f && r.energy(Energy::Fire) == 100.0f);
+    CHECK(r.spend(Energy::Ice, 30.0f) && r.energy(Energy::Ice) == 70.0f);
+    CHECK(!r.spend(Energy::Ice, 71.0f) && r.energy(Energy::Ice) == 70.0f); // not enough: nothing spent
+    CHECK(r.spend(Energy::Fire, 10.0f));
     scene.flush();
-    CHECK(seen.size() == 2 && seen[0].id == o.id && seen[0].element == Element::Ice && seen[0].value == 70.0f &&
+    CHECK(seen.size() == 2 && seen[0].id == o.id && seen[0].element == Energy::Ice && seen[0].value == 70.0f &&
           seen[0].max == 100.0f);
     r.update(scene, 0.5f); // still within regenDelay (1 s) of the spend
-    CHECK(r.energy(Element::Ice) == 70.0f);
-    r.spend(Element::Fire, 10.0f); // fire's delay restarts, ice's does not
+    CHECK(r.energy(Energy::Ice) == 70.0f);
+    r.spend(Energy::Fire, 10.0f); // fire's delay restarts, ice's does not
     r.update(scene, 0.6f);         // ice waited 1.1 s: regenerates; fire waited 0.6 s
-    CHECK(r.energy(Element::Ice) == 76.0f && r.energy(Element::Fire) == 80.0f); // 70 + 10/s * 0.6 s
+    CHECK(r.energy(Energy::Ice) == 76.0f && r.energy(Energy::Fire) == 80.0f); // 70 + 10/s * 0.6 s
     for (int i = 0; i < 100; ++i) r.update(scene, 0.1f);
-    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f); // capped at the max
-    CHECK(r.spend(Element::Ice, 0.0f) && !r.spend(Element::Ice, -1.0f) && r.energy(Element::Ice) == 100.0f);
+    CHECK(r.energy(Energy::Ice) == 100.0f && r.energy(Energy::Fire) == 100.0f); // capped at the max
+    CHECK(r.spend(Energy::Ice, 0.0f) && !r.spend(Energy::Ice, -1.0f) && r.energy(Energy::Ice) == 100.0f);
 }
 
 TEST(resources_on_step_updates_once_per_step) {
@@ -3455,29 +3457,29 @@ TEST(resources_on_step_updates_once_per_step) {
     GameObject& o = scene.createObject<GameObject>();
     auto& r = o.addComponent<Resources>();
     scene.flush();
-    CHECK(r.spend(Element::Ice, 10.0f));
+    CHECK(r.spend(Energy::Ice, 10.0f));
     scene.step(0.5f); // 0.5 s since the spend: still waiting (two updates per step would regenerate already)
-    CHECK(r.energy(Element::Ice) == 90.0f);
+    CHECK(r.energy(Energy::Ice) == 90.0f);
     scene.step(0.5f); // 1 s: one update of 0.5 s regenerates 5
-    CHECK(r.energy(Element::Ice) == 95.0f);
+    CHECK(r.energy(Energy::Ice) == 95.0f);
 }
 
 TEST(resources_spend_both_atomic) {
     Scene2D scene;
     GameObject& o = scene.createObject<GameObject>();
     auto& r = o.addComponent<Resources>();
-    CHECK(r.spend(Element::Fire, 80.0f));
+    CHECK(r.spend(Energy::Fire, 80.0f));
     CHECK(!r.spendBoth(30.0f, 30.0f)); // fire has 20: neither is spent
-    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 20.0f);
+    CHECK(r.energy(Energy::Ice) == 100.0f && r.energy(Energy::Fire) == 20.0f);
     CHECK(r.spendBoth(30.0f, 20.0f));
-    CHECK(r.energy(Element::Ice) == 70.0f && r.energy(Element::Fire) == 0.0f);
+    CHECK(r.energy(Energy::Ice) == 70.0f && r.energy(Energy::Fire) == 0.0f);
     r.update(scene, 1.0f);            // both waited 1 s: both regenerate 10
     CHECK(r.spendBoth(0.0f, 5.0f));   // ice is not spent, so its delay does not restart
     r.update(scene, 0.5f);
-    CHECK(r.energy(Element::Ice) == 85.0f && r.energy(Element::Fire) == 5.0f);
-    CHECK(!r.spendBoth(-1.0f, 1.0f) && r.energy(Element::Fire) == 5.0f);
+    CHECK(r.energy(Energy::Ice) == 85.0f && r.energy(Energy::Fire) == 5.0f);
+    CHECK(!r.spendBoth(-1.0f, 1.0f) && r.energy(Energy::Fire) == 5.0f);
     r.refill();
-    CHECK(r.energy(Element::Ice) == 100.0f && r.energy(Element::Fire) == 100.0f);
+    CHECK(r.energy(Energy::Ice) == 100.0f && r.energy(Energy::Fire) == 100.0f);
 }
 
 TEST(resources_death_event) {
@@ -3489,7 +3491,7 @@ TEST(resources_death_event) {
     auto a = scene.events().subscribe<Died>([&](const Died& e) { died += e.id == o.id; });
     auto b = scene.events().subscribe<HealthChanged>([&](const HealthChanged& e) { health.push_back(e); });
     DamageInfo hit;
-    CHECK(hit.amount == 1 && hit.element == Element::None && hit.direction == glm::vec2(0.0f));
+    CHECK(hit.amount == 1 && hit.element == "" && hit.direction == glm::vec2(0.0f));
     r.damage(3);
     scene.flush();
     CHECK(r.health() == 2 && died == 0 && health.size() == 1 && health[0].health == 2 && health[0].max == 5);
@@ -4556,12 +4558,12 @@ TEST(iki_respawn_resets_state) {
     IkiObject& iki = ikiOnFloor(scene, 3.0f);
     auto* resources = iki.getComponent<Resources>();
     if (!resources) { CHECK(false); return; }
-    CHECK(resources->spend(Element::Ice, 30.0f));
+    CHECK(resources->spend(Energy::Ice, 30.0f));
     damageIki(scene, iki, {5, {}});
     stepIki(scene, iki, zPress()); // a Z while dead must not jump after the respawn
     iki.respawnAt({6.0f, -4.4f});
     iki.respawn();
-    CHECK(inState(iki, "idle") && resources->health() == 5 && resources->energy(Element::Ice) == 100.0f);
+    CHECK(inState(iki, "idle") && resources->health() == 5 && resources->energy(Energy::Ice) == 100.0f);
     CHECK(iki.velocity_ == glm::vec2(0.0f) && !iki.invulnerable() && iki.transform.position == glm::vec2(6.0f, -4.4f));
     bool jumped = false;
     for (int f = 0; f < 10; ++f) {
@@ -5116,6 +5118,7 @@ struct CombatScene {
         o.transform.position = at;
         Hitbox& h = o.addComponent<Hitbox>();
         h.team = team;
+        h.element = "Ice";
         return o;
     }
     // Hurtbox 1x1, Damageable (no invulnerability), Resources with 10 health.
@@ -5149,7 +5152,7 @@ TEST(hitbox_hits_other_team_once_per_activation) {
     if (!c.hits.empty()) {
         const HitEvent& h = c.hits[0];
         CHECK(h.attacker == a.id && h.target == t.id && h.info.source == a.id);
-        CHECK(h.info.amount == 1 && h.info.element == Element::Ice && h.info.parryable && !h.info.projectile);
+        CHECK(h.info.amount == 1 && h.info.element == "Ice" && h.info.parryable && !h.info.projectile);
         CHECK(h.info.direction.x > 0.99f); // from the attacker to the target
     }
     CHECK(healthOf(t) == 9 && c.taken.size() == 1 && c.taken[0].finalAmount == 1);
@@ -5194,17 +5197,17 @@ TEST(hitbox_reactivation_hits_again) {
 TEST(damageable_applies_multipliers_and_rounding) {
     Damageable d;
     DamageInfo ice;
-    ice.element = Element::Ice;
-    d.multipliers[Element::Ice] = 2.0f;
+    ice.element = "Ice";
+    d.multipliers["Ice"] = 2.0f;
     CHECK(d.finalAmount(ice) == 2); // 1 x 2
-    d.multipliers[Element::Ice] = 0.5f;
+    d.multipliers["Ice"] = 0.5f;
     CHECK(d.finalAmount(ice) == 1); // 1 x 0.5 rounds up to the minimum 1
     ice.amount = 2;
     CHECK(d.finalAmount(ice) == 1); // 2 x 0.5
     ice.amount = 3;
     CHECK(d.finalAmount(ice) == 2); // 1.5 to the nearest
     DamageInfo fire;
-    fire.element = Element::Fire;
+    fire.element = "Fire";
     CHECK(d.finalAmount(fire) == 1); // no multiplier = 1
 
     // From the prefab section, through Resources and DamageTaken.
@@ -5213,10 +5216,10 @@ TEST(damageable_applies_multipliers_and_rounding) {
     CHECK(t && c.prefabs.warnings().empty());
     if (!t) return;
     Damageable* td = t->getComponent<Damageable>();
-    CHECK(td && td->multipliers.size() == 1 && td->multipliers[Element::Ice] == 2.0f);
+    CHECK(td && td->multipliers.size() == 1 && td->multipliers["Ice"] == 2.0f);
     c.scene.flush();
     DamageInfo hit;
-    hit.element = Element::Ice;
+    hit.element = "Ice";
     hitOnce(c.scene, InvalidGameObjectId, t->id, hit);
     CHECK(healthOf(*t) == 8 && c.taken.size() == 1 && c.taken[0].finalAmount == 2 && c.taken[0].target == t->id);
     CHECK(t->getComponent<Blink>() && t->getComponent<Blink>()->active()); // "hit:taken" from the prefab
@@ -5225,7 +5228,7 @@ TEST(damageable_applies_multipliers_and_rounding) {
     const auto dir = std::filesystem::temp_directory_path() / "mush2d_multipliers";
     std::filesystem::create_directories(dir);
     std::ofstream(dir / "bad_mult.prefab.json", std::ios::trunc)
-        << R"({"version": 1, "multipliers": {"Ice": "x", "Wind": 2, "Fire": -1, "None": 0.5}})";
+        << R"({"version": 1, "multipliers": {"Ice": "x", "Wind": 2, "Fire": -1}})";
     std::ofstream(dir / "bad_mult2.prefab.json", std::ios::trunc) << R"({"version": 1, "multipliers": [1]})";
     PrefabLibrary lib{dir};
     Scene2D scene;
@@ -5233,21 +5236,92 @@ TEST(damageable_applies_multipliers_and_rounding) {
     GameObject* b = lib.instantiate(scene, "bad_mult");
     CHECK(b && hasWarning(lib.warnings(), "multipliers.Ice") && hasWarning(lib.warnings(), "multipliers.Wind") &&
           hasWarning(lib.warnings(), "multipliers.Fire"));
-    CHECK(b && b->getComponent<Damageable>() && b->getComponent<Damageable>()->multipliers.size() == 1);
+    CHECK(b && b->getComponent<Damageable>() && b->getComponent<Damageable>()->multipliers.empty());
     CHECK(lib.instantiate(scene, "bad_mult2") && hasWarning(lib.warnings(), "multipliers: expected"));
     std::filesystem::remove_all(dir);
+}
+
+namespace {
+// Writes `text` to a temp file and returns its path.
+std::filesystem::path writeTemp(const std::string& name, const std::string& text) {
+    const auto file = std::filesystem::temp_directory_path() / name;
+    std::ofstream(file, std::ios::trunc) << text;
+    return file;
+}
+}
+
+TEST(project_loads_elements) {
+    const auto file = writeTemp("mush2d_project_ok.json", R"({"id": "g", "name": "G", "elements": ["Ice", "Fire"]})");
+    CerrCapture err;
+    std::optional<Project> p = loadProject(file);
+    CHECK(p && p->id == "g" && p->name == "G" && p->elements == std::vector<std::string>({"Ice", "Fire"}));
+    CHECK(p && p->hasElement("Fire") && !p->hasElement("Lava") && !p->hasElement(""));
+    CHECK(err.str().empty());
+    std::filesystem::remove(file);
+}
+
+TEST(project_rejects_duplicate_element) {
+    const auto file = writeTemp("mush2d_project_dup.json", R"({"id": "g", "name": "G", "elements": ["Ice", "Ice"]})");
+    const auto empty = writeTemp("mush2d_project_empty.json", R"({"id": "g", "name": "G", "elements": [""]})");
+    CerrCapture err;
+    CHECK(!loadProject(file) && !loadProject(empty));
+    CHECK(err.str().find("elements") != std::string::npos && countOf(err.str(), "Project: ") == 2);
+    std::filesystem::remove(file);
+    std::filesystem::remove(empty);
+}
+
+TEST(project_bad_reload_keeps_previous) {
+    const Project before = activeProject();
+    const auto file = writeTemp("mush2d_project_reload.json", R"({"id": "a", "name": "A", "elements": ["Wind"]})");
+    CerrCapture err;
+    CHECK(reloadActiveProject(file) && activeProject().hasElement("Wind"));
+    writeTemp("mush2d_project_reload.json", R"({"id": "a", "name": "A", "elements": [)"); // a typo mid-edit
+    CHECK(!reloadActiveProject(file) && activeProject().hasElement("Wind") && activeProject().id == "a");
+    CHECK(err.str().find("Project: ") != std::string::npos);
+    std::filesystem::remove(file);
+    setActiveProject(before);
+}
+
+TEST(prefab_unknown_element_warns) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_unknown_element";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "lava_dummy.prefab.json", std::ios::trunc)
+        << R"({"version": 1, "multipliers": {"Lava": 2, "Ice": 3}})";
+    PrefabLibrary lib{dir};
+    Scene2D scene;
+    CerrCapture err;
+    GameObject* o = lib.instantiate(scene, "lava_dummy");
+    CHECK(o && hasWarning(lib.warnings(), "Lava") && hasWarning(lib.warnings(), "lava_dummy")); // names both
+    Damageable* d = o ? o->getComponent<Damageable>() : nullptr;
+    CHECK(d && d->multipliers.size() == 1 && d->multipliers["Ice"] == 3.0f); // the rest still loads
+    std::filesystem::remove_all(dir);
+}
+
+TEST(damage_multiplier_by_element_name) {
+    CombatScene c;
+    GameObject* t = c.prefabs.instantiate(c.scene, "test_target"); // {"Ice": 2}
+    CHECK(t);
+    if (!t) return;
+    c.scene.flush();
+    DamageInfo hit;
+    hit.element = "Ice";
+    hitOnce(c.scene, InvalidGameObjectId, t->id, hit);
+    CHECK(c.taken.size() == 1 && c.taken[0].finalAmount == 2);
+    hit.element = "Fire"; // no multiplier for it: normal damage
+    hitOnce(c.scene, InvalidGameObjectId, t->id, hit);
+    CHECK(c.taken.size() == 2 && c.taken[1].finalAmount == 1);
 }
 
 TEST(damageable_immune_zero_multiplier) {
     CombatScene c;
     GameObject& t = c.target({0.0f, 0.0f});
-    t.getComponent<Damageable>()->multipliers[Element::Ice] = 0.0f;
+    t.getComponent<Damageable>()->multipliers["Ice"] = 0.0f;
     EffectTriggers& fx = t.addComponent<EffectTriggers>();
     fx.triggers["hit:immune"] = {nlohmann::json{{"blink", 0.5}}};
     fx.triggers["hit:taken"] = {nlohmann::json{{"squash", {1.2, 0.8}}}};
     c.scene.flush();
     DamageInfo hit;
-    hit.element = Element::Ice;
+    hit.element = "Ice";
     hitOnce(c.scene, InvalidGameObjectId, t.id, hit);
     CHECK(healthOf(t) == 10 && c.taken.empty());
     CHECK(t.getComponent<Blink>() && t.getComponent<Blink>()->active() && !t.getComponent<SquashStretch>());
@@ -5336,7 +5410,7 @@ TEST(projectile_breaks_on_wall_and_hit) {
     if (!c.hits.empty()) {
         const DamageInfo& info = c.hits[0].info;
         CHECK(c.hits[0].attacker == b->id && info.source == shooter.id && info.projectile && info.parryable);
-        CHECK(info.direction == glm::vec2(1.0f, 0.0f) && info.element == Element::Ice);
+        CHECK(info.direction == glm::vec2(1.0f, 0.0f) && info.element == "Ice");
     }
 }
 
@@ -5617,7 +5691,7 @@ struct IkiCombat {
         return action(name);
     }
     int count(const std::vector<std::string>& v, const char* s) const { return int(std::count(v.begin(), v.end(), s)); }
-    float ice() const { return iki->getComponent<Resources>()->energy(Element::Ice); }
+    float ice() const { return iki->getComponent<Resources>()->energy(Energy::Ice); }
 };
 InputState xPress() { InputState in; in.attack.pressed = in.attack.down = true; return in; }
 InputState cPress() { InputState in; in.shoot.pressed = in.shoot.down = true; return in; }
@@ -5692,7 +5766,7 @@ TEST(iki_combo_third_slash_damage_and_knockback) {
     if (c.hits.size() != 3) return;
     CHECK(c.hits[0].info.amount == 1 && c.hits[1].info.amount == 1 && c.hits[2].info.amount == 2);
     CHECK(c.hits[0].info.knockback == 2.0f && c.hits[2].info.knockback == c.iki->finisherKnockback && c.iki->finisherKnockback == 8.0f);
-    CHECK(c.hits[2].info.element == Element::Ice && c.hits[2].info.source == c.iki->id && c.hits[2].info.direction.x > 0.0f);
+    CHECK(c.hits[2].info.element == "Ice" && c.hits[2].info.source == c.iki->id && c.hits[2].info.direction.x > 0.0f);
     CHECK(c.count(c.cues, "hit") == 2 && c.count(c.cues, "finisher") == 1);
     // The weight: hit stop 0.05 s (3 frames) for a common hit, 0.09 s (6 frames) for the finisher.
     CHECK(frozen == std::vector<int>({3, 3, 6}));
@@ -5835,10 +5909,10 @@ TEST(iki_shoot_costs_and_cooldown) {
     c.step(cPress());
     c.step({}, 30);
     CHECK(healthOf(t) == 19 && c.taken.size() == 1 && c.pool.pooled("ice_shard") == 2); // reused
-    CHECK(c.taken.size() == 1 && c.taken[0].info.projectile && c.taken[0].info.element == Element::Ice);
+    CHECK(c.taken.size() == 1 && c.taken[0].info.projectile && c.taken[0].info.element == "Ice");
     CHECK(c.taken.size() == 1 && c.taken[0].info.source == c.iki->id && c.count(c.cues, "hit") == 1);
     // Without the ice: no shard, the "no_energy" cue (the prefab plays the failure sound).
-    c.iki->getComponent<Resources>()->spend(Element::Ice, c.ice() - 10.0f);
+    c.iki->getComponent<Resources>()->spend(Energy::Ice, c.ice() - 10.0f);
     c.step(cPress());
     c.scene.flush();
     CHECK(c.action("none") && c.count(c.cues, "no_energy") == 1 && c.ice() == 10.0f && c.count(c.actions, "shoot") == 3);
@@ -5949,7 +6023,7 @@ TEST(iki_guard_break_without_energy) {
     IkiCombat c;
     if (!c.iki) return;
     auto& resources = *c.iki->getComponent<Resources>();
-    resources.spend(Element::Ice, 95.0f);
+    resources.spend(Energy::Ice, 95.0f);
     c.step(vPress());
     c.step(vHeld(), 20);
     hitIki(c, {-1.0f, 0.0f});
@@ -6074,7 +6148,7 @@ namespace {
 DamageInfo iceHit(int amount) {
     DamageInfo info;
     info.amount = amount;
-    info.element = Element::Ice;
+    info.element = "Ice";
     return info;
 }
 // A real dummy prefab standing on ikiLevel's floor (its box centre 0.6 u above it), flushed.

@@ -1,6 +1,7 @@
 #include "engine/world/Prefab.hpp"
 
 #include "engine/assets/AssetRegistry.hpp"
+#include "engine/core/Project.hpp"
 #include "engine/world/Combat.hpp"
 #include "engine/world/Effects.hpp"
 #include "engine/world/Scene2D.hpp"
@@ -344,16 +345,15 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
     }
 
     if (doc.contains("multipliers")) { // element -> damage multiplier of the Damageable (added if missing)
-        if (!doc["multipliers"].is_object()) warn(where + ": multipliers: expected {\"Ice\": 2.0, ...}");
+        if (!doc["multipliers"].is_object()) warn(where + ": multipliers: expected {\"<element>\": 2.0, ...}");
         else {
             Damageable* damageable = o.getComponent<Damageable>();
             if (!damageable) damageable = &o.addComponent<Damageable>();
             for (const auto& [name, value] : doc["multipliers"].items()) {
-                Element element{};
-                std::string error;
-                if (!reflect::fromJson(json(name), element, error)) warn(where + ": multipliers." + name + ": " + error);
+                // The element must be one of the active project's names; an unknown one is skipped.
+                if (!activeProject().hasElement(name)) warn(where + ": multipliers." + name + ": unknown element (not in project.json)");
                 else if (!value.is_number() || value.get<float>() < 0.0f) warn(where + ": multipliers." + name + ": expected a number >= 0");
-                else damageable->multipliers[element] = value.get<float>();
+                else damageable->multipliers[name] = value.get<float>();
             }
         }
     }

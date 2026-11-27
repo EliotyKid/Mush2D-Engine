@@ -5,17 +5,17 @@
 #include <algorithm>
 
 namespace {
-int slot(Element element) { return element == Element::Ice ? 0 : 1; }
+int slot(Energy element) { return element == Energy::Ice ? 0 : 1; }
 }
 
 int Resources::health() const { return std::max(0, maxHealth - lost_); }
 
-float Resources::max(Element element) const {
-    return element == Element::Ice ? maxIce : element == Element::Fire ? maxFire : 0.0f;
+float Resources::max(Energy element) const {
+    return element == Energy::Ice ? maxIce : element == Energy::Fire ? maxFire : 0.0f;
 }
 
-float Resources::energy(Element element) const {
-    if (element == Element::None) return 0.0f;
+float Resources::energy(Energy element) const {
+    if (element == Energy::None) return 0.0f;
     return std::max(0.0f, max(element) - used_[slot(element)]);
 }
 
@@ -36,13 +36,13 @@ void Resources::refill() {
     lost_ = 0;
     used_[0] = used_[1] = 0.0f;
     emitHealth();
-    emitEnergy(Element::Ice);
-    emitEnergy(Element::Fire);
+    emitEnergy(Energy::Ice);
+    emitEnergy(Energy::Fire);
 }
 
-bool Resources::spend(Element element, float amount) {
+bool Resources::spend(Energy element, float amount) {
     if (amount == 0.0f) return true; // nothing spent: no event, the regen delay keeps running
-    if (amount < 0.0f || element == Element::None || energy(element) < amount) return false;
+    if (amount < 0.0f || element == Energy::None || energy(element) < amount) return false;
     used_[slot(element)] += amount;
     sinceSpend_[slot(element)] = 0.0f;
     emitEnergy(element);
@@ -50,14 +50,14 @@ bool Resources::spend(Element element, float amount) {
 }
 
 bool Resources::spendBoth(float ice, float fire) {
-    if (ice < 0.0f || fire < 0.0f || energy(Element::Ice) < ice || energy(Element::Fire) < fire) return false;
-    spend(Element::Ice, ice);
-    spend(Element::Fire, fire);
+    if (ice < 0.0f || fire < 0.0f || energy(Energy::Ice) < ice || energy(Energy::Fire) < fire) return false;
+    spend(Energy::Ice, ice);
+    spend(Energy::Fire, fire);
     return true;
 }
 
 void Resources::update(Scene2D&, float dt) {
-    for (Element element : {Element::Ice, Element::Fire}) {
+    for (Energy element : {Energy::Ice, Energy::Fire}) {
         const int i = slot(element);
         sinceSpend_[i] += dt;
         if (sinceSpend_[i] < regenDelay || used_[i] <= 0.0f) continue;
@@ -75,6 +75,6 @@ void Resources::emitHealth() {
     if (scene_) scene_->events().emit(HealthChanged{owner_, health(), maxHealth});
 }
 
-void Resources::emitEnergy(Element element) {
+void Resources::emitEnergy(Energy element) {
     if (scene_) scene_->events().emit(EnergyChanged{owner_, element, energy(element), max(element)});
 }

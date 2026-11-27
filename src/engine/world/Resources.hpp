@@ -4,9 +4,12 @@
 #include "engine/world/Damage.hpp"
 #include "engine/world/GameObject.hpp"
 
+// The two fixed energies Resources still has. Temporary: Task 3 replaces them with bars named in project.json.
+MUSH2D_ENUM(Energy, None, Ice, Fire)
+
 // Events on scene.events(), delivered at the next flush.
 struct HealthChanged { GameObjectId id; int health; int max; };
-struct EnergyChanged { GameObjectId id; Element element; float value; float max; };
+struct EnergyChanged { GameObjectId id; Energy element; float value; float max; };
 struct Died { GameObjectId id; }; // health reached 0
 
 // Health and the ice / fire energies. Starts full. Each energy regenerates regenPerSecond once regenDelay has
@@ -21,14 +24,14 @@ public:
     MUSH2D_EXPORT(float, regenDelay, 1.0f)
 
     int health() const;
-    float energy(Element element) const; // 0 for Element::None
+    float energy(Energy element) const; // 0 for Energy::None
 
     void damage(int amount); // ignored once dead
     void heal(int amount);
     void refill(); // health and both energies back to the max (respawn)
 
     // False, spending nothing, when there is not enough energy or the amount is negative. 0 is true, no effect.
-    bool spend(Element element, float amount);
+    bool spend(Energy element, float amount);
     bool spendBoth(float ice, float fire); // both or neither; a 0 side is left alone
 
     void update(Scene2D& scene, float dt);
@@ -37,9 +40,9 @@ public:
     void onStep(GameObject&, Scene2D& scene, float dt) override { update(scene, dt); }
 
 private:
-    float max(Element element) const;
+    float max(Energy element) const;
     void emitHealth();
-    void emitEnergy(Element element);
+    void emitEnergy(Energy element);
 
     // Stored as what is missing, so a max set after attaching (prefab, inspector) still starts full.
     int lost_ = 0;

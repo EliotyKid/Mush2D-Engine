@@ -25,7 +25,7 @@ public:
     MUSH2D_EXPORT(float, range, 8.0f)
     MUSH2D_EXPORT(std::string, team, std::string("enemy"))
     MUSH2D_EXPORT(int, damage, 1)
-    MUSH2D_EXPORT(Element, element, Element::Ice)
+    MUSH2D_EXPORT(std::string, element, std::string()) // a name from project.json; empty = none
     MUSH2D_EXPORT(bool, parryable, true)
     MUSH2D_EXPORT(glm::vec2, size, glm::vec2(0.25f, 0.25f)) // the box that hits hurtboxes
 

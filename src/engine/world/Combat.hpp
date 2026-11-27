@@ -90,7 +90,7 @@ public:
     MUSH2D_EXPORT(glm::vec2, size, glm::vec2(1.0f, 1.0f))
     MUSH2D_EXPORT(glm::vec2, offset, glm::vec2(0.0f, 0.0f))
     MUSH2D_EXPORT(int, damage, 1)
-    MUSH2D_EXPORT(Element, element, Element::Ice)
+    MUSH2D_EXPORT(std::string, element, std::string()) // a name from project.json; empty = none
     MUSH2D_EXPORT(float, knockback, 0.0f)
     MUSH2D_EXPORT(std::string, team, std::string("player"))
     MUSH2D_EXPORT(bool, parryable, true)
@@ -120,8 +120,8 @@ public:
     MUSH2D_EXPORT(float, invulnerableTime, 0.2f)
     MUSH2D_EXPORT(float, parryStun, 1.0f) // seconds of Stunned for info.source on a parry (if it has Stunned)
 
-    // Element -> damage multiplier (missing = 1, 0 = immune). Prefab section "multipliers": {"Ice": 2.0}.
-    std::map<Element, float> multipliers;
+    // Element -> damage multiplier (missing = 1, 0 = immune). Prefab section "multipliers": {"<element>": 2.0}.
+    std::map<std::string, float> multipliers;
     // Asked after the invulnerability check; Blocked and Parried deal no damage and start no invulnerability.
     // info.parryable false: the guard should answer Blocked (and charge its block); a Parried is turned into
     // Blocked anyway (no stun, no reflection).

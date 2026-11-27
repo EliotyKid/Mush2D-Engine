@@ -474,14 +474,14 @@ const char* IkiObject::tryShoot() {
     auto* pool = scene_ ? scene_->service<ProjectilePool>() : nullptr;
     auto* resources = getComponent<Resources>();
     if (!pool || !resources || shootLeft_ > 0.0f) return nullptr;
-    if (resources->energy(Element::Ice) < shardCost) {
+    if (resources->energy(Energy::Ice) < shardCost) {
         emitMovementCue(*scene_, *this, "no_energy");
         return nullptr;
     }
     // From the body centre: never inside a wall the Iki touches (its own hurtbox is on its team).
     const glm::vec2 at = transform.position + glm::vec2(0.0f, collider ? collider->offset.y : 0.8f);
     if (!pool->spawn("ice_shard", at, {facing, 0.0f}, "player", id)) return nullptr; // the pool warned: no cost
-    resources->spend(Element::Ice, shardCost);
+    resources->spend(Energy::Ice, shardCost);
     shootLeft_ = shootCooldown;
     resetCombo();
     return "shoot";
@@ -495,7 +495,7 @@ HitResult IkiObject::guard(const DamageInfo& info) {
     if (x * facing > 0.0f) return HitResult::Hit; // from behind
     if (info.parryable && actions_.timeInState() < parryWindow) return HitResult::Parried; // scene time: a hit stop holds it
     auto* resources = getComponent<Resources>();
-    if (resources && resources->spend(Element::Ice, blockCost)) {
+    if (resources && resources->spend(Energy::Ice, blockCost)) {
         velocity_.x = -facing * blockPush;
         return HitResult::Blocked;
     }

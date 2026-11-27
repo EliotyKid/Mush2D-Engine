@@ -1,6 +1,8 @@
 #include "engine/core/Engine.hpp"
 #include "engine/core/Launcher.hpp"
+#include "engine/core/FileWatcher.hpp"
 #include "engine/core/Paths.hpp"
+#include "engine/core/Project.hpp"
 #include "engine/gpu/Buffer.hpp"
 #include "engine/gpu/Image.hpp"
 
@@ -198,6 +200,13 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
         glfwSetWindowTitle(window, ("Mush2D - " + entry->name).c_str());
         ownedGame = entry->create();
         IGame& game = *ownedGame;
+        // The game's project.json: a bad file only warns; the game then runs with an empty project.
+        const std::filesystem::path projectFile = sourceAssetPath("project.json");
+        if (std::optional<Project> project = loadProject(assetPath("project.json"))) setActiveProject(std::move(*project));
+#ifndef NDEBUG
+        FileWatcher projectWatcher; // Debug: edits to project.json apply while the game runs
+        projectWatcher.watch(projectFile, projectFile.parent_path(), ".no-such-suffix");
+#endif
         audio.scan(sourceAssetPath("assets/audio")); // the game's own sounds
         game.init(services);
 
@@ -224,6 +233,9 @@ void Engine::run(const std::vector<GameEntry>& games, std::string_view cliGame) 
             float deltaTime = std::min(static_cast<float>(currentTime - lastTime), MAX_DELTA_TIME);
             lastTime = currentTime;
 
+#ifndef NDEBUG
+            if (projectWatcher.poll(deltaTime).file) reloadActiveProject(projectFile); // keeps the old one on error
+#endif
             game.update(services, deltaTime);
 
             const int mode = renderer.settings().pixelMode;

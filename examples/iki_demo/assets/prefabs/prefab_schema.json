@@ -1,6 +1,6 @@
 {
   "enums": {
-    "Element": [
+    "Energy": [
       "None",
       "Ice",
       "Fire"
@@ -257,10 +257,9 @@
           "type": "Int"
         },
         {
-          "default": "Ice",
-          "enum": "Element",
+          "default": "",
           "name": "element",
-          "type": "Enum"
+          "type": "String"
         },
         {
           "default": 0.0,
@@ -684,10 +683,9 @@
           "type": "Int"
         },
         {
-          "default": "Ice",
-          "enum": "Element",
+          "default": "",
           "name": "element",
-          "type": "Enum"
+          "type": "String"
         },
         {
           "default": true,

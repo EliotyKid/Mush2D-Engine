@@ -22,6 +22,6 @@ void drawDebugHud(const Resources& resources) {
         draw->AddRectFilled(a, {a.x + BarWidth * fill, b.y}, color);
         draw->AddRect(a, b, IM_COL32(255, 255, 255, 160));
     };
-    bar(Top + 2.0f * Radius + 8.0f, resources.energy(Element::Ice), resources.maxIce, IM_COL32(80, 170, 255, 255));
-    bar(Top + 2.0f * Radius + 24.0f, resources.energy(Element::Fire), resources.maxFire, IM_COL32(255, 140, 40, 255));
+    bar(Top + 2.0f * Radius + 8.0f, resources.energy(Energy::Ice), resources.maxIce, IM_COL32(80, 170, 255, 255));
+    bar(Top + 2.0f * Radius + 24.0f, resources.energy(Energy::Fire), resources.maxFire, IM_COL32(255, 140, 40, 255));
 }

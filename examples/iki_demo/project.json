@@ -1,4 +1,5 @@
 {
     "id": "iki_demo",
-    "name": "IkiDemo"
+    "name": "IkiDemo",
+    "elements": ["Ice", "Fire"]
 }
