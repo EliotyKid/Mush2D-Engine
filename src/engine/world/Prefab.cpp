@@ -291,6 +291,14 @@ GameObject* PrefabLibrary::spawn(Scene2D& scene, const json& doc, const std::str
             if (c.contains("props"))
                 for (const std::string& w : applyProps(static_cast<Component*>(target), cType, c["props"]))
                     warn(where + ": components." + cType + ".props." + w);
+            // An element name the project does not list can never match a multiplier: warn and clear it.
+            for (std::string* element : {cType == "Hitbox" ? &static_cast<Hitbox*>(target)->element : nullptr,
+                                         cType == "Projectile" ? &static_cast<Projectile*>(target)->element : nullptr}) {
+                if (element && !element->empty() && !activeProject().hasElement(*element)) {
+                    warn(where + ": components." + cType + ".props.element: unknown element '" + *element + "' (not in project.json)");
+                    element->clear();
+                }
+            }
         }
     }
 

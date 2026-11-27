@@ -107,7 +107,6 @@ TEST(asset_path_is_next_to_executable) {
 
 TEST(game_root_moves_asset_paths) {
     const auto before = gameRoot();
-    setActiveProject(Project{"test", "Test", {"Ice", "Fire"}}); // the elements the engine tests use
     setGameRoot("examples/iki_demo");
     CHECK(assetPath("assets/x.png").generic_string().ends_with("examples/iki_demo/assets/x.png"));
     CHECK(enginePath("shaders/a.spv").generic_string().ends_with("/shaders/a.spv"));
@@ -5297,6 +5296,25 @@ TEST(prefab_unknown_element_warns) {
     std::filesystem::remove_all(dir);
 }
 
+TEST(prefab_unknown_hitbox_projectile_element_warns) {
+    const auto dir = std::filesystem::temp_directory_path() / "mush2d_unknown_hit_element";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "typo_hit.prefab.json", std::ios::trunc)
+        << R"({"version": 1, "components": [{"type": "Hitbox", "props": {"element": "ice"}}, {"type": "Projectile", "props": {"element": "Lava"}}]})";
+    std::ofstream(dir / "good_hit.prefab.json", std::ios::trunc)
+        << R"({"version": 1, "components": [{"type": "Hitbox", "props": {"element": "Fire"}}]})";
+    PrefabLibrary lib{dir};
+    Scene2D scene;
+    CerrCapture err;
+    GameObject* o = lib.instantiate(scene, "typo_hit");
+    CHECK(o && hasWarning(lib.warnings(), "'ice'") && hasWarning(lib.warnings(), "'Lava'") && hasWarning(lib.warnings(), "typo_hit"));
+    CHECK(o && o->getComponent<Hitbox>()->element.empty() && o->getComponent<Projectile>()->element.empty()); // ignored
+    PrefabLibrary lib2{dir};
+    GameObject* g = lib2.instantiate(scene, "good_hit");
+    CHECK(g && lib2.warnings().empty() && g->getComponent<Hitbox>()->element == "Fire");
+    std::filesystem::remove_all(dir);
+}
+
 TEST(damage_multiplier_by_element_name) {
     CombatScene c;
     GameObject* t = c.prefabs.instantiate(c.scene, "test_target"); // {"Ice": 2}
@@ -6362,6 +6380,7 @@ int main() {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #endif
     mush2dLinkGame_iki_demo(); // keeps the demo's object types linked (their registrations run at start)
+    setActiveProject(Project{"test", "Test", {"Ice", "Fire"}}); // the elements the engine tests use
     setGameRoot("examples/iki_demo"); // assetPath / sourceAssetPath("assets/...") read the demo's folder
     for (auto& [name, fn] : registry()) {
         std::printf("[ RUN ] %s\n", name);
